@@ -39,6 +39,48 @@ export const thirdServerAPI = {
   }
 };
 
+// 公告API
+export const announcementAPI = {
+  /**
+   * 获取公告列表
+   * @param {number} page - 页码
+   * @param {number} pageSize - 每页数量
+   * @param {number} isPublished - 是否已发布 (0: 草稿, 1: 已发布)
+   * @returns {Promise} - 返回Promise对象
+   */
+  queryPage: (page, pageSize, isPublished = '1') => {
+    return axiosInstance.get('/announcement/page', {
+      params: {
+        page,
+        pageSize,
+        isPublished
+      }
+    });
+  },
+
+  /**
+   * 获取公告详情
+   * @param {number} announcementId - 公告ID
+   * @returns {Promise} - 返回Promise对象
+   */
+  getDetail: (announcementId) => {
+    return axiosInstance.get(`/announcement/detail/${announcementId}`);
+  },
+
+  /**
+   * 增加公告阅读量
+   * @param {number} announcementId - 公告ID
+   * @returns {Promise} - 返回Promise对象
+   */
+  addWatchCount: (announcementId) => {
+    return axiosInstance.post(`/announcement/addWatchCount`,{
+      announcementId
+    });
+  }
+};
+
+
+
 // 导出所有API
 export default {
   serverMonitor: serverMonitorAPI

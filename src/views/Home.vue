@@ -91,27 +91,13 @@
           }"
           :footer-content="``"
         />
-
         <!-- 玩家排行榜 -->
         <Leaderboard />
-
-        <!-- 活动公告栏 -->
-        <AnnouncementBoard @open-announcement="openAnnouncement" />
       </div>
     </div>
 
     <!-- 返回顶部按钮 -->
     <BackToTop />
-
-    <!-- 公告详情弹窗 -->
-    <Modal
-      :is-visible="showAnnouncement"
-      :title="currentAnnouncement.title"
-      :date="currentAnnouncement.date"
-      @close="showAnnouncement = false"
-    >
-      <div v-html="currentAnnouncement.content"></div>
-    </Modal>
   </div>
 </template>
 
@@ -119,8 +105,6 @@
 import OnlineCounter from "../components/OnlineCounter.vue";
 import ContentCard from "../components/ContentCard.vue";
 import Leaderboard from "../components/Leaderboard.vue";
-import AnnouncementBoard from "../components/AnnouncementBoard.vue";
-import Modal from "../components/Modal.vue";
 import BackToTop from "../components/BackToTop.vue";
 import CopyButton from "../components/CopyButton.vue";
 
@@ -132,19 +116,11 @@ export default {
     OnlineCounter,
     ContentCard,
     Leaderboard,
-    AnnouncementBoard,
-    Modal,
     BackToTop,
     CopyButton,
   },
   data() {
     return {
-      showAnnouncement: false,
-      currentAnnouncement: {
-        title: "",
-        date: "",
-        content: "",
-      },
       serverAddress: McConfig.server.address,
       serverPort: McConfig.server.port,
       supportedVersions: McConfig.server.supportedVersions,
@@ -152,10 +128,6 @@ export default {
     };
   },
   methods: {
-    openAnnouncement(announcement) {
-      this.currentAnnouncement = announcement;
-      this.showAnnouncement = true;
-    },
     scrollToSection(id) {
       const element = document.getElementById(id);
       if (element) {
