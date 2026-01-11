@@ -1,0 +1,88 @@
+/* 引入本地Minecraft字体 */
+@font-face {
+  font-family: 'Minecraft';
+  src: url('/src/assets/fonts/Minecraft_AE.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* 为粗体样式提供支持 */
+@font-face {
+  font-family: 'Minecraft';
+  src: url('/src/assets/fonts/Minecraft-Bold.otf') format('opentype');
+  font-weight: bold;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Minecraft';
+  src: url('/src/assets/fonts/Minecraft-Italic.otf') format('opentype');
+  font-weight: normal;
+  font-style: italic;
+}
+
+/* 为斜体样式提供支持 */
+@font-face {
+  font-family: 'Minecraft';
+  src: url('/src/assets/fonts/Minecraft-BoldItalic.otf') format('opentype');
+  font-weight: bold;
+  font-style: italic;
+}
+
+
+/* 重置默认样式，避免与App.vue中的样式冲突 */
+body {
+  background-color: var(--background-color);
+  color: var(--text-color);
+  line-height: 1.6;
+  background-image: url('https://img.fastmirror.net/s/2025/12/06/6933b516a7e0c.png');
+  background-size: cover;
+  background-attachment: fixed;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Minecraft', sans-serif;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+/* 设置全局字体和基础样式 */
+:root {
+  font-family: 'Minecraft', sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 让App组件完全由App.vue中的样式控制 */
+#app {
+  width: 100%;
+  min-height: 100vh;
+  font-family: 'Minecraft', sans-serif;
+}
+
+/* 全局a标签样式 */
+a {
+  text-decoration: none;
+  color: #0099ff;
+  position: relative;
+  transition: color 0.3s ease;
+}
+
+/* a标签hover时下划线动画 */
+a::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background-color: currentColor;
+  transition: width 0.3s ease;
+}
+
+a:hover::after {
+  width: 100%;
+}
+
