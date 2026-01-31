@@ -1,9 +1,9 @@
 const McConfig = {
     // development | production
-    nodeEnv:'development',
+    nodeEnv:'production',
     env: {
         production: {
-            baseApiURL: 'https://floyd.tqclink.cn:35771',
+            baseApiURL: 'https://fcloud.tqclink.cn:5000',
         },
         development: {
             baseApiURL: 'http://localhost:5000',

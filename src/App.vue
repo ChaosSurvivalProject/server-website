@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <NavBar />
-    <div class="container container-main">
+    <div>
       <!-- 路由视图，用于渲染不同页面 -->
       <router-view />
     </div>
