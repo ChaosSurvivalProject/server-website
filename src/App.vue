@@ -9,7 +9,7 @@
     <footer>
       <div class="container">
         <p>
-          <span style="font-weight: bold">©</span> 2025 星穹旅驿 Minecraft服务器
+          <span style="font-weight: bold">©</span> 2025-2026 星穹旅驿 Minecraft服务器
           | 本服务器与Mojang及Microsoft无关
         </p>
         <p>联系我们: 3896301937@qq.com</p>
@@ -190,7 +190,6 @@ footer {
   color: white;
   text-align: center;
   padding: 20px 0;
-  margin-top: 30px;
   font-size: 14px;
   border-top: 4px solid var(--border-color);
 }

@@ -58,7 +58,6 @@
         <router-link to="/" class="nav-icon">首页</router-link>
         <router-link to="/announcements" class="nav-icon">服务器公告</router-link>
         <router-link to="/servers" class="nav-icon">友情服务器列表</router-link>
-        <a href="/wiki" target="_blank" class="nav-icon">访问wiki</a>
         <a href="/v1" class="nav-icon">回到旧版</a>
       </div>
 
@@ -74,15 +73,6 @@
           <li>
             <router-link to="/servers" @click="closeMenu()"
               >友情服务器列表</router-link
-            >
-          </li>
-          <li>
-            <a
-              href="/wiki"
-              target="_blank"
-              @click="closeMenu()"
-              class="nav-icon"
-              >访问wiki</a
             >
           </li>
           <li>
