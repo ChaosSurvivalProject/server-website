@@ -50,14 +50,18 @@
       </button>
 
       <!-- 桌面端菜单(中间展示) -->
-      <ul class="nav-links desktop-menu">
-      </ul>
+      <ul class="nav-links desktop-menu"></ul>
 
       <!-- 桌面端菜单(右侧展示) -->
       <div class="nav-right desktop-menu">
         <router-link to="/" class="nav-icon">首页</router-link>
-        <router-link to="/announcements" class="nav-icon">服务器公告</router-link>
+        <router-link to="/announcements" class="nav-icon"
+          >服务器公告</router-link
+        >
         <router-link to="/servers" class="nav-icon">友情服务器列表</router-link>
+        <a href="https://mcbbs.tqclink.cn" target="_blank" class="nav-icon"
+          >星穹旅驿社区</a
+        >
         <a href="/v1" class="nav-icon">回到旧版</a>
       </div>
 
@@ -74,6 +78,9 @@
             <router-link to="/servers" @click="closeMenu()"
               >友情服务器列表</router-link
             >
+          </li>
+          <li>
+            <a href="https://mcbbs.tqclink.cn" @click="closeMenu()">星穹旅驿社区</a>
           </li>
           <li>
             <a href="/v1" @click="closeMenu()" class="nav-icon">回到旧版</a>

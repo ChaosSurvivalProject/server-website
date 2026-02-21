@@ -125,11 +125,10 @@
     </div>
     <!-- 内容区域 -->
     <div class="home-content">
-      <!-- 丰富的 游戏体验 -->
       <section class="why-choose-us">
         <div class="why-choose-us-content">
           <h2 class="home-content-title">
-            丰富的 <span style="color: #4caf50">游戏体验</span>
+            保障 <span style="color: #4caf50">完善游戏体验</span>
           </h2>
           <p class="home-content-subtitle">
             我们致力于为玩家提供最佳的游戏体验和社区环境
@@ -353,7 +352,9 @@
               </div>
               <h3 class="join-step-title">添加服务器</h3>
               <p class="join-step-description">
-                点击添加服务器，输入服务器地址<span class="join-step-highlight">play.simpfun.cn:37298</span>
+                点击添加服务器，输入服务器地址<span class="join-step-highlight"
+                  >play.simpfun.cn:37298</span
+                >
               </p>
             </div>
             <div class="join-step">
@@ -382,37 +383,41 @@
               </p>
             </div>
           </div>
-
-          <!-- 服务器地址卡片 -->
-          <div class="server-address-card">
-            <div class="server-address-icon">
-              <svg
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
-                <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
-                <line x1="6" y1="6" x2="6.01" y2="6"></line>
-                <line x1="6" y1="18" x2="6.01" y2="18"></line>
-              </svg>
-            </div>
-            <div class="server-address-info">
-              <h4 class="server-address-label">服务器地址</h4>
-              <div class="server-address-value">
-                <span class="server-address-text"
-                  >{{ serverAddress }}:{{ serverPort }}</span
-                >
-                <CopyButton :copyValue="`${serverAddress}:${serverPort}`" />
-              </div>
-            </div>
-          </div>
         </div>
+      </section>
+
+      <!-- 玩家社区 -->
+      <section class="player-forum">
+        <h2 class="home-content-title">
+          分享 <span style="color: #4caf50">游戏精彩瞬间</span>
+        </h2>
+        <p class="home-content-subtitle" style="margin-bottom: 30px;">
+          加入我们的玩家社区，与其他玩家互动，分享游戏经验
+        </p>
+        <a href="https://mcbbs.tqclink.cn" target="_blank" class="forum-link">
+          访问玩家论坛 →
+        </a>
+        <div class="player-forum-carousel">
+          <ImageCarousel :images="bbsImages" :interval="4000" style="width: 800px;" />
+        </div>
+      </section>
+
+      <!-- 服务器地址卡片 -->
+      <section class="server-address">
+        <h2 class="home-content-title">
+          实时 <span style="color: #4caf50">查看服务状态</span>
+        </h2>
+        <p class="home-content-subtitle" id="join" style="margin-bottom: 20px">
+          服务器当前状态，实时更新
+        </p>
+        <iframe
+          id="mc-status-play-simpfun-cn-37298"
+          frameborder="0"
+          width="700"
+          scrolling="no"
+          class="server-address-card"
+          src="https://motd.minebbs.com/iframe?ip=play.simpfun.cn&port=37298&stype=auto&dark=false"
+        ></iframe>
       </section>
     </div>
 
@@ -427,6 +432,7 @@ import ContentCard from "../components/ContentCard.vue";
 import Leaderboard from "../components/Leaderboard.vue";
 import BackToTop from "../components/BackToTop.vue";
 import CopyButton from "../components/CopyButton.vue";
+import ImageCarousel from "../components/ImageCarousel.vue";
 
 import McConfig from "../config/mc-config.js";
 
@@ -438,6 +444,7 @@ export default {
     Leaderboard,
     BackToTop,
     CopyButton,
+    ImageCarousel,
   },
   data() {
     return {
@@ -445,6 +452,20 @@ export default {
       serverPort: McConfig.server.port,
       supportedVersions: McConfig.server.supportedVersions,
       qqGroup: McConfig.qqGroup,
+      bbsImages: [
+        {
+          src: "/src/assets/images/bbs-1.png",
+          alt: "玩家论坛图片1",
+        },
+        {
+          src: "/src/assets/images/bbs-2.png",
+          alt: "玩家论坛图片2",
+        },
+        {
+          src: "/src/assets/images/bbs-3.png",
+          alt: "玩家论坛图片3",
+        },
+      ],
     };
   },
   methods: {
@@ -554,6 +575,13 @@ export default {
   margin: 0 auto;
   padding: 0 20px;
   text-align: center;
+}
+
+.server-address {
+  padding: 80px 0;
+  margin: 40px 0;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .home-content-title {
@@ -734,16 +762,9 @@ export default {
 
 /* 服务器地址卡片 */
 .server-address-card {
-  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
-  color: white;
-  padding: 30px 40px;
+  max-width: 100%;
+  min-height: 450px;
   border-radius: 12px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  box-shadow: 0 8px 24px rgba(76, 175, 80, 0.3);
-  max-width: 600px;
-  margin: 0 auto;
 }
 
 .server-address-icon {
@@ -779,6 +800,39 @@ export default {
   font-size: 20px;
   font-weight: bold;
   font-family: "Courier New", monospace;
+}
+
+/* 玩家论坛样式 */
+.player-forum {
+  padding: 0 20px;
+  margin: 0 20px;
+  border-radius: 12px;
+  overflow: hidden;
+  text-align: center;
+}
+
+.player-forum-carousel {
+  margin-bottom: 30px;
+  margin-top: 30px;
+}
+
+.forum-link {
+  display: inline-block;
+  background-color: #4caf50;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+}
+
+.forum-link:hover {
+  background-color: #45a049;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
 }
 
 /* 响应式设计 */
@@ -834,6 +888,19 @@ export default {
   .server-address-value {
     justify-content: center;
   }
+
+  .player-forum {
+    padding: 60px 0;
+  }
+
+  .player-forum-carousel {
+    margin-bottom: 20px;
+  }
+
+  .forum-link {
+    padding: 10px 20px;
+    font-size: 14px;
+  }
 }
 
 /* 横幅区域样式 */
@@ -844,13 +911,13 @@ export default {
   overflow: hidden;
   color: black;
   background-color: white;
-  padding-top: 150px;
+  padding-top: 100px;
 }
 
 .home-content {
   position: relative;
   height: 100%;
-  text-align: left;
+  text-align: center;
   overflow: hidden;
   color: black;
   background-color: white;
@@ -1291,6 +1358,12 @@ export default {
 
   .btn {
     width: 200px;
+  }
+
+  /* 服务器地址卡片 */
+  .server-address-card {
+    max-width: 100%;
+    min-height: 750px;
   }
 }
 
