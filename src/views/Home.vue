@@ -434,6 +434,10 @@ import BackToTop from "../components/BackToTop.vue";
 import CopyButton from "../components/CopyButton.vue";
 import ImageCarousel from "../components/ImageCarousel.vue";
 
+import bbs1 from "../assets/images/bbs-1.png";
+import bbs2 from "../assets/images/bbs-2.png";
+import bbs3 from "../assets/images/bbs-3.png";
+
 import McConfig from "../config/mc-config.js";
 
 export default {
@@ -454,17 +458,17 @@ export default {
       qqGroup: McConfig.qqGroup,
       bbsImages: [
         {
-          src: "/src/assets/images/bbs-1.png",
-          alt: "玩家论坛图片1",
+          src: bbs1,
+          alt: "玩家论坛图片1"
         },
         {
-          src: "/src/assets/images/bbs-2.png",
-          alt: "玩家论坛图片2",
+          src: bbs2,
+          alt: "玩家论坛图片2"
         },
         {
-          src: "/src/assets/images/bbs-3.png",
-          alt: "玩家论坛图片3",
-        },
+          src: bbs3,
+          alt: "玩家论坛图片3"
+        }
       ],
     };
   },
