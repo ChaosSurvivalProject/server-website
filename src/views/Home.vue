@@ -58,7 +58,7 @@
               <div class="stat-label">插件玩法</div>
             </div>
             <div class="stat-item">
-              <div class="stat-number">5</div>
+              <div class="stat-number">6</div>
               <div class="stat-label">管理团队人数</div>
             </div>
           </div>
@@ -125,7 +125,7 @@
     </div>
     <!-- 内容区域 -->
     <div class="home-content">
-      <section class="why-choose-us">
+      <section class="why-choose-us" id="features">
         <div class="why-choose-us-content">
           <h2 class="home-content-title">
             保障 <span style="color: #4caf50">完善游戏体验</span>
@@ -228,7 +228,7 @@
       </section>
 
       <!-- 加入方式 -->
-      <section class="join-us">
+      <section class="join-us" id="join-us">
         <div class="join-us-content">
           <h2 class="home-content-title">
             即刻 <span style="color: #4caf50">开启冒险旅程</span>
@@ -387,7 +387,7 @@
       </section>
 
       <!-- 玩家社区 -->
-      <section class="player-forum">
+      <section class="player-forum" id="forum">
         <h2 class="home-content-title">
           分享 <span style="color: #4caf50">游戏精彩瞬间</span>
         </h2>
@@ -403,7 +403,7 @@
       </section>
 
       <!-- 服务器地址卡片 -->
-      <section class="server-address">
+      <section class="server-address" id="status">
         <h2 class="home-content-title">
           实时 <span style="color: #4caf50">查看服务状态</span>
         </h2>
@@ -421,8 +421,8 @@
       </section>
     </div>
 
-    <!-- 返回顶部按钮 -->
-    <BackToTop />
+    <!-- 右侧目录导航 -->
+    <SectionNav />
   </div>
 </template>
 
@@ -430,9 +430,9 @@
 import OnlineCounter from "../components/OnlineCounter.vue";
 import ContentCard from "../components/ContentCard.vue";
 import Leaderboard from "../components/Leaderboard.vue";
-import BackToTop from "../components/BackToTop.vue";
 import CopyButton from "../components/CopyButton.vue";
 import ImageCarousel from "../components/ImageCarousel.vue";
+import SectionNav from "../components/SectionNav.vue";
 
 import bbs1 from "../assets/images/bbs-1.png";
 import bbs2 from "../assets/images/bbs-2.png";
@@ -446,9 +446,9 @@ export default {
     OnlineCounter,
     ContentCard,
     Leaderboard,
-    BackToTop,
     CopyButton,
     ImageCarousel,
+    SectionNav,
   },
   data() {
     return {
@@ -1004,6 +1004,7 @@ export default {
 .hero-features {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: 12px;
   margin: 0 0 24px 0;
 }
