@@ -21,24 +21,6 @@ export const serverMonitorAPI = {
   }
 };
 
-export const thirdServerAPI = {
-  /**
-   * 获取第三方服务器列表
-   * @returns {Promise} - 返回Promise对象
-   */
-  getServerList: () => {
-    return axiosInstance.get('/third-server/list');
-  },
-  /**
-   * 获取第三方服务器详情
-   * @param {number} serverId - 服务器ID
-   * @returns {Promise} - 返回Promise对象
-   */
-  getServerDetail: (serverId) => {
-    return axiosInstance.get(`/third-server/detail/${serverId}`);
-  }
-};
-
 // 公告API
 export const announcementAPI = {
   /**

@@ -8,20 +8,6 @@ const routes = [
     component: Home
   },
   {
-    path: '/servers',
-    name: 'ServerList',
-    // 懒加载ServerList组件
-    component: () => import('../views/ServerList.vue')
-  },
-  {
-    path: '/servers/:id',
-    name: 'ServerDetail',
-    // 懒加载ServerDetail组件
-    component: () => import('../views/ServerDetail.vue'),
-    // 路由参数
-    props: true
-  },
-  {
     path: '/announcements',
     name: 'Announcements',
     // 懒加载Announcements组件

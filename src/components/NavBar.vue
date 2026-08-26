@@ -5,20 +5,6 @@
         <router-link to="/" class="logo">
           <span style="font-size: 18px">星穹旅驿</span>
         </router-link>
-        <span class="online-player-count">
-          <span
-            style="
-              display: inline-block;
-              width: 8px;
-              height: 8px;
-              background: #4caf50;
-              border-radius: 50%;
-              margin-right: 6px;
-              vertical-align: middle;
-            "
-          ></span>
-          纯净 生存 友好社区
-        </span>
       </div>
 
       <!-- 移动端菜单按钮 -->
@@ -58,7 +44,6 @@
         <router-link to="/announcements" class="nav-icon"
           >服务器公告</router-link
         >
-        <router-link to="/servers" class="nav-icon">友情服务器列表</router-link>
         <a href="https://mcbbs.tqclink.cn" target="_blank" class="nav-icon"
           >星穹旅驿社区</a
         >
@@ -72,11 +57,6 @@
           <li>
             <router-link to="/announcements" @click="closeMenu()"
               >服务器公告</router-link
-            >
-          </li>
-          <li>
-            <router-link to="/servers" @click="closeMenu()"
-              >友情服务器列表</router-link
             >
           </li>
           <li>
@@ -162,16 +142,6 @@ nav {
   height: 20px;
   margin-right: 5px;
   vertical-align: middle;
-}
-
-.online-player-count {
-  background-color: #3f3f3e;
-  color: #4caf50;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  border: 1px solid #333;
-  margin-bottom: 3px;
 }
 
 .nav-links {
@@ -316,11 +286,6 @@ nav {
 
   .logo span:last-of-type {
     font-size: 10px;
-  }
-
-  .online-player-count {
-    font-size: 11px;
-    padding: 2px 6px;
   }
 }
 

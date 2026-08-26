@@ -18,24 +18,24 @@
             class="hero-subtitle animate-slide-in-left"
             style="animation-delay: 0.5s"
           >
-            在这里<br />体验原汁原味的Minecraft生存
+            在这里，体验<span style="color: #3B82F6">无规则乱世生存</span>
           </p>
           <div
             class="hero-features animate-fade-in"
             style="animation-delay: 0.7s"
           >
-            <span class="feature-tag">纯净生存</span>
+            <span class="feature-tag">乱世生存</span>
+            <span class="feature-tag">多端互通</span>
             <span class="feature-tag">友好社区</span>
-            <span class="feature-tag">系统商店</span>
-            <span class="feature-tag">领地系统</span>
             <span class="feature-tag">超多插件玩法</span>
           </div>
           <p
             class="hero-description animate-fade-in"
             style="animation-delay: 0.9s"
           >
-            星穹旅驿是一个专注于原版生存的Minecraft服务器，提供稳定的游戏环境和丰富的插件玩法，
-            让你在纯净的Minecraft世界中体验不一样的游戏乐趣。
+            星穹旅驿是国内首个支持多端互通的无规则生存服务器，对标全球知名无规则服务器 2B2T。
+            基于 Geyser + Velocity + Paper 1.21.11 核心技术，实现 Java/基岩多端互通，
+            提供无规则的乱世生存体验与丰富的插件玩法。
           </p>
 
           <!-- 统计数据 -->
@@ -44,7 +44,7 @@
             style="animation-delay: 1.1s"
           >
             <div class="stat-item">
-              <div class="stat-number">27</div>
+              <div class="stat-number">{{ formattedPlayers }}</div>
               <div class="stat-label">注册玩家</div>
             </div>
             <div class="stat-divider"></div>
@@ -452,6 +452,12 @@ export default {
   },
   data() {
     return {
+      // 注册玩家目标人数
+      registeredPlayers: 114514,
+      // 当前显示的数字，从 0 开始累加
+      displayedPlayers: 0,
+      // requestAnimationFrame 句柄，用于组件销毁时取消动画
+      rafId: null,
       serverAddress: McConfig.server.address,
       serverPort: McConfig.server.port,
       supportedVersions: McConfig.server.supportedVersions,
@@ -472,7 +478,51 @@ export default {
       ],
     };
   },
+  computed: {
+    /**
+     * 注册玩家人数：添加千分位符显示（如 114,514）
+     */
+    formattedPlayers() {
+      return this.displayedPlayers.toLocaleString("en-US");
+    },
+  },
+  mounted() {
+    // 进入页面时，注册玩家人数从 0 开始累加
+    this.startCountUp();
+  },
+  beforeUnmount() {
+    // 组件销毁时取消动画，避免内存泄漏
+    if (this.rafId) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
+  },
   methods: {
+    /**
+     * 数字从 0 累加到目标值，使用缓动函数使动画更自然
+     */
+    startCountUp() {
+      const target = this.registeredPlayers;
+      const duration = 2000; // 动画时长（毫秒）
+      const startTime = performance.now();
+      // easeOutCubic：先快后慢
+      const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
+
+      const step = (now) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        this.displayedPlayers = Math.round(target * easeOutCubic(progress));
+        if (progress < 1) {
+          this.rafId = requestAnimationFrame(step);
+        } else {
+          // 动画结束，确保显示最终值
+          this.displayedPlayers = target;
+          this.rafId = null;
+        }
+      };
+
+      this.rafId = requestAnimationFrame(step);
+    },
     scrollToSection(id) {
       const element = document.getElementById(id);
       if (element) {
@@ -1004,7 +1054,7 @@ export default {
 .hero-features {
   display: flex;
   flex-wrap: wrap;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 12px;
   margin: 0 0 24px 0;
 }
@@ -1027,7 +1077,7 @@ export default {
 }
 
 .hero-description {
-  font-size: 24px;
+  font-size: 18px;
   color: #666;
   margin: 0 0 32px 0;
   line-height: 1.6;
