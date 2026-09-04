@@ -23,3 +23,25 @@ dist-ssr
 *.sln
 *.sw?
 .playwright-mcp
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.eggs/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+
+# SQLite database
+*.db
+*.sqlite
+*.sqlite3
+data/
+
+# VitePress
+wiki/.vitepress/cache/
+wiki/.vitepress/dist/
+wiki/node_modules/

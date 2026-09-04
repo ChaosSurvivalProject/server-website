@@ -76,7 +76,7 @@
               🎮加入服务器
             </button>
 
-            <a href="/wiki" target="_blank">
+            <a href="/wiki/" target="_blank">
               <button class="btn btn-secondary">📖查看文档</button>
             </a>
           </div>

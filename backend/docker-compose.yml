@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  announcement-backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: announcement-backend
+    ports:
+      - "5000:5000"
+    environment:
+      - ANNOUNCEMENT_DB=/app/data/announcements.db
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopping
