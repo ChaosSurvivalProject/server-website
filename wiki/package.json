@@ -1,14 +1,10 @@
 {
-  "name": "star-travel-wiki",
-  "private": true,
-  "version": "1.0.0",
-  "type": "module",
+  "devDependencies": {
+    "vitepress": "^2.0.0-alpha.12"
+  },
   "scripts": {
     "dev": "vitepress dev",
     "build": "vitepress build",
     "preview": "vitepress preview"
-  },
-  "devDependencies": {
-    "vitepress": "^1.5.0"
   }
 }
