@@ -1,5 +1,16 @@
 import axiosInstance from './axiosInstance';
 
+// 服务器配置API（游戏服务器地址由后端 /monitor/servers 统一维护）
+export const serverConfigAPI = {
+  /**
+   * 获取游戏服务器地址列表
+   * @returns {Promise} - data: {servers: [{id, name, address, port, display}], primary}
+   */
+  getServers: () => {
+    return axiosInstance.get('/monitor/servers');
+  }
+};
+
 // 服务器监控相关API
 export const serverMonitorAPI = {
   /**

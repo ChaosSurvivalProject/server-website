@@ -353,7 +353,7 @@
               <h3 class="join-step-title">添加服务器</h3>
               <p class="join-step-description">
                 点击添加服务器，输入服务器地址<span class="join-step-highlight"
-                  >play.simpfun.cn:37298</span
+                  >{{ serverDisplay || "加载中…" }}</span
                 >
               </p>
             </div>
@@ -411,12 +411,13 @@
           服务器当前状态，实时更新
         </p>
         <iframe
-          id="mc-status-play-simpfun-cn-37298"
+          v-if="motdUrl"
+          id="mc-status-iframe"
           frameborder="0"
           width="700"
           scrolling="no"
           class="server-address-card"
-          src="https://motd.minebbs.com/iframe?ip=play.simpfun.cn&port=37298&stype=auto&dark=false"
+          :src="motdUrl"
         ></iframe>
       </section>
     </div>
@@ -439,6 +440,7 @@ import bbs2 from "../assets/images/bbs-2.png";
 import bbs3 from "../assets/images/bbs-3.png";
 
 import McConfig from "../config/mc-config.js";
+import { serverConfigAPI } from "../api/api.js";
 
 export default {
   name: "Home",
@@ -458,8 +460,9 @@ export default {
       displayedPlayers: 0,
       // requestAnimationFrame 句柄，用于组件销毁时取消动画
       rafId: null,
-      serverAddress: McConfig.server.address,
-      serverPort: McConfig.server.port,
+      // 游戏服务器地址由后端 /monitor/servers 提供，挂载后异步获取
+      serverAddress: "",
+      serverPort: null,
       supportedVersions: McConfig.server.supportedVersions,
       qqGroup: McConfig.qqGroup,
       bbsImages: [
@@ -485,10 +488,25 @@ export default {
     formattedPlayers() {
       return this.displayedPlayers.toLocaleString("en-US");
     },
+    /**
+     * 展示用地址串：serverone.codeyun.com:12000
+     */
+    serverDisplay() {
+      return this.serverAddress ? `${this.serverAddress}:${this.serverPort}` : "";
+    },
+    /**
+     * 第三方 MOTD 状态卡片地址（地址加载完成前不渲染 iframe）
+     */
+    motdUrl() {
+      if (!this.serverAddress) return "";
+      return `https://motd.minebbs.com/iframe?ip=${this.serverAddress}&port=${this.serverPort}&stype=auto&dark=false`;
+    },
   },
   mounted() {
     // 进入页面时，注册玩家人数从 0 开始累加
     this.startCountUp();
+    // 拉取由后端维护的游戏服务器地址
+    this.fetchServerConfig();
   },
   beforeUnmount() {
     // 组件销毁时取消动画，避免内存泄漏
@@ -498,6 +516,23 @@ export default {
     }
   },
   methods: {
+    /**
+     * 从后端获取游戏服务器地址（单一数据源），取主服务器
+     */
+    async fetchServerConfig() {
+      try {
+        const result = await serverConfigAPI.getServers();
+        const servers = result.servers || [];
+        const primary =
+          servers.find((s) => s.id === result.primary) || servers[0];
+        if (primary) {
+          this.serverAddress = primary.address;
+          this.serverPort = primary.port;
+        }
+      } catch (err) {
+        console.error("获取服务器配置失败:", err);
+      }
+    },
     /**
      * 数字从 0 累加到目标值，使用缓动函数使动画更自然
      */

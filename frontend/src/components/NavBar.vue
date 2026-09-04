@@ -47,7 +47,6 @@
         <a href="https://mcbbs.tqclink.cn" target="_blank" class="nav-icon"
           >星穹旅驿社区</a
         >
-        <a href="/v1" class="nav-icon">回到旧版</a>
       </div>
 
       <!-- 移动端下拉菜单 -->
@@ -61,9 +60,6 @@
           </li>
           <li>
             <a href="https://mcbbs.tqclink.cn" @click="closeMenu()">星穹旅驿社区</a>
-          </li>
-          <li>
-            <a href="/v1" @click="closeMenu()" class="nav-icon">回到旧版</a>
           </li>
         </ul>
       </div>

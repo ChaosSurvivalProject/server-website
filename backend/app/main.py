@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .database import init_db, get_db, Announcement
+from .monitor import router as monitor_router
 from .schemas import (
     AnnouncementCreate,
     AnnouncementUpdate,
@@ -42,6 +43,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 服务器监控（最小 TCP 探测实现）
+app.include_router(monitor_router)
 
 
 @app.on_event("startup")

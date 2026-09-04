@@ -1,32 +1,9 @@
-/* 引入本地Minecraft字体 */
-@font-face {
-  font-family: 'Minecraft';
-  src: url('/src/assets/fonts/Minecraft_AE.ttf') format('truetype');
-  font-weight: normal;
-  font-style: normal;
-}
-
-/* 为粗体样式提供支持 */
-@font-face {
-  font-family: 'Minecraft';
-  src: url('/src/assets/fonts/Minecraft-Bold.otf') format('opentype');
-  font-weight: bold;
-  font-style: normal;
-}
-
-@font-face {
-  font-family: 'Minecraft';
-  src: url('/src/assets/fonts/Minecraft-Italic.otf') format('opentype');
-  font-weight: normal;
-  font-style: italic;
-}
-
-/* 为斜体样式提供支持 */
-@font-face {
-  font-family: 'Minecraft';
-  src: url('/src/assets/fonts/Minecraft-BoldItalic.otf') format('opentype');
-  font-weight: bold;
-  font-style: italic;
+/* 字体策略：不加载自定义 Minecraft 字体（16MB，太占流量）。
+   用系统自带的等宽字体栈模拟 Minecraft 像素/终端风格：
+   拉丁与数字 → ui-monospace/Cascadia Mono(Win11)/Consolas(Win10)/Menlo(macOS)；
+   中文 → 前面均无中文字形，回退 Microsoft YaHei（与原 fallback 行为一致）。 */
+:root {
+  --font-mc: ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Microsoft YaHei', monospace;
 }
 
 
@@ -41,14 +18,14 @@ body {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
-  font-family: 'Minecraft', sans-serif;
+  font-family: var(--font-mc);
   min-width: 320px;
   min-height: 100vh;
 }
 
 /* 设置全局字体和基础样式 */
 :root {
-  font-family: 'Minecraft', sans-serif;
+  font-family: var(--font-mc);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -59,7 +36,7 @@ body {
 #app {
   width: 100%;
   min-height: 100vh;
-  font-family: 'Minecraft', sans-serif;
+  font-family: var(--font-mc);
 }
 
 /* 全局a标签样式 */

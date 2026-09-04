@@ -23,7 +23,7 @@ export function showError(message, title = '错误提示') {
     display: flex;
     justify-content: center;
     align-items: center;
-    font-family: 'Minecraft', sans-serif;
+    font-family: ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Microsoft YaHei', monospace;
   `;
   
   // 创建弹窗内容
