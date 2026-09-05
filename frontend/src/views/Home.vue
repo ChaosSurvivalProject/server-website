@@ -38,10 +38,28 @@
             提供无规则的乱世生存体验与丰富的插件玩法。
           </p>
 
+          <!-- 按钮区域 -->
+          <div
+            class="hero-buttons animate-slide-in-up"
+            style="animation-delay: 1.1s"
+          >
+            <button
+              href="#join"
+              class="btn btn-primary"
+              @click.prevent="scrollToSection('join')"
+            >
+              🎮加入服务器
+            </button>
+
+            <a href="/wiki/" target="_blank">
+              <button class="btn btn-secondary">📖查看文档</button>
+            </a>
+          </div>
+
           <!-- 统计数据 -->
           <div
             class="hero-stats animate-slide-in-up"
-            style="animation-delay: 1.1s"
+            style="animation-delay: 1.3s"
           >
             <div class="stat-item">
               <div class="stat-number">{{ formattedPlayers }}</div>
@@ -61,24 +79,6 @@
               <div class="stat-number">6</div>
               <div class="stat-label">管理团队人数</div>
             </div>
-          </div>
-
-          <!-- 按钮区域 -->
-          <div
-            class="hero-buttons animate-slide-in-up"
-            style="animation-delay: 1.3s"
-          >
-            <button
-              href="#join"
-              class="btn btn-primary"
-              @click.prevent="scrollToSection('join')"
-            >
-              🎮加入服务器
-            </button>
-
-            <a href="/wiki/" target="_blank">
-              <button class="btn btn-secondary">📖查看文档</button>
-            </a>
           </div>
         </div>
 

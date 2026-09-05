@@ -3,7 +3,8 @@
     <div class="nav-container">
       <div class="nav-left">
         <router-link to="/" class="logo">
-          <span style="font-size: 18px">星穹旅驿</span>
+          <img :src="logoImg" alt="星穹旅驿 logo" class="logo-img" />
+          <span class="logo-text">星穹旅驿</span>
         </router-link>
       </div>
 
@@ -40,26 +41,34 @@
 
       <!-- 桌面端菜单(右侧展示) -->
       <div class="nav-right desktop-menu">
-        <router-link to="/" class="nav-icon">首页</router-link>
+        <router-link to="/" class="nav-icon"
+          ><i class="fa-solid fa-house"></i>首页</router-link
+        >
         <router-link to="/announcements" class="nav-icon"
-          >服务器公告</router-link
+          ><i class="fa-solid fa-bullhorn"></i>服务器公告</router-link
         >
         <a href="https://mcbbs.tqclink.cn" target="_blank" class="nav-icon"
-          >星穹旅驿社区</a
+          ><i class="fa-solid fa-users"></i>星穹旅驿社区</a
         >
       </div>
 
       <!-- 移动端下拉菜单 -->
       <div class="mobile-menu" v-show="mobileMenuOpen">
         <ul class="mobile-nav-links">
-          <li><router-link to="/" @click="closeMenu()">首页</router-link></li>
           <li>
-            <router-link to="/announcements" @click="closeMenu()"
-              >服务器公告</router-link
+            <router-link to="/" @click="closeMenu()"
+              ><i class="fa-solid fa-house"></i>首页</router-link
             >
           </li>
           <li>
-            <a href="https://mcbbs.tqclink.cn" @click="closeMenu()">星穹旅驿社区</a>
+            <router-link to="/announcements" @click="closeMenu()"
+              ><i class="fa-solid fa-bullhorn"></i>服务器公告</router-link
+            >
+          </li>
+          <li>
+            <a href="https://mcbbs.tqclink.cn" @click="closeMenu()"
+              ><i class="fa-solid fa-users"></i>星穹旅驿社区</a
+            >
           </li>
         </ul>
       </div>
@@ -68,11 +77,14 @@
 </template>
 
 <script>
+import logoImg from "../assets/images/logo.png";
+
 export default {
   name: "NavBar",
   data() {
     return {
       mobileMenuOpen: false,
+      logoImg,
     };
   },
   methods: {
@@ -110,11 +122,22 @@ nav {
 .nav-container {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: center;
+  position: relative;
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
+}
+
+/* 宽度大于 1200px 时，导航内容与首页 hero 区「欢迎来到」大标题左缘对齐
+   （hero-content 为 80% 宽度居中，左缘即视口 10% 处，故此处同用 80% 居中并去掉内边距） */
+@media (min-width: 1201px) {
+  .nav-container {
+    max-width: none;
+    width: 80%;
+    padding: 0;
+  }
 }
 
 .nav-left {
@@ -129,15 +152,22 @@ nav {
   text-decoration: none;
   font-weight: bold;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   flex-direction: row;
+  gap: 8px;
 }
 
 .logo img {
-  width: 20px;
-  height: 20px;
-  margin-right: 5px;
-  vertical-align: middle;
+  width: 28px;
+  height: 28px;
+  display: block;
+  flex-shrink: 0;
+}
+
+.logo-text {
+  font-size: 18px;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .nav-links {
@@ -162,9 +192,14 @@ nav {
   color: white;
 }
 
+/* 桌面端：三个菜单项绝对定位水平居中（不随左侧 logo 挤占布局；≤768px 时随 .desktop-menu 隐藏） */
 .nav-right {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 15px;
 }
 
@@ -173,17 +208,40 @@ nav {
   text-decoration: none;
   font-size: 16px;
   cursor: pointer;
-  transition: color 0.3s ease;
+  transition: all 0.3s ease;
+  padding: 5px 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.nav-icon i {
+  font-size: 14px;
+  transition: transform 0.3s ease;
+}
+
+/* 悬浮时图标放大（transform 过渡；<i> 是 flex 子项，transform 可生效且不引起布局跳动） */
+.nav-icon:hover i {
+  transform: scale(1.3);
 }
 
 .nav-icon:hover {
   color: white;
+  border-color: rgba(255, 255, 255, 0.5);
+  /* 半透明白叠在绿色底上：悬浮时边框内区域提亮，与导航栏底色形成层次感 */
+  background-color: rgba(255, 255, 255, 0.12);
 }
 
-/* 导航激活状态样式 */
+/* 导航激活状态样式（当前页菜单项：白边框 + 深一档的绿色药丸底，文字/图标保持白色不动） */
 .nav-icon.active {
   color: white;
   font-weight: bold;
+  border-color: white;
+  /* 半透明黑叠在导航绿底上：只加深边框内的绿色间隙，与悬浮的提亮底形成明暗层次 */
+  background-color: rgba(0, 0, 0, 0.15);
 }
 
 .mobile-nav-links a.active {
@@ -235,12 +293,20 @@ nav {
 }
 
 .mobile-nav-links a {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 10px;
   color: #ccc;
   text-decoration: none;
   font-size: 16px;
   padding: 15px 20px;
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.mobile-nav-links a i {
+  font-size: 15px;
+  width: 18px;
+  text-align: center;
 }
 
 .mobile-nav-links a:hover {
@@ -272,16 +338,13 @@ nav {
     gap: 10px;
   }
 
-  .logo {
-    font-size: 14px;
+  .logo img {
+    width: 24px;
+    height: 24px;
   }
 
-  .logo span:first-of-type {
+  .logo-text {
     font-size: 16px;
-  }
-
-  .logo span:last-of-type {
-    font-size: 10px;
   }
 }
 
@@ -291,7 +354,12 @@ nav {
     padding: 6px 10px;
   }
 
-  .logo span:first-of-type {
+  .logo img {
+    width: 20px;
+    height: 20px;
+  }
+
+  .logo-text {
     font-size: 14px;
   }
 }
