@@ -24,12 +24,28 @@
 <script>
 import NavBar from "./components/NavBar.vue";
 import BackToTop from "./components/BackToTop.vue";
+import { authAPI } from "./api/api.js";
+import { getToken, setAuth } from "./utils/auth.js";
 
 export default {
   name: "App",
   components: {
     NavBar,
     BackToTop,
+  },
+  mounted() {
+    // 恢复登录态：本地存有 token 时向后端校验并刷新用户信息，
+    // token 已失效则由 axios 拦截器统一清除并跳转登录页
+    if (getToken()) {
+      authAPI
+        .getMe()
+        .then((data) => {
+          setAuth(getToken(), { username: data.username, role: data.role });
+        })
+        .catch(() => {
+          // 校验失败无需额外处理（拦截器已清理登录态）
+        });
+    }
   },
 };
 </script>

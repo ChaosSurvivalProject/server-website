@@ -4,6 +4,13 @@ Endpoints (matching the existing Vue frontend):
   GET  /announcement/page          分页查询公告
   GET  /announcement/detail/{id}   查询公告详情
   POST /announcement/addWatchCount 增加公告阅读量
+  POST /announcement/create        创建公告（管理员）
+  PUT  /announcement/update/{id}   更新公告（管理员）
+  DELETE /announcement/delete/{id} 删除公告（管理员）
+  GET  /auth/captcha               图形验证码
+  POST /auth/register              注册
+  POST /auth/login                 登录（签发 JWT）
+  GET  /auth/me                    当前用户信息
 """
 from fastapi import FastAPI, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +18,9 @@ from fastapi.responses import JSONResponse
 
 from .database import init_db, get_db, Announcement
 from .monitor import router as monitor_router
+from .auth import bootstrap
+from .auth.deps import require_admin
+from .auth.router import router as auth_router
 from .schemas import (
     AnnouncementCreate,
     AnnouncementUpdate,
@@ -47,10 +57,15 @@ app.add_middleware(
 # 服务器监控（最小 TCP 探测实现）
 app.include_router(monitor_router)
 
+# 认证（验证码 / 注册 / 登录 / 当前用户）
+app.include_router(auth_router)
+
 
 @app.on_event("startup")
 async def on_startup():
     await init_db()
+    # 检测系统管理员是否初始化，未初始化则创建（密码写入临时 txt 文件）
+    await bootstrap.ensure_admin()
 
 
 # ── 公告分页查询 ──────────────────────────────────────────────
@@ -96,6 +111,7 @@ async def add_watch_count_endpoint(
 async def create_announcement_endpoint(
     data: AnnouncementCreate,
     db=Depends(get_db),
+    _admin=Depends(require_admin),
 ):
     """创建新公告。"""
     obj = await create_announcement(db, data)
@@ -108,6 +124,7 @@ async def update_announcement_endpoint(
     announcement_id: int,
     data: AnnouncementUpdate,
     db=Depends(get_db),
+    _admin=Depends(require_admin),
 ):
     """更新公告（部分更新）。"""
     obj = await update_announcement(db, announcement_id, data)
@@ -121,6 +138,7 @@ async def update_announcement_endpoint(
 async def delete_announcement_endpoint(
     announcement_id: int,
     db=Depends(get_db),
+    _admin=Depends(require_admin),
 ):
     """删除公告。"""
     ok = await delete_announcement(db, announcement_id)

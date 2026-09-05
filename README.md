@@ -95,9 +95,21 @@ npm run preview  # 本地预览构建产物
 | GET | `/announcement/page` | 分页查询公告（参数: page, pageSize, isPublished） |
 | GET | `/announcement/detail/{id}` | 查询公告详情 |
 | POST | `/announcement/addWatchCount` | 阅读量 +1（body: `{announcementId}`） |
-| POST | `/announcement/create` | 创建公告 |
-| PUT | `/announcement/update/{id}` | 更新公告（部分更新） |
-| DELETE | `/announcement/delete/{id}` | 删除公告 |
+| POST | `/announcement/create` | 创建公告（**需管理员**） |
+| PUT | `/announcement/update/{id}` | 更新公告（部分更新，**需管理员**） |
+| DELETE | `/announcement/delete/{id}` | 删除公告（**需管理员**） |
+
+### 认证
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/auth/captcha` | 获取注册用图形验证码（返回 `{captchaId, image}`，5 分钟有效、一次性） |
+| POST | `/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId, captchaCode}`，邮箱作为初始用户名，角色为普通用户） |
+| POST | `/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, username, role}`） |
+| GET | `/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`） |
+
+- JWT 默认 24 小时有效，环境变量 `JWT_EXPIRE_HOURS` 可调；签名密钥取环境变量 `JWT_SECRET`，未设置时自动生成并持久化到数据目录。
+- 系统管理员 `xqly-admin` 在后端首次启动时自动初始化，随机强密码写入数据目录 `admin_initial_password.txt`（仅首次初始化时写入，请妥善保管并及时删除）。
 
 ### 服务器监控
 
@@ -117,6 +129,7 @@ npm run preview  # 本地预览构建产物
 - 响应统一为 `{code, message, data}` 结构，`code=0` 表示成功。
 - 公告字段使用 camelCase（`publishTime` / `isPublished` / `readCount` / `createTime` / `updateTime`），由 Pydantic 字段别名映射。
 - 游戏服务器地址统一由后端维护（`backend/app/monitor.py` 的 `SERVERS` 注册表），前端不再硬编码；新增或修改服务器地址只需改这个文件。
+- 管理员接口使用 `Authorization: Bearer <JWT>` 鉴权：无 token 返回 401，普通用户返回 403。
 
 ### 数据库
 
@@ -150,6 +163,8 @@ docker compose up -d --build
 | `/` | Home | 首页：hero 横幅、服务器特色、加入服务器（地址来自 `/monitor/servers`）、论坛展示、在线状态 |
 | `/announcements` | Announcements | 公告列表（分页） |
 | `/announcements/:id` | AnnouncementDetail | 公告详情（自动累加阅读量） |
+| `/login` | AuthView（登录） | 登录页（用户名/邮箱 + 密码） |
+| `/register` | AuthView（注册） | 注册页（邮箱 + 密码 + 确认密码 + 图形验证码） |
 
 ### 关键组件
 
@@ -160,8 +175,8 @@ docker compose up -d --build
 
 ### API 层（`src/api/`）
 
-- `axiosInstance.js` — axios 实例，baseURL 由 `mc-config.js` 决定；响应拦截器统一解包 `{code, message, data}`，失败时弹出错误提示
-- `api.js` — 接口封装：`announcementAPI` / `serverMonitorAPI` / `serverConfigAPI`
+- `axiosInstance.js` — axios 实例，baseURL 由 `mc-config.js` 决定；响应拦截器统一解包 `{code, message, data}`，失败时弹出错误提示；请求拦截器自动携带 JWT，401 时清除登录态并跳转 `/login`
+- `api.js` — 接口封装：`authAPI` / `announcementAPI` / `serverMonitorAPI` / `serverConfigAPI`
 - `errorHandler.js` — 统一错误弹窗工具
 
 ### 环境配置（`src/config/mc-config.js`）
@@ -178,5 +193,5 @@ QQ 群等站点信息也在该文件中配置。
 前后端同域部署，由 Nginx 统一入口：
 
 - `frontend` 构建产物（`npm run build` → `dist/`）作为静态站点托管
-- `/announcement`、`/monitor`、`/health` 等 API 路径反向代理到本机 FastAPI（5000 端口）
+- `/announcement`、`/monitor`、`/auth`、`/health` 等 API 路径反向代理到本机 FastAPI（5000 端口）
 - `wiki` 构建产物挂在 `/wiki/` 路径下（VitePress `base: '/wiki'`）

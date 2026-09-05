@@ -1,5 +1,42 @@
 import axiosInstance from './axiosInstance';
 
+// 认证API（登录 / 注册 / 图形验证码 / 当前用户）
+export const authAPI = {
+  /**
+   * 获取注册用图形验证码
+   * @returns {Promise} - data: {captchaId, image}（image 为 PNG base64 data URI）
+   */
+  getCaptcha: () => {
+    return axiosInstance.get('/auth/captcha');
+  },
+
+  /**
+   * 注册（邮箱作为初始用户名，注册后角色为普通用户）
+   * @param {{email: string, password: string, confirmPassword: string, captchaId: string, captchaCode: string}} payload
+   * @returns {Promise} - data: {username, role}
+   */
+  register: (payload) => {
+    return axiosInstance.post('/auth/register', payload);
+  },
+
+  /**
+   * 登录
+   * @param {{username: string, password: string}} payload
+   * @returns {Promise} - data: {token, username, role}
+   */
+  login: (payload) => {
+    return axiosInstance.post('/auth/login', payload);
+  },
+
+  /**
+   * 获取当前登录用户信息（校验 token、恢复会话）
+   * @returns {Promise} - data: {username, email, role}
+   */
+  getMe: () => {
+    return axiosInstance.get('/auth/me');
+  }
+};
+
 // 服务器配置API（游戏服务器地址由后端 /monitor/servers 统一维护）
 export const serverConfigAPI = {
   /**
@@ -76,5 +113,7 @@ export const announcementAPI = {
 
 // 导出所有API
 export default {
+  auth: authAPI,
+  serverConfig: serverConfigAPI,
   serverMonitor: serverMonitorAPI
 };

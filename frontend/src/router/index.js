@@ -20,6 +20,19 @@ const routes = [
     component: () => import('../views/AnnouncementDetail.vue'),
     // 路由参数
     props: true
+  },
+  {
+    path: '/login',
+    name: 'Login',
+    // 登录/注册共用 AuthView，通过 initialMode 区分
+    component: () => import('../views/AuthView.vue'),
+    props: { initialMode: 'login' }
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: () => import('../views/AuthView.vue'),
+    props: { initialMode: 'register' }
   }
 ]
 

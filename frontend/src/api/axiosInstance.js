@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { handleAPIError, showError } from './errorHandler.js';
 import McConfig from '../config/mc-config.js';
+import { getToken, clearAuth } from '../utils/auth.js';
 
 // 创建axios实例
 const axiosInstance = axios.create({
@@ -12,14 +13,13 @@ const axiosInstance = axios.create({
   },
 });
 
-// 请求拦截器
+// 请求拦截器：自动携带 JWT 登录态
 axiosInstance.interceptors.request.use(
   (config) => {
-    // 可以在这里添加token等认证信息
-    // const token = localStorage.getItem('token');
-    // if (token) {
-    //   config.headers.Authorization = `Bearer ${token}`;
-    // }
+    const token = getToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
     return config;
   },
   (error) => {
@@ -57,19 +57,33 @@ axiosInstance.interceptors.response.use(
   (error) => {
     // 统一处理网络错误或请求错误
     console.error('API请求错误:', error);
-    
+
     // 根据错误类型显示不同的提示信息
     let errorMessage = '网络请求失败';
-    
+
     if (error.response) {
       // 服务器返回了错误响应
       const status = error.response.status;
       const statusText = error.response.statusText;
       errorMessage = `请求失败: ${status} ${statusText}`;
-      
+
       // 尝试从响应数据中获取错误消息
-      if (error.response.data && error.response.data.message) {
-        errorMessage = error.response.data.message;
+      // （FastAPI 的 HTTPException 返回 {detail: '...'}，业务包络返回 {message: '...'}）
+      const data = error.response.data;
+      if (data && data.message) {
+        errorMessage = data.message;
+      } else if (data && typeof data.detail === 'string') {
+        errorMessage = data.detail;
+      }
+
+      // 401 未认证：清除本地登录态并跳转登录页（带 redirect 以便登录后返回）
+      if (status === 401 && !window.location.pathname.startsWith('/login')) {
+        clearAuth();
+        const redirect = encodeURIComponent(
+          window.location.pathname + window.location.search
+        );
+        window.location.href = `/login?redirect=${redirect}`;
+        return Promise.reject(error);
       }
     } else if (error.request) {
       // 请求已发送但没有收到响应
