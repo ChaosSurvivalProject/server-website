@@ -97,7 +97,7 @@
             @click="openBilibiliVideo"
           >
             <img
-              src="/src/assets/images/video-bg.jpg"
+              :src="videoBg"
               alt="星穹旅驿服务器宣传视频"
               class="hero-image"
             />
@@ -439,6 +439,9 @@ import bbs1 from "../assets/images/bbs-1.png";
 import bbs2 from "../assets/images/bbs-2.png";
 import bbs3 from "../assets/images/bbs-3.png";
 
+// 必须 import 引入，Vite 才会打包该图片；直接写 /src/ 绝对路径 build 后会 404
+import videoBg from "../assets/images/video-bg.jpg";
+
 import McConfig from "../config/mc-config.js";
 import { serverConfigAPI } from "../api/api.js";
 
@@ -465,6 +468,8 @@ export default {
       serverPort: null,
       supportedVersions: McConfig.server.supportedVersions,
       qqGroup: McConfig.qqGroup,
+      // 宣传视频封面（import 引入保证打包）
+      videoBg,
       bbsImages: [
         {
           src: bbs1,
