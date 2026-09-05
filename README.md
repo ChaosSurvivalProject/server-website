@@ -1,41 +1,59 @@
-# 星穹旅驿 - 服务器网站
+# 星穹旅驿 · 服务器网站
 
-基于 Vue 3 + Vite 的前端，搭配 FastAPI + SQLite 的后端。
+星穹旅驿 Minecraft 服务器的官方网站，单仓库（monorepo）包含三个子项目：
+
+| 模块 | 说明 | 技术栈 |
+|------|------|--------|
+| `frontend/` | 官网前端（首页、公告） | Vue 3 + Vite + Vue Router + Axios + ECharts |
+| `backend/` | 官网后端（公告管理、服务器状态） | FastAPI + SQLAlchemy (async) + SQLite (aiosqlite) + Pydantic v2 |
+| `wiki/` | 服务器文档站 | VitePress |
 
 ## 项目结构
 
 ```
 server-website/
-├── frontend/               # Vue 3 前端
-│   ├── src/                 # 前端源码
-│   ├── public/              # 静态资源
-│   ├── node_modules/        # 依赖
+├── frontend/                    # Vue 3 前端
+│   ├── src/
+│   │   ├── api/                 # axios 实例、接口封装、统一错误处理
+│   │   ├── assets/              # 图片、字体等静态资源
+│   │   ├── components/          # 通用组件（NavBar、OnlineCounter、Leaderboard、TrendChart 等）
+│   │   ├── config/mc-config.js  # 环境与站点配置
+│   │   ├── router/              # 路由定义
+│   │   ├── utils/               # 工具函数
+│   │   ├── views/               # 页面组件
+│   │   ├── App.vue              # 根组件（导航栏 + 路由视图 + 页脚）
+│   │   └── main.js              # 应用入口
+│   ├── public/                  # 原样复制的静态资源
 │   ├── index.html
-│   ├── vite.config.js
-│   ├── jsconfig.json
-│   ├── package.json
-│   └── package-lock.json
-├── backend/                 # FastAPI 后端
+│   └── vite.config.js
+├── backend/                     # FastAPI 后端
 │   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py          # FastAPI 应用入口
-│   │   ├── database.py      # SQLite 数据库模型 & 连接
-│   │   ├── schemas.py       # Pydantic 数据模型
-│   │   └── crud.py          # CRUD 操作
-│   ├── run.py               # uvicorn 启动脚本
-│   ├── seed.py              # 测试数据种子
-│   ├── Dockerfile           # Docker 构建文件
-│   ├── requirements.txt     # 后端依赖
-│   └── .venv/               # (可选) 虚拟环境
-├── doc/                     # 接口文档
-├── docker-compose.yml       # Docker Compose 编排
-├── requirements.txt         # 后端依赖 (同 backend/requirements.txt)
+│   │   ├── main.py              # FastAPI 应用入口与公告路由
+│   │   ├── database.py          # SQLAlchemy 模型 & 异步引擎/会话
+│   │   ├── schemas.py           # Pydantic 模型（camelCase 别名）
+│   │   ├── crud.py              # 公告 CRUD 操作
+│   │   └── monitor.py           # 服务器监控（地址注册表 + TCP 探测）
+│   ├── run.py                   # uvicorn 启动脚本
+│   ├── seed.py                  # 测试数据种子
+│   ├── Dockerfile
+│   ├── docker-compose.yml
+│   ├── requirements.txt
+│   └── data/                    # SQLite 数据库文件（gitignore）
+├── wiki/                        # VitePress 文档站
+│   ├── .vitepress/config.mts    # 站点配置（base: /wiki）
+│   ├── for-new/                 # 萌新指南（进服教程、玩家条例、FAQ）
+│   ├── management/              # 服务器管理（管理员条例）
+│   ├── develop/                 # 服务器建设（发展路线、Issues）
+│   ├── index.md                 # 首页（hero 布局）
+│   └── package.json
 └── README.md
 ```
 
-## 后端 API
+## 快速开始
 
-### 安装 & 启动
+环境要求：Node.js 20.19+（Vite 7 要求）、Python 3.10+。
+
+### 后端
 
 ```bash
 cd backend
@@ -44,41 +62,9 @@ python3 run.py
 # 或: uvicorn app.main:app --reload --host 0.0.0.0 --port 5000
 ```
 
-服务启动在 `http://localhost:5000`。
+服务启动在 `http://localhost:5000`，交互式 API 文档见 `http://localhost:5000/docs`。
 
-### 接口列表
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/announcement/page` | 分页查询公告 (参数: page, pageSize, isPublished) |
-| GET | `/announcement/detail/{id}` | 查询公告详情 |
-| POST | `/announcement/addWatchCount` | 增加阅读量 (body: `{announcementId}`) |
-| POST | `/announcement/create` | 创建公告 (管理员) |
-| PUT | `/announcement/update/{id}` | 更新公告 (管理员) |
-| DELETE | `/announcement/delete/{id}` | 删除公告 (管理员) |
-| GET | `/health` | 健康检查 |
-
-### 数据库
-
-使用 SQLite，数据库文件路径：
-- 默认: `data/announcements.db` (项目根目录)
-- 可通过环境变量 `ANNOUNCEMENT_DB` 自定义
-
-### 种子数据
-
-```bash
-python3 backend/seed.py
-```
-
-### Docker 部署
-
-```bash
-docker compose up -d --build
-```
-
-## 前端
-
-### 安装 & 启动
+### 前端
 
 ```bash
 cd frontend
@@ -86,17 +72,111 @@ npm install
 npm run dev
 ```
 
-前端开发服务器监听 `http://localhost:5173` (Vite 默认端口)。
+开发服务器监听 `http://localhost:5173`（Vite 默认端口）。开发模式下 API 请求直接指向 `http://localhost:5000`（后端已开启 CORS）。
 
-### 前端配置
+### Wiki
 
-前端通过 `frontend/src/config/mc-config.js` 配置 API 地址：
-
-```javascript
-// 开发环境
-baseApiURL: 'http://localhost:5000'
-// 生产环境
-baseApiURL: 'https://fcloud.tqclink.cn:5000'
+```bash
+cd wiki
+npm install
+npm run dev      # 开发服务器
+npm run build    # 构建到 .vitepress/dist/
+npm run preview  # 本地预览构建产物
 ```
 
-修改 `nodeEnv` 切换环境 (`'development'` | `'production'`)。
+站点以 `/wiki` 为 base 部署（见 `.vitepress/config.mts`）。
+
+## 后端 API
+
+### 公告
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/announcement/page` | 分页查询公告（参数: page, pageSize, isPublished） |
+| GET | `/announcement/detail/{id}` | 查询公告详情 |
+| POST | `/announcement/addWatchCount` | 阅读量 +1（body: `{announcementId}`） |
+| POST | `/announcement/create` | 创建公告 |
+| PUT | `/announcement/update/{id}` | 更新公告（部分更新） |
+| DELETE | `/announcement/delete/{id}` | 删除公告 |
+
+### 服务器监控
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/monitor/servers` | 游戏服务器地址列表（前端展示的唯一数据源） |
+| GET | `/monitor/server-info/{serverId}` | 服务器在线状态（TCP 探测，供首页在线状态组件） |
+
+### 其他
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/health` | 健康检查 |
+
+**约定**
+
+- 响应统一为 `{code, message, data}` 结构，`code=0` 表示成功。
+- 公告字段使用 camelCase（`publishTime` / `isPublished` / `readCount` / `createTime` / `updateTime`），由 Pydantic 字段别名映射。
+- 游戏服务器地址统一由后端维护（`backend/app/monitor.py` 的 `SERVERS` 注册表），前端不再硬编码；新增或修改服务器地址只需改这个文件。
+
+### 数据库
+
+使用 SQLite：
+
+- 默认路径：`backend/data/announcements.db`（启动时自动建表）
+- 可通过环境变量 `ANNOUNCEMENT_DB` 自定义
+
+### 种子数据
+
+```bash
+cd backend
+python3 seed.py
+```
+
+### Docker 部署
+
+```bash
+cd backend
+docker compose up -d --build
+```
+
+镜像基于 `python:3.14-slim`，容器内通过 `run.py` 启动服务；宿主机 5000 端口映射到容器 5000，数据持久化在 `backend/data/`。
+
+## 前端
+
+### 页面与路由
+
+| 路径 | 页面 | 说明 |
+|------|------|------|
+| `/` | Home | 首页：hero 横幅、服务器特色、加入服务器（地址来自 `/monitor/servers`）、论坛展示、在线状态 |
+| `/announcements` | Announcements | 公告列表（分页） |
+| `/announcements/:id` | AnnouncementDetail | 公告详情（自动累加阅读量） |
+
+### 关键组件
+
+- `NavBar` — 顶部导航栏
+- `OnlineCounter` — 服务器在线状态（轮询 `/monitor/server-info/{id}`）
+- `Leaderboard` / `TrendChart` — 排行榜与趋势图（ECharts）
+- `ContentCard` / `ImageCarousel` / `SectionNav` / `CopyButton` / `BackToTop` / `Modal` — 展示与交互组件
+
+### API 层（`src/api/`）
+
+- `axiosInstance.js` — axios 实例，baseURL 由 `mc-config.js` 决定；响应拦截器统一解包 `{code, message, data}`，失败时弹出错误提示
+- `api.js` — 接口封装：`announcementAPI` / `serverMonitorAPI` / `serverConfigAPI`
+- `errorHandler.js` — 统一错误弹窗工具
+
+### 环境配置（`src/config/mc-config.js`）
+
+`nodeEnv` 由构建模式自动决定，无需手动切换：
+
+- `vite dev` → development：`baseApiURL = 'http://localhost:5000'`
+- `vite build` → production：`baseApiURL = ''`（同源相对路径，由 Nginx 反代到后端）
+
+QQ 群等站点信息也在该文件中配置。
+
+## 生产部署
+
+前后端同域部署，由 Nginx 统一入口：
+
+- `frontend` 构建产物（`npm run build` → `dist/`）作为静态站点托管
+- `/announcement`、`/monitor`、`/health` 等 API 路径反向代理到本机 FastAPI（5000 端口）
+- `wiki` 构建产物挂在 `/wiki/` 路径下（VitePress `base: '/wiki'`）
