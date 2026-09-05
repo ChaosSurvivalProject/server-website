@@ -1,9 +1,8 @@
-version: "3.8"
-
 services:
   announcement-backend:
     build:
-      context: .
+      # 构建上下文为项目根目录（Dockerfile 中 COPY backend/ 依赖该路径）
+      context: ..
       dockerfile: backend/Dockerfile
     container_name: announcement-backend
     ports:
@@ -12,4 +11,4 @@ services:
       - ANNOUNCEMENT_DB=/app/data/announcements.db
     volumes:
       - ./data:/app/data
-    restart: unless-stopping
+    restart: unless-stopped
