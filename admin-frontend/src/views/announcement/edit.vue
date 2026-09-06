@@ -59,11 +59,14 @@ const editorConfig: Partial<IEditorConfig> = {
       customUpload(file: File, insertFn: (url: string, alt: string, href: string) => void) {
         const fd = new FormData();
         fd.append("file", file);
-        // axios 检测到 FormData 会自动携带 multipart 边界，不要手动设置 Content-Type
+        // 必须显式声明 multipart：http 实例默认 Content-Type: application/json，
+        // axios 会据此把 FormData 序列化成 JSON，后端解析不到 file 字段而 422。
+        // 显式声明后 axios 放行 FormData，边界由浏览器/适配器自动补全。
         http
           .request<{ url: string }>("post", "/announcement/upload/image", {
             data: fd,
-            timeout: 30000
+            timeout: 30000,
+            headers: { "Content-Type": "multipart/form-data" }
           })
           .then(res => {
             insertFn(res.url, file.name, res.url);
