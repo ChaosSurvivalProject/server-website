@@ -31,6 +31,7 @@ __pycache__/
 *.egg
 .eggs/
 build/
+!admin-frontend/build/
 dist/
 .pytest_cache/
 .mypy_cache/
