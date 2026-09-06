@@ -9,6 +9,8 @@ services:
       - "5000:5000"
     environment:
       - ANNOUNCEMENT_DB=/app/data/announcements.db
+      # 公告时间按北京时间存储/展示，容器默认 UTC 会再差 8 小时
+      - TZ=Asia/Shanghai
     volumes:
       - ./data:/app/data
     restart: unless-stopped
