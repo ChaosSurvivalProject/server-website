@@ -12,14 +12,25 @@ from .schemas import AnnouncementCreate, AnnouncementUpdate
 _TZ = ZoneInfo("Asia/Shanghai")
 
 # 富文本 HTML 写入消毒：content 由主站 v-html 渲染，入库前用 nh3 白名单过滤。
-# 默认标签白名单已覆盖编辑器产物（p/h1-h6/ul/ol/table/img/a 等），
-# 额外放行 style 属性以保留对齐 / 颜色等内联样式。
+# 注意：nh3 的 attributes 参数会【整体覆盖】内置的每标签默认白名单——
+# 只传 {"*": {"style"}} 会把 img 的 src/alt、a 的 href 等全部剥掉（踩过坑：
+# 图片保存后再次编辑不显示）。因此这里显式枚举编辑器产物所需的全部属性；
+# "*" 为所有标签通用的 style（保留对齐/颜色等内联样式）。
+# URL 白名单用 nh3 默认（http/https/mailto + 相对路径，javascript: 会被剥）。
 try:
     import nh3
 except ImportError:  # pragma: no cover - 可选依赖，缺失时跳过消毒（不阻断启动）
     nh3 = None
 
-_SANITIZE_ATTRIBUTES = {"*": {"style"}}
+_SANITIZE_ATTRIBUTES = {
+    "*": {"style"},
+    "a": {"href", "target"},
+    "img": {"src", "alt", "width", "height", "href"},
+    "td": {"colspan", "rowspan"},
+    "th": {"colspan", "rowspan"},
+    "ol": {"start"},
+    "code": {"class"},
+}
 
 
 def _sanitize_content(html: str) -> str:
