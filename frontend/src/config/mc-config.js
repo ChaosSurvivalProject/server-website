@@ -1,31 +1,27 @@
+// 站点配置统一读取层：全部取值来自 Vite 环境变量（frontend/.env / .env.development / .env.production，
+// 本地覆盖写 .env.local），各变量的含义与默认值见 env 文件内注释。
+// 规约：不要在本文件硬编码站点值，也不要在组件里直接读 import.meta.env —— 一律从本模块取。
+const env = import.meta.env
+
 const McConfig = {
-    // 根据构建模式自动切换：vite dev → development（本地 FastAPI），vite build → production（同源）
-    nodeEnv: import.meta.env.PROD ? 'production' : 'development',
-    env: {
-        production: {
-            // 前后端同域部署：API 走同源相对路径，由 nginx 反代到本机 FastAPI
-            baseApiURL: '',
-        },
-        development: {
-            baseApiURL: 'http://localhost:5000',
-        },
-    },
+    // API 基础地址：dev 默认 http://localhost:5000（.env.development），
+    // 生产默认 ''（同源相对路径，由 Nginx 反代到本机 FastAPI）
+    baseApiURL: env.VITE_BASE_API_URL ?? '',
     server: {
-        // 游戏服务器地址已改为由后端 /monitor/servers 统一维护（单一数据源）；
-        // id 是监控接口的路由参数（与后端 SERVERS 的主服务器 id 对应）
-        id: 1,
+        // 监控接口的路由参数（与后端 SERVERS 注册表的主服务器 id 对应）
+        id: Number(env.VITE_SERVER_ID),
         supportedVersions: {
-            java: '1.18 - 1.21.11',
-            bedrock: '1.18.100 - 1.21.200'
-        }
+            java: env.VITE_JAVA_VERSIONS,
+            bedrock: env.VITE_BEDROCK_VERSIONS,
+        },
     },
     qqGroup: {
-        id: 942235691,
-        codeImgUrl: "https://img.fastmirror.net/s/2025/11/30/692bdccb7daa6.jpg",
-        inviteLinkUrl: "https://qm.qq.com/q/8jQDx8OCOY"
+        id: Number(env.VITE_QQ_GROUP_ID),
+        codeImgUrl: env.VITE_QQ_GROUP_CODE_IMG_URL,
+        inviteLinkUrl: env.VITE_QQ_GROUP_INVITE_LINK_URL,
     },
     // 后台管理入口：相对路径或绝对路径，默认 /admin（独立后台管理前端）
-    adminUrl: '/admin'
+    adminUrl: env.VITE_ADMIN_URL,
 }
 
 export default McConfig

@@ -17,12 +17,15 @@ server-website/
 │   │   ├── api/                 # axios 实例、接口封装、统一错误处理
 │   │   ├── assets/              # 图片、字体等静态资源
 │   │   ├── components/          # 通用组件（NavBar、OnlineCounter、Leaderboard、TrendChart 等）
-│   │   ├── config/mc-config.js  # 环境与站点配置
+│   │   ├── config/mc-config.js  # 站点配置统一读取层（值来自 .env 环境变量）
 │   │   ├── router/              # 路由定义
 │   │   ├── utils/               # 工具函数
 │   │   ├── views/               # 页面组件
 │   │   ├── App.vue              # 根组件（导航栏 + 路由视图 + 页脚）
 │   │   └── main.js              # 应用入口
+│   ├── .env                     # 站点配置默认值（Vite 环境变量，随仓库提交）
+│   ├── .env.development         # 开发模式覆盖（API 指向本地 FastAPI）
+│   ├── .env.production          # 生产模式覆盖（API 同源相对路径）
 │   ├── public/                  # 原样复制的静态资源
 │   ├── index.html
 │   └── vite.config.js
@@ -175,18 +178,23 @@ docker compose up -d --build
 
 ### API 层（`src/api/`）
 
-- `axiosInstance.js` — axios 实例，baseURL 由 `mc-config.js` 决定；响应拦截器统一解包 `{code, message, data}`，失败时弹出错误提示；请求拦截器自动携带 JWT，401 时清除登录态并跳转 `/login`
+- `axiosInstance.js` — axios 实例，baseURL 来自环境变量 `VITE_BASE_API_URL`（经 `mc-config.js` 统一读取）；响应拦截器统一解包 `{code, message, data}`，失败时弹出错误提示；请求拦截器自动携带 JWT，401 时清除登录态并跳转 `/login`
 - `api.js` — 接口封装：`authAPI` / `announcementAPI` / `serverMonitorAPI` / `serverConfigAPI`
 - `errorHandler.js` — 统一错误弹窗工具
 
-### 环境配置（`src/config/mc-config.js`）
+### 环境配置（`frontend/.env*` 文件）
 
-`nodeEnv` 由构建模式自动决定，无需手动切换：
+站点配置通过 Vite 环境变量提供：`.env` 存放所有模式共用的默认值，`.env.development` / `.env.production` 按构建模式覆盖，本地个性化覆盖写 `.env.local`（已被 gitignore）。`src/config/mc-config.js` 是统一读取层，组件不要直接读 `import.meta.env`。
 
-- `vite dev` → development：`baseApiURL = 'http://localhost:5000'`
-- `vite build` → production：`baseApiURL = ''`（同源相对路径，由 Nginx 反代到后端）
+| 变量 | 说明 | dev 默认 | prod 默认 |
+|------|------|----------|-----------|
+| `VITE_BASE_API_URL` | API 基础地址 | `http://localhost:5000` | 留空（同源相对路径，由 Nginx 反代到后端） |
+| `VITE_SERVER_ID` | 监控接口路由参数（对应后端 `SERVERS` 主服务器 id） | `1` | `1` |
+| `VITE_JAVA_VERSIONS` / `VITE_BEDROCK_VERSIONS` | 支持的游戏版本文案 | 见 `.env` | 见 `.env` |
+| `VITE_QQ_GROUP_ID` / `VITE_QQ_GROUP_CODE_IMG_URL` / `VITE_QQ_GROUP_INVITE_LINK_URL` | QQ 群信息 | 见 `.env` | 见 `.env` |
+| `VITE_ADMIN_URL` | 后台管理入口地址 | `/admin` | `/admin` |
 
-QQ 群等站点信息也在该文件中配置。
+环境变量在构建期静态替换，修改后需重启 dev server 或重新构建才生效。
 
 ## 生产部署
 

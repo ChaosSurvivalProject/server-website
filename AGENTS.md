@@ -31,10 +31,10 @@ npm install
 npm run dev
 npm run build             # 产物 .vitepress/dist/
 
-# 后台管理 (Vite + Element Plus, :9528)
+# 后台管理 (Vite + Element Plus, :8848)
 cd admin-frontend
 pnpm install
-pnpm dev                  # 开发服务器，API 代理到后端 :5000
+pnpm dev                  # 开发服务器（端口由 .env 的 VITE_PORT 决定，当前 8848），API 代理到后端 :5000
 pnpm build                # 产物 dist/，部署到 /admin/
 ```
 
@@ -44,7 +44,7 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 1. **响应包络**：所有接口返回 `{code, message, data}`，`code=0` 表示成功。前端 `axiosInstance` 响应拦截器已统一解包（直接返回 `data`），组件代码拿到的就是裸数据——**不要在前端组件里再判断 `code`**。
 2. **字段命名**：数据库/后端内部用 snake_case，对外 JSON 用 camelCase（`publishTime` / `isPublished` / `readCount` / `createTime` / `updateTime`）。Pydantic 模型通过 `alias` + `populate_by_name=True` 映射（见 `backend/app/schemas.py`），新增字段必须同时补别名。
-3. **契约参照实现**：`frontend/src/api/api.js` 是前后端契约的参照。**新增或修改后端接口时必须同步该文件**，保持两侧一致。后台管理前端 `admin-frontend/src/api/` 同步维护。
+3. **契约参照实现**：`frontend/src/api/api.js` 是前后端契约的参照。**新增或修改后端接口时必须同步该文件**，保持两侧一致。后台管理前端 `admin-frontend/src/api/` 同步维护；其 HTTP 层（`admin-frontend/src/utils/http/`）已统一解包 `{code, message, data}`，并把 HTTP 错误体（FastAPI `detail` / 包络 `message`）提取到 `error.message`，页面 catch 里直接 `ElMessage.error(e.message)` 弹提示，**不要在页面里重复解析错误体**。
 4. **时间格式**：统一存 ISO 字符串 `YYYY-MM-DDTHH:MM:SS`（SQLite 中为 `String(30)` 列，不用 datetime 类型）。
 5. **布尔语义用 int**：如 `isPublished`，`0=草稿, 1=已发布`，不要改成 bool。
 6. **监控接口**：`GET /monitor/server-info/{id}` 目前是 TCP 探测的最小实现（`online/offline` + 占位字段），响应结构被首页 `OnlineCounter` 组件依赖，扩展时不能破坏现有字段。
@@ -52,14 +52,15 @@ pnpm build                # 产物 dist/，部署到 /admin/
 ## 游戏服务器地址：单一数据源
 
 - 游戏服务器地址**只**维护在 `backend/app/monitor.py` 的 `SERVERS` 注册表中。
-- **禁止在前端硬编码服务器地址**；前端一律通过 `GET /monitor/servers` 获取（`mc-config.js` 里只保留监控接口所需的 `server.id`）。
+- **禁止在前端硬编码服务器地址**；前端一律通过 `GET /monitor/servers` 获取（env 里只保留监控接口所需的 `VITE_SERVER_ID`，经 `mc-config.js` 暴露为 `server.id`）。
 - 新增/修改服务器 = 改 `SERVERS` 一个地方。
 
 ## 前端配置规约
 
-- `frontend/src/config/mc-config.js` 的 `nodeEnv` 由 `import.meta.env.PROD` 自动决定（dev → 本地 5000，build → 同源相对路径），**不要改成手动切换**，也不要在别处硬编码 API 地址。
-- 生产环境 API 走同源（`baseApiURL: ''`），依赖 Nginx 反代 `/announcement`、`/monitor`、`/health` 到本机 FastAPI（:5000）。
-- QQ 群等站点信息集中在 `mc-config.js` 配置。
+- 主站配置一律走 Vite 环境变量（`VITE_` 前缀）：`frontend/.env` 存所有模式共用的默认值（QQ 群、服务器 id、版本文案、后台入口等），`.env.development` / `.env.production` 按构建模式覆盖（dev → 本地 5000，build → 同源）；本地个性化覆盖写 `.env.local`（根 `.gitignore` 的 `*.local` 已忽略）。**三个 `.env` 文件随仓库提交，禁止在组件里直接读 `import.meta.env` 或在别处硬编码这些值**。
+- `frontend/src/config/mc-config.js` 只是环境变量的统一读取层（含类型转换），**不要在其中硬编码站点值**；组件一律 `import McConfig` 取值。
+- 生产环境 API 走同源（`VITE_BASE_API_URL` 留空 → `baseApiURL: ''`），依赖 Nginx 反代 `/announcement`、`/monitor`、`/health` 到本机 FastAPI（:5000）。
+- 环境变量是构建期静态替换，改 `.env*` 后需重启 dev server / 重新 build 才生效。
 - 模板中引用的静态图片必须先 `import` 再绑定 `:src`（如 `Home.vue` 的 `bbs-*.png`、`video-bg.jpg`）；**禁止直接写 `/src/...` 绝对路径**——Vite build 不会打包该路径，生产环境会 404（dev 下看不出来）。
 
 ## Wiki 规约

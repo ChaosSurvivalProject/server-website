@@ -5,8 +5,8 @@ import { getToken, clearAuth } from '../utils/auth.js';
 
 // 创建axios实例
 const axiosInstance = axios.create({
-  // 根据环境选择基础URL
-  baseURL: McConfig.env[McConfig.nodeEnv].baseApiURL,
+  // 基础 URL 来自环境变量 VITE_BASE_API_URL（dev → 本地 FastAPI，生产 → 同源相对路径）
+  baseURL: McConfig.baseApiURL,
   timeout: 10000, // 请求超时时间
   headers: {
     'Content-Type': 'application/json',
