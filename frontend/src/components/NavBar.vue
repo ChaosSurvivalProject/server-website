@@ -39,6 +39,15 @@
             </div>
           </div>
           <div class="avatar-menu-divider"></div>
+          <a
+            v-if="isAdmin"
+            :href="adminUrl"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="avatar-menu-item"
+          >
+            <i class="fa-solid fa-gear"></i>后台管理
+          </a>
           <button type="button" class="avatar-menu-item" @click="logout()">
             <i class="fa-solid fa-right-from-bracket"></i>退出登录
           </button>
@@ -139,6 +148,7 @@
 <script>
 import logoImg from "../assets/images/logo.png";
 import defaultAvatar from "../assets/images/avatar-default.svg";
+import McConfig from "../config/mc-config.js";
 import { authState, clearAuth } from "../utils/auth.js";
 
 export default {
@@ -162,6 +172,14 @@ export default {
     /** 角色显示名 */
     roleText() {
       return this.currentUser && this.currentUser.role === "admin" ? "管理员" : "普通用户";
+    },
+    /** 是否为管理员 */
+    isAdmin() {
+      return this.currentUser && this.currentUser.role === "admin";
+    },
+    /** 后台管理入口 URL（配置化，支持相对/绝对路径） */
+    adminUrl() {
+      return McConfig.adminUrl;
     },
   },
   methods: {

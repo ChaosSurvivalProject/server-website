@@ -147,6 +147,18 @@ async def delete_announcement_endpoint(
     return {"code": 0, "message": "success"}
 
 
+# ── 管理员：公告分页（含草稿） ─────────────────────────────────
+@app.get("/announcement/admin/page", response_model=PageResponse)
+async def admin_query_page(
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=10, ge=1, le=100),
+    db=Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """管理员：分页查询所有公告（包括草稿，不过滤 isPublished）。"""
+    return await get_page(db, page=page, page_size=pageSize, is_published=None)
+
+
 # ── 健康检查 ──────────────────────────────────────────────────
 @app.get("/health")
 async def health():

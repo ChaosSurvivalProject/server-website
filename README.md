@@ -195,3 +195,32 @@ QQ 群等站点信息也在该文件中配置。
 - `frontend` 构建产物（`npm run build` → `dist/`）作为静态站点托管
 - `/announcement`、`/monitor`、`/auth`、`/health` 等 API 路径反向代理到本机 FastAPI（5000 端口）
 - `wiki` 构建产物挂在 `/wiki/` 路径下（VitePress `base: '/wiki'`）
+- `admin-frontend` 构建产物挂在 `/admin/` 路径下（pure-admin-thin，`base: '/admin/'`）
+
+## 后台管理（admin-frontend）
+
+独立的后台管理前端，基于 [pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)（Vue 3 + TypeScript + Element Plus + Pinia + Vite + TailwindCSS），部署在 `/admin/` 路径下。
+
+### 模块与页面
+
+| 路径 | 页面 | 说明 |
+|------|------|------|
+| `/admin/login` | 登录页 | 管理员 JWT 登录 |
+| `/admin/announcement/list` | 公告管理 | 公告列表（分页、新建/编辑/删除） |
+| `/admin/announcement/edit` | 公告编辑 | 新建或编辑公告（标题、内容、发布人、发布时间、状态） |
+| `/admin/server/list` | 服务器地址管理 | 服务器列表（新建/编辑/删除/设为主） |
+| `/admin/server/edit` | 服务器编辑 | 新建或编辑服务器（名称、地址、端口、是否主服务器） |
+
+### 开发命令
+
+```bash
+cd admin-frontend
+pnpm dev      # 开发服务器（:9528，API 代理到后端 :5000）
+pnpm build    # 构建到 dist/
+```
+
+### 部署
+
+- 开发模式：Vite dev server（:9528），API 通过 `vite.config.ts` 中的 proxy 转发到后端 FastAPI（:5000）
+- 生产模式：`pnpm build` → `dist/`，由 Nginx 将 `/admin/` 路径反向代理到 `dist/` 目录
+- 管理员入口：主站已登录管理员点击头像下拉菜单 → 「后台管理」（仅管理员角色可见）

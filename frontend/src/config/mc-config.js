@@ -23,7 +23,9 @@ const McConfig = {
         id: 942235691,
         codeImgUrl: "https://img.fastmirror.net/s/2025/11/30/692bdccb7daa6.jpg",
         inviteLinkUrl: "https://qm.qq.com/q/8jQDx8OCOY"
-    }
+    },
+    // 后台管理入口：相对路径或绝对路径，默认 /admin（独立后台管理前端）
+    adminUrl: '/admin'
 }
 
 export default McConfig

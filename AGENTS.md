@@ -6,7 +6,7 @@
 
 ## 仓库结构要点
 
-- 三个子项目相互独立，各自持有 `package.json` / `node_modules`，**没有根级 workspace**，仓库也没有根级 `package.json`——所有安装、构建、开发命令必须在对应子目录（`frontend/`、`backend/`、`wiki/`）内执行。
+- 四个子项目相互独立，各自持有 `package.json` / `node_modules`，**没有根级 workspace**，仓库也没有根级 `package.json`——所有安装、构建、开发命令必须在对应子目录（`frontend/`、`backend/`、`wiki/`、`admin-frontend/`）内执行。
 - 不要提交 `node_modules/`、`dist/`、`*.db`、`backend/data/`、`wiki/.vitepress/cache|dist/`（见 `.gitignore`）。
 
 ## 常用命令
@@ -30,6 +30,12 @@ cd wiki
 npm install
 npm run dev
 npm run build             # 产物 .vitepress/dist/
+
+# 后台管理 (Vite + Element Plus, :9528)
+cd admin-frontend
+pnpm install
+pnpm dev                  # 开发服务器，API 代理到后端 :5000
+pnpm build                # 产物 dist/，部署到 /admin/
 ```
 
 ## API 契约规约
@@ -38,7 +44,7 @@ npm run build             # 产物 .vitepress/dist/
 
 1. **响应包络**：所有接口返回 `{code, message, data}`，`code=0` 表示成功。前端 `axiosInstance` 响应拦截器已统一解包（直接返回 `data`），组件代码拿到的就是裸数据——**不要在前端组件里再判断 `code`**。
 2. **字段命名**：数据库/后端内部用 snake_case，对外 JSON 用 camelCase（`publishTime` / `isPublished` / `readCount` / `createTime` / `updateTime`）。Pydantic 模型通过 `alias` + `populate_by_name=True` 映射（见 `backend/app/schemas.py`），新增字段必须同时补别名。
-3. **契约参照实现**：`frontend/src/api/api.js` 是前后端契约的参照。**新增或修改后端接口时必须同步该文件**，保持两侧一致。
+3. **契约参照实现**：`frontend/src/api/api.js` 是前后端契约的参照。**新增或修改后端接口时必须同步该文件**，保持两侧一致。后台管理前端 `admin-frontend/src/api/` 同步维护。
 4. **时间格式**：统一存 ISO 字符串 `YYYY-MM-DDTHH:MM:SS`（SQLite 中为 `String(30)` 列，不用 datetime 类型）。
 5. **布尔语义用 int**：如 `isPublished`，`0=草稿, 1=已发布`，不要改成 bool。
 6. **监控接口**：`GET /monitor/server-info/{id}` 目前是 TCP 探测的最小实现（`online/offline` + 占位字段），响应结构被首页 `OnlineCounter` 组件依赖，扩展时不能破坏现有字段。
@@ -74,6 +80,7 @@ npm run build             # 产物 .vitepress/dist/
 - `/` → `frontend` 构建产物（SPA 使用 history 路由，Nginx 需配置 `try_files $uri $uri/ /index.html;`，否则刷新 `/announcements` 等深层路由会 404）
 - `/announcement`、`/monitor`、`/health` → 反代到本机 FastAPI（:5000）
 - `/wiki/` → `wiki` 构建产物（VitePress 已按 `/wiki` base 打包）
+- `/admin/` → `admin-frontend` 构建产物（pure-admin-thin，已按 `/admin/` base 打包）
 
 后端 Docker 部署时注意：`docker-compose.yml` 位于 `backend/` 下，但**构建上下文是项目根目录**（`context: ..`），因为 Dockerfile 里 `COPY backend/` 依赖该路径——移动文件时两者要一起改。
 
