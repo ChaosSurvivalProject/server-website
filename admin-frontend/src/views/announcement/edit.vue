@@ -260,20 +260,30 @@ onMounted(() => {
   align-items: center;
 }
 
-/* wangEditor 容器：z-index 防止下拉菜单被卡片等父级裁剪 */
+/* wangEditor 容器：z-index 防止下拉菜单被卡片等父级裁剪；
+   flex 纵向布局 + resize: vertical 支持拖拽拉伸（内部 .w-e-scroll 为 height:100%，
+   父级高度变化时编辑区自动跟随并出现滚动条） */
 .rich-editor {
+  display: flex;
+  flex-direction: column;
   width: 100%;
+  height: 400px;
+  min-height: 320px;
+  resize: vertical;
+  overflow: hidden;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
   z-index: 100;
 }
 
 .rich-editor-toolbar {
+  flex-shrink: 0;
   border-bottom: 1px solid #dcdfe6;
 }
 
 .rich-editor-body {
-  height: 400px;
+  flex: 1;
+  min-height: 0;
   overflow-y: hidden;
 }
 </style>
