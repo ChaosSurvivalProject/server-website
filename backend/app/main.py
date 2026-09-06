@@ -7,16 +7,24 @@ Endpoints (matching the existing Vue frontend):
   POST /announcement/create        创建公告（管理员）
   PUT  /announcement/update/{id}   更新公告（管理员）
   DELETE /announcement/delete/{id} 删除公告（管理员）
+  POST /announcement/upload/image  上传富文本图片（管理员）
+  GET  /announcement/uploads/*     上传图片静态目录
   GET  /auth/captcha               图形验证码
   POST /auth/register              注册
   POST /auth/login                 登录（签发 JWT）
   GET  /auth/me                    当前用户信息
 """
-from fastapi import FastAPI, Depends, HTTPException, Query
+import os
+import uuid
+from datetime import datetime
+from pathlib import Path
+
+from fastapi import FastAPI, Depends, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from .database import init_db, get_db, Announcement
+from .database import BASE_DIR, init_db, get_db, Announcement
 from .monitor import router as monitor_router
 from .auth import bootstrap
 from .auth.deps import require_admin
@@ -36,7 +44,24 @@ from .crud import (
     update_announcement,
     delete_announcement,
     add_watch_count,
+    _TZ as BEIJING_TZ,
 )
+
+# ── 富文本图片上传配置 ────────────────────────────────────────
+# 上传目录：默认 backend/data/uploads，可用环境变量覆盖（Docker 中指向挂载卷 /app/data/uploads）
+UPLOAD_DIR = Path(
+    os.environ.get("ANNOUNCEMENT_UPLOAD_DIR", str(BASE_DIR / "data" / "uploads"))
+)
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+_ALLOWED_IMAGE_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+}
+_MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
 
 
 app = FastAPI(
@@ -59,6 +84,14 @@ app.include_router(monitor_router)
 
 # 认证（验证码 / 注册 / 登录 / 当前用户）
 app.include_router(auth_router)
+
+# 静态托管富文本上传的图片。
+# 生产 Nginx 已按 /announcement 前缀反代到本服务，该子路径无需额外配置即可访问。
+app.mount(
+    "/announcement/uploads",
+    StaticFiles(directory=str(UPLOAD_DIR)),
+    name="uploads",
+)
 
 
 @app.on_event("startup")
@@ -157,6 +190,36 @@ async def admin_query_page(
 ):
     """管理员：分页查询所有公告（包括草稿，不过滤 isPublished）。"""
     return await get_page(db, page=page, page_size=pageSize, is_published=None)
+
+
+# ── 公告图片上传（管理员接口，富文本编辑器使用） ───────────────
+@app.post("/announcement/upload/image")
+async def upload_image_endpoint(
+    file: UploadFile = File(...),
+    _admin=Depends(require_admin),
+):
+    """上传公告富文本图片，返回可写入正文的相对 URL（与部署域无关）。"""
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(
+            status_code=400, detail="仅支持 png / jpg / jpeg / gif / webp 图片"
+        )
+    if not (file.content_type or "").lower().startswith("image/"):
+        raise HTTPException(status_code=400, detail="文件类型不是图片")
+
+    data = await file.read()
+    if len(data) > _MAX_IMAGE_SIZE:
+        raise HTTPException(status_code=400, detail="图片大小不能超过 5MB")
+
+    # 按月份分目录 + 随机文件名（避免覆盖与路径穿越）
+    sub_dir = datetime.now(BEIJING_TZ).strftime("%Y%m")
+    target_dir = UPLOAD_DIR / sub_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+    name = f"{uuid.uuid4().hex}{ext}"
+    (target_dir / name).write_bytes(data)
+
+    url = f"/announcement/uploads/{sub_dir}/{name}"
+    return {"code": 0, "message": "success", "data": {"url": url}}
 
 
 # ── 健康检查 ──────────────────────────────────────────────────

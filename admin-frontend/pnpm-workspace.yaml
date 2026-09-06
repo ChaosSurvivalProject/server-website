@@ -1,4 +1,9 @@
+# pnpm 11 起不再读取 package.json 的 pnpm 字段，构脚本白名单迁移到这里。
+# 与原 package.json pnpm.onlyBuiltDependencies 的白名单保持一致。
 allowBuilds:
-  '@parcel/watcher': set this to true or false
-  esbuild: set this to true or false
-  vue-demi: set this to true or false
+  '@parcel/watcher': true
+  core-js: true
+  es5-ext: true
+  esbuild: true
+  typeit: true
+  vue-demi: true

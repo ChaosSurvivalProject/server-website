@@ -101,6 +101,8 @@ npm run preview  # 本地预览构建产物
 | POST | `/announcement/create` | 创建公告（**需管理员**） |
 | PUT | `/announcement/update/{id}` | 更新公告（部分更新，**需管理员**） |
 | DELETE | `/announcement/delete/{id}` | 删除公告（**需管理员**） |
+| POST | `/announcement/upload/image` | 上传富文本图片（multipart `file`，≤5MB，png/jpg/jpeg/gif/webp，**需管理员**；返回 `data.url` 相对路径，可直接写入公告内容） |
+| GET | `/announcement/uploads/{...}` | 上传图片静态目录（按月份分目录存放） |
 
 ### 认证
 
@@ -140,6 +142,15 @@ npm run preview  # 本地预览构建产物
 
 - 默认路径：`backend/data/announcements.db`（启动时自动建表）
 - 可通过环境变量 `ANNOUNCEMENT_DB` 自定义
+
+公告内容为富文本编辑器（wangEditor）产出的 HTML，入库前由后端 `nh3` 白名单消毒（仅放行常用标签 + `style` 内联样式）。
+
+### 图片上传
+
+富文本图片默认存放于 `backend/data/uploads/`（按月份分目录，随机文件名），应用启动时自动创建，经 `/announcement/uploads/` 静态目录对外提供：
+
+- 可通过环境变量 `ANNOUNCEMENT_UPLOAD_DIR` 自定义（Docker 部署已在 docker-compose.yml 中指向挂载卷 `/app/data/uploads`）
+- 生产 Nginx 已按 `/announcement` 前缀反代到 FastAPI，该子路径无需额外配置
 
 ### 种子数据
 

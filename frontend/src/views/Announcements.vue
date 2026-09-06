@@ -224,9 +224,15 @@ export default {
       this.$router.push(`/announcements/${announcementId}`);
     },
     truncateContent(content) {
-      // 去除HTML标签和换行符
+      // 去除HTML标签和换行符，并解码富文本编辑器产出的常见实体（如 &nbsp;）
       const plainText = content
         .replace(/<[^>]*>/g, "")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&amp;/gi, "&")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;/gi, "'")
         .replace(/\n/g, "")
         .trim();
       // 如果内容超过150个字符则截断并添加省略号

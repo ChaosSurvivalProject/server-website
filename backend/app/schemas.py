@@ -11,7 +11,7 @@ class AnnouncementBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     title: str = Field(..., max_length=255, description="公告标题")
-    content: str = Field(..., description="公告内容（HTML/Markdown）")
+    content: str = Field(..., description="公告内容（富文本编辑器产出的 HTML）")
     is_published: int = Field(default=0, alias="isPublished", description="0=草稿, 1=已发布")
     creator: str = Field(..., max_length=100, description="发布人")
     publish_time: str = Field(..., alias="publishTime", description="发布时间，ISO 格式字符串")

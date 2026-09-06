@@ -11,6 +11,8 @@ services:
       - ANNOUNCEMENT_DB=/app/data/announcements.db
       # 公告时间按北京时间存储/展示，容器默认 UTC 会再差 8 小时
       - TZ=Asia/Shanghai
+      # 富文本图片上传目录（需指向挂载卷，随数据一起持久化）
+      - ANNOUNCEMENT_UPLOAD_DIR=/app/data/uploads
     volumes:
       - ./data:/app/data
     restart: unless-stopped

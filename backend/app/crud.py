@@ -11,6 +11,22 @@ from .schemas import AnnouncementCreate, AnnouncementUpdate
 # 此前误用 datetime.now(timezone.utc)，导致落库时间比实际早 8 小时。
 _TZ = ZoneInfo("Asia/Shanghai")
 
+# 富文本 HTML 写入消毒：content 由主站 v-html 渲染，入库前用 nh3 白名单过滤。
+# 默认标签白名单已覆盖编辑器产物（p/h1-h6/ul/ol/table/img/a 等），
+# 额外放行 style 属性以保留对齐 / 颜色等内联样式。
+try:
+    import nh3
+except ImportError:  # pragma: no cover - 可选依赖，缺失时跳过消毒（不阻断启动）
+    nh3 = None
+
+_SANITIZE_ATTRIBUTES = {"*": {"style"}}
+
+
+def _sanitize_content(html: str) -> str:
+    if nh3 is None:
+        return html
+    return nh3.clean(html, attributes=_SANITIZE_ATTRIBUTES)
+
 
 def _now_iso() -> str:
     return datetime.now(_TZ).strftime("%Y-%m-%dT%H:%M:%S")
@@ -33,7 +49,7 @@ async def create_announcement(db: AsyncSession, data: AnnouncementCreate) -> Ann
     now = _now_iso()
     obj = Announcement(
         title=data.title,
-        content=data.content,
+        content=_sanitize_content(data.content),
         is_published=data.is_published,
         creator=data.creator,
         publish_time=_normalize_publish_time(data.publish_time),
@@ -105,6 +121,8 @@ async def update_announcement(
         update_data["publish_time"] = _normalize_publish_time(
             update_data["publish_time"]
         )
+    if update_data.get("content") is not None:
+        update_data["content"] = _sanitize_content(update_data["content"])
     for key, value in update_data.items():
         setattr(obj, key, value)
     obj.update_time = _now_iso()

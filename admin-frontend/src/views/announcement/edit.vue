@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from "vue";
+import "@wangeditor/editor/dist/css/style.css";
+import { ref, reactive, shallowRef, onMounted, onBeforeUnmount, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
+import type { IDomEditor, IEditorConfig, IToolbarConfig } from "@wangeditor/editor";
+import { Editor, Toolbar } from "@wangeditor/editor-for-vue";
 import { getDetail, create, update } from "@/api/announcement";
+import { http } from "@/utils/http";
 
 const router = useRouter();
 const route = useRoute();
 const isEdit = computed(() => !!route.query.id);
 const announcementId = computed(() => Number(route.query.id) || null);
 const saving = ref(false);
+
+// 富文本编辑器实例（官方要求 shallowRef，避免深层响应式破坏编辑器内部状态）
+const editorRef = shallowRef<IDomEditor>();
 
 const form = reactive({
   title: "",
@@ -20,10 +27,64 @@ const form = reactive({
 
 const rules = {
   title: [{ required: true, message: "请输入公告标题", trigger: "blur" }],
-  content: [{ required: true, message: "请输入公告内容", trigger: "blur" }],
+  content: [
+    {
+      // 富文本 HTML 剥掉标签与空白后判空，避免「只有空段落」的内容通过校验
+      validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+        const text = (value || "")
+          .replace(/<[^>]*>/g, "")
+          .replace(/&nbsp;/gi, " ")
+          .trim();
+        return text ? callback() : callback(new Error("请输入公告内容"));
+      },
+      trigger: "change"
+    }
+  ],
   creator: [{ required: true, message: "请输入发布人", trigger: "blur" }],
   publishTime: [{ required: true, message: "请选择发布时间", trigger: "blur" }]
 };
+
+// 工具栏：公告用不到视频，排除视频菜单组
+const toolbarConfig: Partial<IToolbarConfig> = {
+  excludeKeys: ["group-video"]
+};
+
+// 编辑器配置：占位提示 + 图片自定义上传（走后端管理员接口，相对 URL 落库）
+const editorConfig: Partial<IEditorConfig> = {
+  placeholder: "请输入公告内容…",
+  MENU_CONF: {
+    uploadImage: {
+      maxFileSize: 5 * 1024 * 1024,
+      allowedFileTypes: ["image/*"],
+      customUpload(file: File, insertFn: (url: string, alt: string, href: string) => void) {
+        const fd = new FormData();
+        fd.append("file", file);
+        // axios 检测到 FormData 会自动携带 multipart 边界，不要手动设置 Content-Type
+        http
+          .request<{ url: string }>("post", "/announcement/upload/image", {
+            data: fd,
+            timeout: 30000
+          })
+          .then(res => {
+            insertFn(res.url, file.name, res.url);
+          })
+          .catch((e: { message?: string }) => {
+            ElMessage.error(e.message || "图片上传失败");
+          });
+      }
+    }
+  }
+};
+
+const handleCreated = (editor: IDomEditor) => {
+  editorRef.value = editor;
+};
+
+onBeforeUnmount(() => {
+  const editor = editorRef.value;
+  if (editor == null) return;
+  editor.destroy();
+});
 
 const formRef = ref();
 
@@ -136,12 +197,21 @@ onMounted(() => {
         </el-form-item>
 
         <el-form-item label="内容" prop="content">
-          <el-input
-            v-model="form.content"
-            type="textarea"
-            :rows="6"
-            placeholder="公告内容（支持 HTML / Markdown）"
-          />
+          <div class="rich-editor">
+            <Toolbar
+              class="rich-editor-toolbar"
+              :editor="editorRef"
+              :default-config="toolbarConfig"
+              mode="default"
+            />
+            <Editor
+              v-model="form.content"
+              class="rich-editor-body"
+              :default-config="editorConfig"
+              mode="default"
+              @on-created="handleCreated"
+            />
+          </div>
         </el-form-item>
 
         <el-form-item label="发布人" prop="creator">
@@ -188,5 +258,22 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+/* wangEditor 容器：z-index 防止下拉菜单被卡片等父级裁剪 */
+.rich-editor {
+  width: 100%;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  z-index: 100;
+}
+
+.rich-editor-toolbar {
+  border-bottom: 1px solid #dcdfe6;
+}
+
+.rich-editor-body {
+  height: 400px;
+  overflow-y: hidden;
 }
 </style>
