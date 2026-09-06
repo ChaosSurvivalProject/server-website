@@ -27,6 +27,11 @@ export const queryPage = (params: { page?: number; pageSize?: number }) => {
   return http.request<PageResult>("get", "/announcement/admin/page", { params });
 };
 
+/** 查询公告详情（与主站契约 frontend/src/api/api.js 的 detail 接口一致） */
+export const getDetail = (id: number) => {
+  return http.request<AnnouncementItem>("get", `/announcement/detail/${id}`);
+};
+
 /** 管理员：创建公告 */
 export const create = (data: any) => {
   return http.request<AnnouncementItem>("post", "/announcement/create", { data });

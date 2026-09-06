@@ -2,7 +2,7 @@
 import { ref, reactive, onMounted, computed } from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
-import { queryPage, create, update } from "@/api/announcement";
+import { getDetail, create, update } from "@/api/announcement";
 
 const router = useRouter();
 const route = useRoute();
@@ -36,18 +36,17 @@ const toDateTimeLocal = (iso: string) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
-// 将 datetime-local 转为 ISO 格式
+// 规范化为 YYYY-MM-DDTHH:MM:SS（本地北京时间，无时区后缀）。
+// 此前用 new Date(dt).toISOString() 转成 UTC 再落库，导致时间比实际早 8 小时
 const toISO = (dt: string) => {
   if (!dt) return "";
-  const d = new Date(dt);
-  if (isNaN(d.getTime())) return "";
-  return d.toISOString();
+  return dt.length === 16 ? `${dt}:00` : dt;
 };
 
 const loadDetail = async (id: number) => {
   try {
-    const res = await queryPage({ page: 1, pageSize: 1 });
-    const item = res.items?.find((i: any) => i.id === id);
+    // 直接按 id 取详情；此前用「分页第一页取 1 条再 find」导致只有列表第一条能回填
+    const item = await getDetail(id);
     if (item) {
       Object.assign(form, {
         title: item.title,
@@ -56,6 +55,8 @@ const loadDetail = async (id: number) => {
         publishTime: toDateTimeLocal(item.publishTime),
         isPublished: item.isPublished
       });
+    } else {
+      ElMessage.error("公告不存在或已被删除");
     }
   } catch (e: any) {
     ElMessage.error(e.message || "加载公告失败");
