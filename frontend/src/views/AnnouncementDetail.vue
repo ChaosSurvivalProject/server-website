@@ -58,6 +58,7 @@
 
 <script>
 import { announcementAPI } from "../api/api.js";
+import { formatDateTime } from "../utils/date.js";
 
 export default {
   name: "AnnouncementDetail",
@@ -88,7 +89,7 @@ export default {
         this.announcement = {
           id: res.id,
           title: res.title,
-          date: res.publishTime,
+          date: formatDateTime(res.publishTime),
           content: res.content,
           isPublished: res.isPublished,
           readCount: res.readCount,

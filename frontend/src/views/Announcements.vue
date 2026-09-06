@@ -166,6 +166,7 @@
 
 <script>
 import { announcementAPI } from "../api/api.js";
+import { formatDateTime } from "../utils/date.js";
 
 export default {
   name: "Announcements",
@@ -198,7 +199,7 @@ export default {
         // 转换接口返回的数据格式为组件需要的格式
         this.announcements = res.items.map((item) => ({
           id: item.id,
-          date: item.publishTime,
+          date: formatDateTime(item.publishTime),
           title: item.title,
           content: item.content,
           isPublished: item.isPublished,
