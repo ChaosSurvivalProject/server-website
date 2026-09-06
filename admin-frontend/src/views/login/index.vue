@@ -3,6 +3,8 @@ import { ref, reactive, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { useUserStoreHook } from "@/store/modules/user";
+// 登录成功后必须手动初始化路由（生成左侧菜单 wholeMenus）
+import { initRouter } from "@/router/utils";
 
 const router = useRouter();
 const loading = ref(false);
@@ -31,6 +33,10 @@ const onLogin = async () => {
         .then(async () => {
           // 登录成功后获取用户信息
           await useUserStoreHook().getUserInfo();
+          // 路由守卫只在「刷新/首次直接打开」（_from.name 为空）时才会初始化路由，
+          // 登录跳转时 _from.name 为 Login，不会触发；必须在这里手动初始化，
+          // 否则 wholeMenus 为空，登录后左侧菜单空白，刷新才恢复
+          await initRouter();
           router.push("/announcement/list");
         })
         .catch((e: Error) => {
