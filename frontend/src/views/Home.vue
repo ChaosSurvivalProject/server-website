@@ -394,9 +394,10 @@
         <p class="home-content-subtitle" style="margin-bottom: 30px;">
           加入我们的玩家社区，与其他玩家互动，分享游戏经验
         </p>
-        <a href="https://mcbbs.tqclink.cn" target="_blank" class="forum-link">
-          访问玩家论坛 →
-        </a>
+        <!-- 论坛入口开发中：已移除原外链地址，保留不可点击的占位提示 -->
+        <span class="forum-link-dev" title="开发中，敬请期待">
+          论坛开发中，敬请期待
+        </span>
         <div class="player-forum-carousel">
           <ImageCarousel :images="bbsImages" :interval="4000" style="width: 800px;" />
         </div>
@@ -927,6 +928,19 @@ export default {
   background-color: #45a049;
   transform: translateY(-2px);
   box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
+}
+
+/* 论坛入口开发中：不可点击的占位提示（原外链地址已移除） */
+.forum-link-dev {
+  display: inline-block;
+  background-color: #9e9e9e;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: not-allowed;
+  box-shadow: 0 4px 12px rgba(158, 158, 158, 0.3);
 }
 
 /* 响应式设计 */

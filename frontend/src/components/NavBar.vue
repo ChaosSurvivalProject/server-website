@@ -103,8 +103,9 @@
         <router-link to="/announcements" class="nav-icon"
           ><i class="fa-solid fa-bullhorn"></i>服务器公告</router-link
         >
-        <a href="https://mcbbs.tqclink.cn" target="_blank" class="nav-icon"
-          ><i class="fa-solid fa-users"></i>星穹旅驿社区</a
+        <!-- 论坛入口开发中：已移除原外链地址，保留不可点击的占位提示 -->
+        <span class="nav-icon nav-icon-dev" title="开发中，敬请期待"
+          ><i class="fa-solid fa-users"></i>星穹旅驿社区（开发中）</span
         >
       </div>
 
@@ -122,8 +123,8 @@
             >
           </li>
           <li>
-            <a href="https://mcbbs.tqclink.cn" @click="closeMenu()"
-              ><i class="fa-solid fa-users"></i>星穹旅驿社区</a
+            <span class="nav-icon-dev" title="开发中，敬请期待"
+              ><i class="fa-solid fa-users"></i>星穹旅驿社区（开发中）</span
             >
           </li>
           <!-- 未登录：登录 / 注册入口 -->
@@ -366,6 +367,20 @@ nav {
   border-color: white;
   /* 半透明黑叠在导航绿底上：只加深边框内的绿色间隙，与悬浮的提亮底形成明暗层次 */
   background-color: rgba(0, 0, 0, 0.15);
+}
+
+/* 论坛入口开发中：不可点击的占位项（原外链地址已移除），置灰并抑制悬浮高亮 */
+.nav-icon-dev,
+.nav-icon-dev:hover {
+  cursor: not-allowed;
+  opacity: 0.7;
+  color: #ccc;
+  border-color: transparent;
+  background-color: transparent;
+}
+
+.nav-icon-dev:hover i {
+  transform: none;
 }
 
 /* ── 未登录：登录 / 注册（仅 PC 端，靠右展示） ── */
@@ -648,6 +663,24 @@ nav {
 .mobile-nav-links a:hover {
   background-color: rgba(255, 255, 255, 0.1);
   color: white;
+}
+
+/* 论坛入口开发中：移动端占位项与链接同款排版，但置灰且不可点击 */
+.mobile-nav-links .nav-icon-dev {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #ccc;
+  font-size: 16px;
+  padding: 15px 20px;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.mobile-nav-links .nav-icon-dev i {
+  font-size: 15px;
+  width: 18px;
+  text-align: center;
 }
 
 /* 响应式设计 */
