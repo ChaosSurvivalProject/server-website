@@ -35,6 +35,7 @@ server-website/
 │   │   ├── database.py          # SQLAlchemy 模型 & 异步引擎/会话
 │   │   ├── schemas.py           # Pydantic 模型（camelCase 别名）
 │   │   ├── crud.py              # 公告 CRUD 操作
+│   │   ├── faction_beta.py      # 阵营对战内测申请（用户提交 + 管理员审核）
 │   │   └── monitor.py           # 服务器监控（地址注册表 + TCP 探测）
 │   ├── run.py                   # uvicorn 启动脚本
 │   ├── seed.py                  # 测试数据种子
@@ -116,6 +117,19 @@ npm run preview  # 本地预览构建产物
 - JWT 默认 24 小时有效，环境变量 `JWT_EXPIRE_HOURS` 可调；签名密钥取环境变量 `JWT_SECRET`，未设置时自动生成并持久化到数据目录。
 - 系统管理员 `xqly-admin` 在后端首次启动时自动初始化，随机强密码写入数据目录 `admin_initial_password.txt`（仅首次初始化时写入，请妥善保管并及时删除）。
 
+### 阵营对战内测申请
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/faction-beta/apply` | 提交内测申请（**需登录**；body: `{mcId, qq, faction, experience, weeklyHours, motivation}`，每账号一份，被拒后可重新提交覆盖） |
+| GET | `/faction-beta/my` | 查询当前用户申请（**需登录**；未提交时 `data.application` 为 `null`） |
+| GET | `/faction-beta/admin/page` | 管理员分页查询（**需管理员**；参数: page, pageSize, status 可选过滤） |
+| PUT | `/faction-beta/admin/{id}/review` | 审核申请（**需管理员**；body: `{status: 1\|2, reviewNote?}`） |
+| DELETE | `/faction-beta/admin/{id}` | 删除申请（**需管理员**） |
+
+- 申请状态 `status`：`0=待审核, 1=已通过, 2=未通过`；字段 camelCase（`mcId` / `weeklyHours` / `reviewNote` / `reviewTime` 等）。
+- 表单选项（期望阵营 / PvP 经验 / 每周时长）以后端 `faction_beta.py` 白名单为唯一权威，前端选项需与其保持一致。
+
 ### 服务器监控
 
 | 方法 | 路径 | 说明 |
@@ -177,6 +191,7 @@ docker compose up -d --build
 | `/` | Home | 首页：hero 横幅、服务器特色、加入服务器（地址来自 `/monitor/servers`）、论坛展示、在线状态 |
 | `/announcements` | Announcements | 公告列表（分页） |
 | `/announcements/:id` | AnnouncementDetail | 公告详情（自动累加阅读量） |
+| `/faction-beta` | FactionBetaApply | 阵营对战玩法内测资格申请（需登录后填写，展示审核状态） |
 | `/login` | AuthView（登录） | 登录页（用户名/邮箱 + 密码） |
 | `/register` | AuthView（注册） | 注册页（邮箱 + 密码 + 确认密码 + 图形验证码） |
 
@@ -190,7 +205,7 @@ docker compose up -d --build
 ### API 层（`src/api/`）
 
 - `axiosInstance.js` — axios 实例，baseURL 来自环境变量 `VITE_BASE_API_URL`（经 `mc-config.js` 统一读取）；响应拦截器统一解包 `{code, message, data}`，失败时弹出错误提示；请求拦截器自动携带 JWT，401 时清除登录态并跳转 `/login`
-- `api.js` — 接口封装：`authAPI` / `announcementAPI` / `serverMonitorAPI` / `serverConfigAPI`
+- `api.js` — 接口封装：`authAPI` / `announcementAPI` / `factionBetaAPI` / `serverMonitorAPI` / `serverConfigAPI`
 - `errorHandler.js` — 统一错误弹窗工具
 
 ### 环境配置（`frontend/.env*` 文件）
@@ -212,7 +227,7 @@ docker compose up -d --build
 前后端同域部署，由 Nginx 统一入口：
 
 - `frontend` 构建产物（`npm run build` → `dist/`）作为静态站点托管
-- `/announcement`、`/monitor`、`/auth`、`/health` 等 API 路径反向代理到本机 FastAPI（5000 端口）
+- `/announcement`、`/monitor`、`/auth`、`/faction-beta`、`/health` 等 API 路径反向代理到本机 FastAPI（5000 端口）
 - `wiki` 构建产物挂在 `/wiki/` 路径下（VitePress `base: '/wiki'`）
 - `admin-frontend` 构建产物挂在 `/admin/` 路径下（pure-admin-thin，`base: '/admin/'`）
 
@@ -229,6 +244,7 @@ docker compose up -d --build
 | `/admin/announcement/edit` | 公告编辑 | 新建或编辑公告（标题、内容、发布人、发布时间、状态） |
 | `/admin/server/list` | 服务器地址管理 | 服务器列表（新建/编辑/删除/设为主） |
 | `/admin/server/edit` | 服务器编辑 | 新建或编辑服务器（名称、地址、端口、是否主服务器） |
+| `/admin/faction-beta/list` | 阵营内测申请 | 内测申请列表（状态过滤、详情、通过/拒绝、删除） |
 
 ### 开发命令
 

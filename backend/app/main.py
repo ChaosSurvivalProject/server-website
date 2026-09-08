@@ -13,6 +13,11 @@ Endpoints (matching the existing Vue frontend):
   POST /auth/register              注册
   POST /auth/login                 登录（签发 JWT）
   GET  /auth/me                    当前用户信息
+  POST /faction-beta/apply         提交阵营对战内测申请（需登录）
+  GET  /faction-beta/my            查询当前用户申请（需登录）
+  GET  /faction-beta/admin/page    管理员分页查询申请（需管理员）
+  PUT  /faction-beta/admin/{id}/review  审核申请（需管理员）
+  DELETE /faction-beta/admin/{id}  删除申请（需管理员）
 """
 import os
 import uuid
@@ -29,6 +34,7 @@ from .monitor import router as monitor_router
 from .auth import bootstrap
 from .auth.deps import require_admin
 from .auth.router import router as auth_router
+from .faction_beta import router as faction_beta_router
 from .schemas import (
     AnnouncementCreate,
     AnnouncementUpdate,
@@ -84,6 +90,9 @@ app.include_router(monitor_router)
 
 # 认证（验证码 / 注册 / 登录 / 当前用户）
 app.include_router(auth_router)
+
+# 阵营对战玩法内测资格申请
+app.include_router(faction_beta_router)
 
 # 静态托管富文本上传的图片。
 # 生产 Nginx 已按 /announcement 前缀反代到本服务，该子路径无需额外配置即可访问。

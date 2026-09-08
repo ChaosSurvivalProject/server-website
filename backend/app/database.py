@@ -64,6 +64,31 @@ class User(Base):
     create_time: Mapped[str] = mapped_column(String(30), nullable=False)
 
 
+class FactionBetaApplication(Base):
+    """阵营对战玩法内测资格申请。
+
+    status 取值（布尔语义用 int 的项目规约扩展为三态）：
+    0=待审核, 1=已通过, 2=未通过。
+    username 对站点账号唯一：每账号一份申请，被拒后可重新提交（覆盖原记录重置为待审核）。
+    """
+
+    __tablename__ = "faction_beta_applications"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    mc_id: Mapped[str] = mapped_column(String(50), nullable=False)  # MC 游戏 ID
+    qq: Mapped[str] = mapped_column(String(20), nullable=False)  # QQ 号（联系渠道）
+    faction: Mapped[str] = mapped_column(String(30), nullable=False)  # 期望阵营
+    experience: Mapped[str] = mapped_column(String(20), nullable=False)  # PvP 经验
+    weekly_hours: Mapped[str] = mapped_column(String(30), nullable=False)  # 每周可参与时长
+    motivation: Mapped[str] = mapped_column(Text, nullable=False)  # 申请理由
+    status: Mapped[int] = mapped_column(Integer, default=0)  # 0=待审核, 1=已通过, 2=未通过
+    review_note: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    review_time: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
 async def get_db():
     """FastAPI dependency: provide an async database session."""
     async with async_session_maker() as session:

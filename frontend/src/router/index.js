@@ -22,6 +22,12 @@ const routes = [
     props: true
   },
   {
+    path: '/faction-beta',
+    name: 'FactionBeta',
+    // 阵营对战玩法内测资格申请（需登录后填写）
+    component: () => import('../views/FactionBetaApply.vue')
+  },
+  {
     path: '/login',
     name: 'Login',
     // 登录/注册共用 AuthView，通过 initialMode 区分

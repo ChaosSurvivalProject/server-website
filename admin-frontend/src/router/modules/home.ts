@@ -50,6 +50,16 @@ export default {
         showLink: false,
         activeMenu: "/server/list"
       }
+    },
+    {
+      path: "/faction-beta/list",
+      name: "FactionBetaList",
+      component: () => import("@/views/faction-beta/list.vue"),
+      meta: {
+        title: "阵营内测申请",
+        icon: "ep/flag",
+        showLink: true
+      }
     }
   ]
 } satisfies RouteConfigsTable;

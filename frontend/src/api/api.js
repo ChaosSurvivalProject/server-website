@@ -110,9 +110,30 @@ export const announcementAPI = {
 };
 
 
+// 阵营对战玩法内测资格申请API（需登录；管理端接口在 admin-frontend 维护）
+export const factionBetaAPI = {
+  /**
+   * 提交内测申请（每账号一份，被拒后可重新提交覆盖）
+   * @param {{mcId: string, qq: string, faction: string, experience: string, weeklyHours: string, motivation: string}} payload
+   * @returns {Promise} - data: 申请详情（含 status）
+   */
+  apply: (payload) => {
+    return axiosInstance.post('/faction-beta/apply', payload);
+  },
+
+  /**
+   * 查询当前登录用户的申请
+   * @returns {Promise} - data: {application: 申请详情 | null}
+   */
+  getMyApplication: () => {
+    return axiosInstance.get('/faction-beta/my');
+  }
+};
+
 // 导出所有API
 export default {
   auth: authAPI,
   serverConfig: serverConfigAPI,
-  serverMonitor: serverMonitorAPI
+  serverMonitor: serverMonitorAPI,
+  factionBeta: factionBetaAPI
 };
