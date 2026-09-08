@@ -51,7 +51,7 @@
               🎮加入服务器
             </button>
 
-            <a href="/wiki/" target="_blank">
+            <a :href="wikiUrl" target="_blank">
               <button class="btn btn-secondary">📖查看文档</button>
             </a>
           </div>
@@ -469,6 +469,8 @@ export default {
       serverPort: null,
       supportedVersions: McConfig.server.supportedVersions,
       qqGroup: McConfig.qqGroup,
+      // 文档入口（VitePress wiki），来自 VITE_WIKI_URL，经 mc-config.js 读取
+      wikiUrl: McConfig.wikiUrl,
       // 宣传视频封面（import 引入保证打包）
       videoBg,
       bbsImages: [

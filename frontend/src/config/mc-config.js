@@ -22,6 +22,9 @@ const McConfig = {
     },
     // 后台管理入口：相对路径或绝对路径，默认 /admin（独立后台管理前端）
     adminUrl: env.VITE_ADMIN_URL,
+    // Wiki 入口：相对路径或绝对路径，默认 /wiki/（VitePress 构建产物）；
+    // 开发模式由 .env.development 覆盖为本地 VitePress dev server 绝对地址
+    wikiUrl: env.VITE_WIKI_URL,
 }
 
 export default McConfig
