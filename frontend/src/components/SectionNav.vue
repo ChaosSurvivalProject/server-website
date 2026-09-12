@@ -28,6 +28,7 @@ export default {
       activeSection: "home-hero",
       sections: [
         { id: "home-hero", label: "首页" },
+        { id: "factions", label: "阵营对抗" },
         { id: "features", label: "特色功能" },
         { id: "join-us", label: "加入方式" },
         { id: "forum", label: "玩家社区" },

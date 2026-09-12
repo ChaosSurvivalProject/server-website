@@ -18,13 +18,13 @@
             class="hero-subtitle animate-slide-in-left"
             style="animation-delay: 0.5s"
           >
-            在这里，体验<span style="color: #3B82F6">无规则乱世生存</span>
+            在这里，体验<span style="color: #4caf50">阵营对抗</span>乱世生存
           </p>
           <div
             class="hero-features animate-fade-in"
             style="animation-delay: 0.7s"
           >
-            <span class="feature-tag">乱世生存</span>
+            <span class="feature-tag">阵营对抗</span>
             <span class="feature-tag">多端互通</span>
             <span class="feature-tag">友好社区</span>
             <span class="feature-tag">超多插件玩法</span>
@@ -33,9 +33,11 @@
             class="hero-description animate-fade-in"
             style="animation-delay: 0.9s"
           >
-            星穹旅驿是国内首个支持多端互通的无规则生存服务器，对标全球知名无规则服务器 2B2T。
-            基于 Geyser + Velocity + Paper 1.21.11 核心技术，实现 Java/基岩多端互通，
-            提供无规则的乱世生存体验与丰富的插件玩法。
+            星穹旅驿是一个以阵营对抗为核心的乱世生存服务器。大崩裂之后，星穹界长夜与残阳交替：
+            <span style="color: #4caf50">黎明誓约</span>立志重建秩序、点燃曙光灯塔，
+            <span style="color: #7c3aed">暮夜同盟</span>则拥抱长夜、信奉强者为尊。
+            选择你的立场，在这场不会终结的拉锯战中，把世界改成你想要的样子。
+            基于 Geyser + Velocity + Paper 1.21.11 核心技术，实现 Java/基岩多端互通。
           </p>
 
           <!-- 按钮区域 -->
@@ -125,13 +127,56 @@
     </div>
     <!-- 内容区域 -->
     <div class="home-content">
+      <!-- 阵营对抗 -->
+      <section class="faction-showcase" id="factions">
+        <h2 class="home-content-title">
+          选择 <span style="color: #4caf50">你的阵营</span>
+        </h2>
+        <p class="home-content-subtitle" style="margin-bottom: 16px">
+          黎明誓约与暮夜同盟争夺星穹界的未来——你的立场，决定这个世界的样子
+        </p>
+        <router-link class="btn btn-primary faction-beta-btn" to="/faction-beta">
+          ⚔️ 申请内测资格
+        </router-link>
+        <div class="faction-cards">
+          <div class="faction-poster faction-poster-dawn">
+            <img
+              :src="factionDawnImg"
+              alt="黎明誓约阵营宣传海报"
+              class="faction-poster-img"
+            />
+            <div class="faction-poster-info">
+              <h3 class="faction-poster-name">
+                <i class="fa-solid fa-sun"></i> 黎明誓约
+              </h3>
+              <p class="faction-poster-slogan">以光为界，守土求生；火种不熄，黎明必至。</p>
+              <p class="faction-poster-call">加入黎明誓约——你愿意成为火种吗？</p>
+            </div>
+          </div>
+          <div class="faction-poster faction-poster-dusk">
+            <img
+              :src="factionDuskImg"
+              alt="暮夜同盟阵营宣传海报"
+              class="faction-poster-img"
+            />
+            <div class="faction-poster-info">
+              <h3 class="faction-poster-name">
+                <i class="fa-solid fa-moon"></i> 暮夜同盟
+              </h3>
+              <p class="faction-poster-slogan">长夜将至，强者为尊；既然乱世，就燃得更旺。</p>
+              <p class="faction-poster-call">加入暮夜同盟——你愿意在长夜中狩猎吗？</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="why-choose-us" id="features">
         <div class="why-choose-us-content">
           <h2 class="home-content-title">
             保障 <span style="color: #4caf50">完善游戏体验</span>
           </h2>
           <p class="home-content-subtitle">
-            我们致力于为玩家提供最佳的游戏体验和社区环境
+            从稳定的联机环境到昼夜拉锯的阵营战场，我们致力于提供最佳的游戏体验
           </p>
           <div class="why-choose-us-cards">
             <div class="why-card">
@@ -379,7 +424,7 @@
               </div>
               <h3 class="join-step-title">连接服务器</h3>
               <p class="join-step-description">
-                点击完成并连接，开始你的冒险之旅
+                连接成功后，在登录服选择你的阵营——黎明誓约或暮夜同盟，冒险即刻开始
               </p>
             </div>
           </div>
@@ -442,6 +487,8 @@ import bbs3 from "../assets/images/bbs-3.png";
 
 // 必须 import 引入，Vite 才会打包该图片；直接写 /src/ 绝对路径 build 后会 404
 import videoBg from "../assets/images/video-bg.jpg";
+import factionDawnImg from "../assets/images/faction-dawn.jpg";
+import factionDuskImg from "../assets/images/faction-dusk.jpg";
 
 import McConfig from "../config/mc-config.js";
 import { serverConfigAPI } from "../api/api.js";
@@ -473,6 +520,9 @@ export default {
       wikiUrl: McConfig.wikiUrl,
       // 宣传视频封面（import 引入保证打包）
       videoBg,
+      // 阵营宣传海报（import 引入保证打包）
+      factionDawnImg,
+      factionDuskImg,
       bbsImages: [
         {
           src: bbs1,
@@ -672,6 +722,98 @@ export default {
   margin: 0 auto;
   padding: 0 20px;
   text-align: center;
+}
+
+/* ── 阵营对抗展示 ── */
+.faction-showcase {
+  padding: 80px 0 40px;
+}
+
+.faction-beta-btn {
+  display: inline-block;
+  margin-bottom: 30px;
+  text-decoration: none;
+}
+
+.faction-cards {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 32px;
+}
+
+.faction-poster {
+  background-color: #fff;
+  border: 3px solid var(--border-color);
+  box-shadow: 4px 4px 0 0 var(--border-color);
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.faction-poster:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0 0 var(--border-color);
+}
+
+.faction-poster-img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  border-bottom: 3px solid var(--border-color);
+}
+
+.faction-poster-info {
+  padding: 16px 18px 20px;
+  text-align: center;
+}
+
+.faction-poster-name {
+  font-size: 20px;
+  font-weight: bold;
+  margin: 0 0 8px;
+}
+
+.faction-poster-name i {
+  margin-right: 4px;
+}
+
+.faction-poster-dawn .faction-poster-name {
+  color: var(--primary-color);
+}
+
+.faction-poster-dusk .faction-poster-name {
+  color: #7c3aed;
+}
+
+.faction-poster-slogan {
+  font-size: 13px;
+  color: #555;
+  margin: 0 0 6px;
+  line-height: 1.7;
+}
+
+.faction-poster-call {
+  font-size: 13px;
+  font-weight: bold;
+  margin: 0;
+}
+
+.faction-poster-dawn .faction-poster-call {
+  color: var(--primary-color);
+}
+
+.faction-poster-dusk .faction-poster-call {
+  color: #7c3aed;
+}
+
+@media (max-width: 768px) {
+  .faction-cards {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
 }
 
 .server-address {
