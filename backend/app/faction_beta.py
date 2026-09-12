@@ -28,7 +28,8 @@ from .crud import _TZ  # 统一北京时间（naive ISO 字符串，见 AGENTS.m
 router = APIRouter(prefix="/faction-beta", tags=["faction-beta"])
 
 # ── 申请表选项（后端为唯一权威，前端选项需与此保持一致） ─────────
-FACTION_OPTIONS = ["红方", "蓝方", "不限（听从安排）"]
+# 阵营命名来自 chaos 设定文档《阵营设定_黎明誓约与暮夜同盟》
+FACTION_OPTIONS = ["黎明誓约", "暮夜同盟", "暂不选择"]
 EXPERIENCE_OPTIONS = ["萌新", "有一定经验", "身经百战"]
 WEEKLY_HOURS_OPTIONS = ["5 小时以内", "5-15 小时", "15 小时以上"]
 
@@ -38,7 +39,7 @@ STATUS_APPROVED = 1
 STATUS_REJECTED = 2
 
 _MC_ID_RE = re.compile(r"^\S{2,50}$")  # MC 游戏 ID：2-50 个非空白字符（兼容基岩版带点 ID）
-_QQ_RE = re.compile(r"^\d{5,11}$")
+_EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")  # 务实版邮箱校验
 
 
 def _now_iso() -> str:
@@ -50,13 +51,13 @@ class FactionBetaApplyRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     mc_id: str = Field(..., alias="mcId", max_length=50, description="MC 游戏 ID")
-    qq: str = Field(..., max_length=20, description="QQ 号")
+    email: str = Field(..., max_length=254, description="邮箱")
     faction: str = Field(..., max_length=30, description="期望阵营")
     experience: str = Field(..., max_length=20, description="PvP 经验")
     weekly_hours: str = Field(..., alias="weeklyHours", max_length=30, description="每周可参与测试时长")
     motivation: str = Field(..., max_length=500, description="申请理由")
 
-    @field_validator("mc_id", "qq", "faction", "experience", "weekly_hours", "motivation", mode="before")
+    @field_validator("mc_id", "email", "faction", "experience", "weekly_hours", "motivation", mode="before")
     @classmethod
     def _strip(cls, v):
         return v.strip() if isinstance(v, str) else v
@@ -75,7 +76,7 @@ class FactionBetaApplicationResponse(BaseModel):
     id: int
     username: str
     mc_id: str = Field(..., alias="mcId")
-    qq: str
+    email: str
     faction: str
     experience: str
     weekly_hours: str = Field(..., alias="weeklyHours")
@@ -122,8 +123,8 @@ async def apply(
     # 1. 字段校验（友好错误信息，走 HTTPException → 前端 detail 展示）
     if not _MC_ID_RE.fullmatch(data.mc_id):
         raise HTTPException(status_code=400, detail="MC 游戏 ID 需为 2-50 个字符且不含空格")
-    if not _QQ_RE.fullmatch(data.qq):
-        raise HTTPException(status_code=400, detail="QQ 号需为 5-11 位数字")
+    if not _EMAIL_RE.fullmatch(data.email) or len(data.email) > 254:
+        raise HTTPException(status_code=400, detail="请填写正确的邮箱地址")
     if data.faction not in FACTION_OPTIONS:
         raise HTTPException(status_code=400, detail="请选择期望阵营")
     if data.experience not in EXPERIENCE_OPTIONS:
@@ -143,7 +144,7 @@ async def apply(
             raise HTTPException(status_code=400, detail="您的申请已通过，无需重复提交")
         # 未通过 → 覆盖原申请，重置为待审核
         existing.mc_id = data.mc_id
-        existing.qq = data.qq
+        existing.email = data.email
         existing.faction = data.faction
         existing.experience = data.experience
         existing.weekly_hours = data.weekly_hours
@@ -163,7 +164,7 @@ async def apply(
     obj = FactionBetaApplication(
         username=user.username,
         mc_id=data.mc_id,
-        qq=data.qq,
+        email=data.email,
         faction=data.faction,
         experience=data.experience,
         weekly_hours=data.weekly_hours,

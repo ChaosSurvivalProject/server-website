@@ -212,7 +212,7 @@ onMounted(() => {
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="username" label="申请人" min-width="170" show-overflow-tooltip />
       <el-table-column prop="mcId" label="MC ID" width="130" show-overflow-tooltip />
-      <el-table-column prop="qq" label="QQ" width="110" />
+      <el-table-column prop="email" label="邮箱" min-width="170" show-overflow-tooltip />
       <el-table-column prop="faction" label="期望阵营" width="120" />
       <el-table-column prop="experience" label="PvP 经验" width="100" />
       <el-table-column prop="weeklyHours" label="每周时长" width="110" />
@@ -286,8 +286,8 @@ onMounted(() => {
         <el-descriptions-item label="MC ID">
           {{ detailRow.mcId }}
         </el-descriptions-item>
-        <el-descriptions-item label="QQ">
-          {{ detailRow.qq }}
+        <el-descriptions-item label="邮箱">
+          {{ detailRow.email }}
         </el-descriptions-item>
         <el-descriptions-item label="期望阵营">
           {{ detailRow.faction }}

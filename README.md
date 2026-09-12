@@ -121,7 +121,7 @@ npm run preview  # 本地预览构建产物
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/faction-beta/apply` | 提交内测申请（**需登录**；body: `{mcId, qq, faction, experience, weeklyHours, motivation}`，每账号一份，被拒后可重新提交覆盖） |
+| POST | `/faction-beta/apply` | 提交内测申请（**需登录**；body: `{mcId, email, faction, experience, weeklyHours, motivation}`，每账号一份，被拒后可重新提交覆盖） |
 | GET | `/faction-beta/my` | 查询当前用户申请（**需登录**；未提交时 `data.application` 为 `null`） |
 | GET | `/faction-beta/admin/page` | 管理员分页查询（**需管理员**；参数: page, pageSize, status 可选过滤） |
 | PUT | `/faction-beta/admin/{id}/review` | 审核申请（**需管理员**；body: `{status: 1\|2, reviewNote?}`） |

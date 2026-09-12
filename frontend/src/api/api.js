@@ -114,7 +114,7 @@ export const announcementAPI = {
 export const factionBetaAPI = {
   /**
    * 提交内测申请（每账号一份，被拒后可重新提交覆盖）
-   * @param {{mcId: string, qq: string, faction: string, experience: string, weeklyHours: string, motivation: string}} payload
+   * @param {{mcId: string, email: string, faction: string, experience: string, weeklyHours: string, motivation: string}} payload
    * @returns {Promise} - data: 申请详情（含 status）
    */
   apply: (payload) => {

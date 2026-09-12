@@ -77,7 +77,7 @@ class FactionBetaApplication(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     mc_id: Mapped[str] = mapped_column(String(50), nullable=False)  # MC 游戏 ID
-    qq: Mapped[str] = mapped_column(String(20), nullable=False)  # QQ 号（联系渠道）
+    email: Mapped[str] = mapped_column(String(255), nullable=False)  # 邮箱（联系渠道）
     faction: Mapped[str] = mapped_column(String(30), nullable=False)  # 期望阵营
     experience: Mapped[str] = mapped_column(String(20), nullable=False)  # PvP 经验
     weekly_hours: Mapped[str] = mapped_column(String(30), nullable=False)  # 每周可参与时长

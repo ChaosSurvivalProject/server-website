@@ -7,7 +7,7 @@ export type FactionBetaItem = {
   id: number;
   username: string;
   mcId: string;
-  qq: string;
+  email: string;
   faction: string;
   experience: string;
   weeklyHours: string;
