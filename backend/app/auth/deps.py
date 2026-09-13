@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import User, get_db
+from ..database import User, get_db, USER_STATUS_DISABLED, USER_STATUS_DELETED
 from .security import decode_token
 
 # auto_error=False：未携带 Authorization 头时返回 None，由依赖统一给 401
@@ -41,6 +41,17 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户不存在或已被删除",
+        )
+    # 已删除（软删除）/ 禁用用户的旧 token 一律失效，避免被禁用后仍持有效会话
+    if user.status == USER_STATUS_DELETED:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户不存在或已被删除",
+        )
+    if user.status == USER_STATUS_DISABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该账号已被禁用，无法继续操作",
         )
     return user
 

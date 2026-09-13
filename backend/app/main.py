@@ -14,6 +14,11 @@ Endpoints (matching the existing Vue frontend):
   POST /auth/register              注册
   POST /auth/login                 登录（签发 JWT）
   GET  /auth/me                    当前用户信息
+  GET  /auth/admin/users           管理员分页查询用户（需管理员）
+  POST /auth/admin/users           新增用户（需管理员；账号创建后不可改，昵称可改）
+  PUT  /auth/admin/users/{id}      编辑用户（昵称/角色/邮箱/密码重置，需管理员）
+  PUT  /auth/admin/users/{id}/status 启用/禁用/软删除（需管理员）
+  DELETE /auth/admin/users/{id}    软删除用户（需管理员）
   POST /faction-beta/apply         提交阵营对战内测申请（需登录）
   GET  /faction-beta/my            查询当前用户申请（需登录）
   GET  /faction-beta/admin/page    管理员分页查询申请（需管理员）
@@ -35,6 +40,7 @@ from .monitor import router as monitor_router
 from .auth import bootstrap
 from .auth.deps import require_admin
 from .auth.router import router as auth_router
+from .auth.users_admin import router as auth_admin_users_router
 from .faction_beta import router as faction_beta_router
 from .schemas import (
     AnnouncementCreate,
@@ -91,6 +97,9 @@ app.include_router(monitor_router)
 
 # 认证（验证码 / 注册 / 登录 / 当前用户）
 app.include_router(auth_router)
+
+# 管理员用户管理（新增 / 编辑 / 启停 / 软删除 / 分页）
+app.include_router(auth_admin_users_router)
 
 # 阵营对战玩法内测资格申请
 app.include_router(faction_beta_router)

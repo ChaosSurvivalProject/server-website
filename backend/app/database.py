@@ -1,11 +1,15 @@
 """SQLite database setup using SQLAlchemy async + aiosqlite."""
+import logging
 import os
+import re
 from pathlib import Path
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy import Integer, String, Text
 from sqlalchemy.pool import StaticPool
+
+logger = logging.getLogger("uvicorn.error")
 
 # Database file path (project root / data / announcements.db)
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -47,21 +51,75 @@ class Announcement(Base):
     update_time: Mapped[str] = mapped_column(String(30), nullable=False)
 
 
+# 用户状态（布尔语义用 int 的项目规约扩展为三态）
+USER_STATUS_NORMAL = 1   # 正常
+USER_STATUS_DISABLED = 0 # 禁用（无法登录，可重新启用）
+USER_STATUS_DELETED = 2  # 已删除（软删除，无法登录，数据保留可恢复）
+ROLE_ADMIN = "admin"
+ROLE_USER = "user"
+
+
 class User(Base):
     """用户表：role 取值 'admin'（系统管理员）/ 'user'（注册普通用户）。
 
     注册用户的 username 即邮箱（email 与 username 同值冗余存储，
     email 可空，供后续邮箱验证 / 找回密码等扩展使用）。
+    nickname 为展示用昵称（可空，可修改）；username 为登录账号（不可修改）。
+
+    status 用户状态（三态）：1=正常, 0=禁用, 2=已删除（软删除）。
+    禁用与已删除均无法登录。
     """
 
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
+    nickname: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 展示用昵称（可修改）
     email: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[str] = mapped_column(String(20), nullable=False, default="user")
+    status: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 1=正常, 0=禁用, 2=已删除
     create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+# ── 存量表轻量迁移 ────────────────────────────────────────────────
+# SQLite 下 SQLAlchemy 的 create_all 不会给已有表补新列，
+# 因此对 users.status / users.nickname（用户管理功能引入）做幂等补列
+# （同步连接直接执行 PRAGMA / ALTER，不经异步池）。
+_user_extra_migrated = False
+
+
+def migrate_user_extra_columns() -> None:
+    """users 表补 status / nickname 列（幂等；已存在的表结构不受影响）。"""
+    global _user_extra_migrated
+    if _user_extra_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [
+                row[1] for row in con.execute("PRAGMA table_info('users')")
+            ]
+            if "status" not in col_names:
+                con.execute(
+                    "ALTER TABLE users ADD COLUMN status INTEGER NOT NULL DEFAULT 1"
+                )
+                con.commit()
+                logger.info("已为 users 表补充 status 列（1=正常, 0=禁用, 2=已删除）")
+            if "nickname" not in col_names:
+                con.execute(
+                    "ALTER TABLE users ADD COLUMN nickname VARCHAR(50)"
+                )
+                con.commit()
+                logger.info("已为 users 表补充 nickname 列（展示用昵称，可空）")
+        finally:
+            con.close()
+        _user_extra_migrated = True
+    except Exception as e:
+        # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
+        logger.warning("users 表 status/nickname 列迁移检查失败: %s", e)
 
 
 class FactionBetaApplication(Base):
@@ -99,3 +157,5 @@ async def init_db():
     """Create all tables on startup."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # 存量库补列（新库 create_all 已含新列，迁移幂等直接跳过）
+    migrate_user_extra_columns()

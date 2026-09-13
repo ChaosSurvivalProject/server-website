@@ -11,7 +11,13 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..database import User, get_db
+from ..database import (
+    User,
+    get_db,
+    USER_STATUS_NORMAL,
+    USER_STATUS_DISABLED,
+    USER_STATUS_DELETED,
+)
 from .deps import get_current_user
 from .schemas import CaptchaVerifyRequest, LoginRequest, RegisterRequest
 from .security import (
@@ -99,11 +105,15 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
             detail="该邮箱已被注册",
         )
 
+    # 昵称默认取邮箱前缀（如 foo@example.com → foo），管理员可在后台改
+    local_part = req.email.split("@")[0] if "@" in req.email else req.email
     user = User(
         username=req.email,
+        nickname=local_part[:50] or None,
         email=req.email,
         password_hash=hash_password(req.password),
         role="user",
+        status=USER_STATUS_NORMAL,
         create_time=_now_iso(),
     )
     db.add(user)
@@ -115,7 +125,10 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 # ── 登录 ─────────────────────────────────────────────────────────
 @router.post("/login")
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """用户名（普通用户为注册邮箱）+ 密码登录，成功签发 JWT。"""
+    """用户名（普通用户为注册邮箱）+ 密码登录，成功签发 JWT。
+
+    禁用 / 已删除状态的用户不允许登录（软删除用户数据保留，可恢复后重新登录）。
+    """
     result = await db.execute(select(User).where(User.username == req.username))
     user = result.scalar_one_or_none()
     if user is None or not verify_password(req.password, user.password_hash):
@@ -123,12 +136,27 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="用户名或密码错误",
         )
+    if user.status == USER_STATUS_DISABLED:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="该账号已被禁用，请联系管理员",
+        )
+    if user.status == USER_STATUS_DELETED:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
 
     token = create_access_token(user.username, user.role)
     return {
         "code": 0,
         "message": "登录成功",
-        "data": {"token": token, "username": user.username, "role": user.role},
+        "data": {
+            "token": token,
+            "username": user.username,
+            "nickname": user.nickname,
+            "role": user.role,
+        },
     }
 
 
@@ -139,5 +167,10 @@ async def me(user: User = Depends(get_current_user)):
     return {
         "code": 0,
         "message": "success",
-        "data": {"username": user.username, "email": user.email, "role": user.role},
+        "data": {
+            "username": user.username,
+            "nickname": user.nickname,
+            "email": user.email,
+            "role": user.role,
+        },
     }

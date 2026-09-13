@@ -11,7 +11,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
-from ..database import DB_FILE, User, async_session_maker
+from ..database import DB_FILE, User, USER_STATUS_NORMAL, async_session_maker
 from .security import generate_strong_password, hash_password
 
 logger = logging.getLogger("uvicorn.error")
@@ -52,9 +52,11 @@ async def ensure_admin() -> None:
         password_path = _write_password_file(password)
         admin = User(
             username=ADMIN_USERNAME,
+            nickname=ADMIN_USERNAME,
             email=None,
             password_hash=hash_password(password),
             role="admin",
+            status=USER_STATUS_NORMAL,
             create_time=_now_iso(),
         )
         db.add(admin)
