@@ -38,7 +38,7 @@ export function isLoggedIn() {
 /**
  * 保存登录态（登录成功 / /auth/me 校验刷新用户信息时调用）
  * @param {string} token - JWT
- * @param {{username: string, role: string}} userInfo - 用户信息
+ * @param {{username: string, nickname?: string, role: string}} userInfo - 用户信息
  */
 export function setAuth(token, userInfo) {
   authState.token = token || '';

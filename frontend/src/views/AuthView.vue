@@ -54,11 +54,22 @@
             <input
               id="login-password"
               v-model="loginForm.password"
-              type="password"
+              :type="showLoginPassword ? 'text' : 'password'"
               name="password"
               placeholder="请输入密码"
               autocomplete="current-password"
             />
+            <button
+              type="button"
+              class="pwd-toggle"
+              :aria-label="showLoginPassword ? '隐藏密码' : '显示密码'"
+              @click="showLoginPassword = !showLoginPassword"
+            >
+              <i
+                class="fa-solid"
+                :class="showLoginPassword ? 'fa-eye-slash' : 'fa-eye'"
+              ></i>
+            </button>
           </div>
         </div>
 
@@ -91,11 +102,22 @@
             <input
               id="reg-password"
               v-model="registerForm.password"
-              type="password"
+              :type="showRegPassword ? 'text' : 'password'"
               name="new-password"
               placeholder="8-32 位，须包含字母和数字"
               autocomplete="new-password"
             />
+            <button
+              type="button"
+              class="pwd-toggle"
+              :aria-label="showRegPassword ? '隐藏密码' : '显示密码'"
+              @click="showRegPassword = !showRegPassword"
+            >
+              <i
+                class="fa-solid"
+                :class="showRegPassword ? 'fa-eye-slash' : 'fa-eye'"
+              ></i>
+            </button>
           </div>
         </div>
 
@@ -106,11 +128,22 @@
             <input
               id="reg-confirm-password"
               v-model="registerForm.confirmPassword"
-              type="password"
+              :type="showRegConfirmPassword ? 'text' : 'password'"
               name="confirm-password"
               placeholder="请再次输入密码"
               autocomplete="new-password"
             />
+            <button
+              type="button"
+              class="pwd-toggle"
+              :aria-label="showRegConfirmPassword ? '隐藏密码' : '显示密码'"
+              @click="showRegConfirmPassword = !showRegConfirmPassword"
+            >
+              <i
+                class="fa-solid"
+                :class="showRegConfirmPassword ? 'fa-eye-slash' : 'fa-eye'"
+              ></i>
+            </button>
           </div>
         </div>
 
@@ -159,6 +192,10 @@ export default {
       loading: false,
       notice: "",
       captchaId: "", // 已通过滑块校验的验证码 ID（由 SliderCaptcha 回传）
+      // 密码可见性开关（眼睛图标切换 text/password）
+      showLoginPassword: false,
+      showRegPassword: false,
+      showRegConfirmPassword: false,
       loginForm: {
         username: "",
         password: "",
@@ -179,6 +216,10 @@ export default {
         // 注册表单 v-else 重建会重新挂载 SliderCaptcha 并自动拉新验证码
         this.captchaId = "";
       }
+      // 切换登录/注册时重置密码可见性开关（避免残留状态）
+      this.showLoginPassword = false;
+      this.showRegPassword = false;
+      this.showRegConfirmPassword = false;
     },
     /** 滑块验证通过（captchaId 已在后端标记为已验证，注册时消费） */
     onCaptchaSuccess(captchaId) {
@@ -205,7 +246,11 @@ export default {
           password: this.loginForm.password,
         })
         .then((data) => {
-          setAuth(data.token, { username: data.username, role: data.role });
+          setAuth(data.token, {
+            username: data.username,
+            nickname: data.nickname,
+            role: data.role
+          });
           // 登录成功后返回来源页（401 跳转时带上）或首页
           const redirect = this.$route.query.redirect || "/";
           this.$router.push(redirect);
@@ -257,6 +302,9 @@ export default {
             password: "",
             confirmPassword: "",
           };
+          this.showLoginPassword = false;
+          this.showRegPassword = false;
+          this.showRegConfirmPassword = false;
           this.captchaId = "";
           this.mode = "login";
           this.notice = "注册成功，请登录";
@@ -405,6 +453,27 @@ export default {
 
 .input-wrap input::placeholder {
   color: #9e9e9e;
+}
+
+/* 密码可见性切换按钮（眼睛图标） */
+.pwd-toggle {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--primary-color);
+  font-size: 14px;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.pwd-toggle:hover {
+  opacity: 0.75;
 }
 
 /* 提交按钮 */

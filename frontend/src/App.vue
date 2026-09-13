@@ -40,7 +40,11 @@ export default {
       authAPI
         .getMe()
         .then((data) => {
-          setAuth(getToken(), { username: data.username, role: data.role });
+          setAuth(getToken(), {
+            username: data.username,
+            nickname: data.nickname,
+            role: data.role
+          });
         })
         .catch(() => {
           // 校验失败无需额外处理（拦截器已清理登录态）

@@ -18,9 +18,11 @@
           @click.stop="toggleAvatarMenu"
         >
           <img class="nav-avatar-img" :src="defaultAvatar" alt="头像" />
-          <span class="nav-avatar-name" :title="currentUser && currentUser.username">{{
-            currentUser && currentUser.username
-          }}</span>
+          <span
+            class="nav-avatar-name"
+            :title="displayNickname"
+            >{{ displayNickname }}</span
+          >
           <i
             class="fa-solid fa-caret-down nav-avatar-caret"
             :class="{ open: avatarMenuOpen }"
@@ -32,8 +34,8 @@
           <div class="avatar-menu-header">
             <img class="avatar-menu-avatar" :src="defaultAvatar" alt="" />
             <div class="avatar-menu-user">
-              <span class="avatar-menu-name" :title="currentUser && currentUser.username">{{
-                currentUser && currentUser.username
+              <span class="avatar-menu-name" :title="displayNickname">{{
+                displayNickname
               }}</span>
               <span class="avatar-menu-role">{{ roleText }}</span>
             </div>
@@ -185,6 +187,11 @@ export default {
     /** 是否为管理员 */
     isAdmin() {
       return this.currentUser && this.currentUser.role === "admin";
+    },
+    /** 展示名：昵称优先，缺省回退账号（旧用户/未设昵称场景） */
+    displayNickname() {
+      if (!this.currentUser) return "";
+      return this.currentUser.nickname || this.currentUser.username || "";
     },
     /** 后台管理入口 URL（配置化，支持相对/绝对路径） */
     adminUrl() {
