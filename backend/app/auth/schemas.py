@@ -9,8 +9,17 @@ from pydantic import BaseModel, Field
 class CaptchaResponseData(BaseModel):
     """GET /auth/captcha 的 data。"""
 
-    captchaId: str = Field(..., description="验证码 ID，注册时需回传")
-    image: str = Field(..., description="PNG 图片 base64 data URI")
+    captchaId: str = Field(..., description="验证码 ID，滑块校验与注册时需回传")
+    backgroundImage: str = Field(..., description="底图 PNG base64 data URI（含缺口）")
+    pieceImage: str = Field(..., description="拼图块 PNG base64 data URI（透明背景）")
+    sliderY: int = Field(..., description="拼图块纵向位置（px，相对底图顶部）")
+
+
+class CaptchaVerifyRequest(BaseModel):
+    """POST /auth/captcha/verify 请求体。"""
+
+    captchaId: str = Field(..., description="验证码 ID")
+    x: int = Field(..., ge=0, le=10000, description="拼图块横向位置（px，相对底图左侧）")
 
 
 class RegisterRequest(BaseModel):
@@ -19,8 +28,7 @@ class RegisterRequest(BaseModel):
     email: str = Field(..., max_length=255, description="邮箱（作为初始用户名）")
     password: str = Field(..., max_length=72, description="密码")
     confirmPassword: str = Field(..., max_length=72, description="确认密码")
-    captchaId: str = Field(..., description="图形验证码 ID")
-    captchaCode: str = Field(..., description="用户输入的验证码（不区分大小写）")
+    captchaId: str = Field(..., description="已通过滑块校验的验证码 ID")
 
 
 class LoginRequest(BaseModel):

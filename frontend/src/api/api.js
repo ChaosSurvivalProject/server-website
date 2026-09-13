@@ -1,18 +1,29 @@
 import axiosInstance from './axiosInstance';
 
-// 认证API（登录 / 注册 / 图形验证码 / 当前用户）
+// 认证API（登录 / 注册 / 滑块验证码 / 当前用户）
 export const authAPI = {
   /**
-   * 获取注册用图形验证码
-   * @returns {Promise} - data: {captchaId, image}（image 为 PNG base64 data URI）
+   * 获取注册用滑块拼图验证码
+   * @returns {Promise} - data: {captchaId, backgroundImage, pieceImage, sliderY}
+   *   backgroundImage/pieceImage 为 PNG base64 data URI，sliderY 为拼图块纵向位置(px)
    */
   getCaptcha: () => {
     return axiosInstance.get('/auth/captcha');
   },
 
   /**
-   * 注册（邮箱作为初始用户名，注册后角色为普通用户）
-   * @param {{email: string, password: string, confirmPassword: string, captchaId: string, captchaCode: string}} payload
+   * 校验滑块位置（成功后 captchaId 标记为已验证，注册时消费；失败即作废需重新获取）
+   * silent: 校验失败属常规交互，不弹全局错误框，由滑块组件在滑轨内标红提示
+   * @param {{captchaId: string, x: number}} payload - x 为拼图块横向位置(px，相对底图左侧)
+   * @returns {Promise} - data: {verified: true}
+   */
+  verifyCaptcha: (payload) => {
+    return axiosInstance.post('/auth/captcha/verify', payload, { silent: true });
+  },
+
+  /**
+   * 注册（邮箱作为初始用户名，注册后角色为普通用户；captchaId 须已通过滑块校验）
+   * @param {{email: string, password: string, confirmPassword: string, captchaId: string}} payload
    * @returns {Promise} - data: {username, role}
    */
   register: (payload) => {

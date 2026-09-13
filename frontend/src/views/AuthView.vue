@@ -115,28 +115,12 @@
         </div>
 
         <div class="form-item">
-          <label for="reg-captcha">人机验证</label>
-          <div class="captcha-row">
-            <div class="input-wrap captcha-input">
-              <i class="fa-solid fa-shield-halved"></i>
-              <input
-                id="reg-captcha"
-                v-model.trim="registerForm.captchaCode"
-                type="text"
-                name="captcha"
-                maxlength="6"
-                placeholder="不区分大小写"
-                autocomplete="off"
-              />
-            </div>
-            <img
-              class="captcha-img"
-              :src="captchaImage"
-              alt="图形验证码"
-              title="点击刷新验证码"
-              @click="refreshCaptcha"
-            />
-          </div>
+          <label>人机验证</label>
+          <SliderCaptcha
+            ref="sliderCaptcha"
+            @success="onCaptchaSuccess"
+            @reset="onCaptchaReset"
+          />
         </div>
 
         <button type="submit" class="btn auth-submit" :disabled="loading">
@@ -149,6 +133,7 @@
 
 <script>
 import logoImg from "../assets/images/logo.png";
+import SliderCaptcha from "../components/SliderCaptcha.vue";
 import { authAPI } from "../api/api.js";
 import { setAuth } from "../utils/auth.js";
 
@@ -159,6 +144,7 @@ const PASSWORD_RE = /^(?=.*[A-Za-z])(?=.*\d).{8,32}$/;
 
 export default {
   name: "AuthView",
+  components: { SliderCaptcha },
   props: {
     initialMode: {
       type: String,
@@ -172,8 +158,7 @@ export default {
       mode: this.initialMode,
       loading: false,
       notice: "",
-      captchaImage: "",
-      captchaId: "",
+      captchaId: "", // 已通过滑块校验的验证码 ID（由 SliderCaptcha 回传）
       loginForm: {
         username: "",
         password: "",
@@ -182,15 +167,8 @@ export default {
         email: "",
         password: "",
         confirmPassword: "",
-        captchaCode: "",
       },
     };
-  },
-  created() {
-    // 直接进入注册页时预取验证码
-    if (this.mode === "register") {
-      this.refreshCaptcha();
-    }
   },
   methods: {
     switchMode(mode) {
@@ -198,21 +176,17 @@ export default {
       this.mode = mode;
       this.notice = "";
       if (mode === "register") {
-        this.registerForm.captchaCode = "";
-        this.refreshCaptcha();
+        // 注册表单 v-else 重建会重新挂载 SliderCaptcha 并自动拉新验证码
+        this.captchaId = "";
       }
     },
-    /** 拉取新的图形验证码 */
-    refreshCaptcha() {
-      authAPI
-        .getCaptcha()
-        .then((data) => {
-          this.captchaId = data.captchaId;
-          this.captchaImage = data.image;
-        })
-        .catch(() => {
-          // 错误提示由 axios 拦截器统一弹出
-        });
+    /** 滑块验证通过（captchaId 已在后端标记为已验证，注册时消费） */
+    onCaptchaSuccess(captchaId) {
+      this.captchaId = captchaId;
+    },
+    /** 滑块刷新/复位后旧验证码作废 */
+    onCaptchaReset() {
+      this.captchaId = "";
     },
     /** 登录 */
     handleLogin() {
@@ -245,7 +219,7 @@ export default {
     },
     /** 注册 */
     handleRegister() {
-      const { email, password, confirmPassword, captchaCode } = this.registerForm;
+      const { email, password, confirmPassword } = this.registerForm;
       if (!email) {
         this.showNotice("请输入邮箱");
         return;
@@ -262,8 +236,8 @@ export default {
         this.showNotice("两次输入的密码不一致");
         return;
       }
-      if (!captchaCode) {
-        this.showNotice("请输入图形验证码");
+      if (!this.captchaId) {
+        this.showNotice("请先完成滑块人机验证");
         return;
       }
       this.loading = true;
@@ -273,7 +247,6 @@ export default {
           password,
           confirmPassword,
           captchaId: this.captchaId,
-          captchaCode,
         })
         .then(() => {
           // 注册成功 → 切换到登录页并预填邮箱
@@ -283,15 +256,14 @@ export default {
             email: "",
             password: "",
             confirmPassword: "",
-            captchaCode: "",
           };
+          this.captchaId = "";
           this.mode = "login";
           this.notice = "注册成功，请登录";
         })
         .catch(() => {
-          // 验证码已被消费（一次性），无论成功失败都刷新一张
-          this.refreshCaptcha();
-          this.registerForm.captchaCode = "";
+          // 滑块验证码已被消费（一次性），无论失败原因都需重新验证
+          this.$refs.sliderCaptcha?.refresh();
         })
         .finally(() => {
           this.loading = false;
@@ -435,25 +407,6 @@ export default {
   color: #9e9e9e;
 }
 
-/* 验证码行：输入框 + 图片 */
-.captcha-row {
-  display: flex;
-  gap: 10px;
-  align-items: stretch;
-}
-
-.captcha-input {
-  flex: 1;
-}
-
-.captcha-img {
-  height: 44px;
-  border: 3px solid var(--border-color);
-  cursor: pointer;
-  flex-shrink: 0;
-  background-color: #fff;
-}
-
 /* 提交按钮 */
 .auth-submit {
   width: 100%;
@@ -479,19 +432,6 @@ export default {
 
   .auth-card {
     padding: 24px 18px;
-  }
-
-  .captcha-row {
-    flex-direction: column;
-  }
-
-  .captcha-img {
-    display: block;
-    width: 100%;
-    height: auto;
-    /* 后端生成的验证码为 160×60，按原比例完整展示（不裁剪）；加载前预留高度防布局跳动 */
-    aspect-ratio: 160 / 60;
-    object-fit: contain;
   }
 }
 </style>

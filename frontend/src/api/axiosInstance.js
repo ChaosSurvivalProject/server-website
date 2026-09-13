@@ -41,8 +41,11 @@ axiosInstance.interceptors.response.use(
           return responseData.data || responseData;
         } else {
           // 其他code值表示错误，显示错误消息
+          // （config.silent 为 true 时跳过全局弹窗，由调用方自行提示）
           const errorMessage = responseData.message || `请求失败，错误码: ${responseData.code}`;
-          showError(errorMessage);
+          if (!response.config?.silent) {
+            showError(errorMessage);
+          }
           return Promise.reject(new Error(errorMessage));
         }
       }
@@ -93,8 +96,11 @@ axiosInstance.interceptors.response.use(
       errorMessage = error.message || '请求配置错误';
     }
     
-    // 显示错误弹窗
-    showError(errorMessage);
+    // 显示错误弹窗（config.silent 为 true 时跳过，由调用方自行提示，
+    // 如滑块验证失败只在滑轨内标红，不弹全局错误框）
+    if (!error.config?.silent) {
+      showError(errorMessage);
+    }
     return Promise.reject(error);
   }
 );

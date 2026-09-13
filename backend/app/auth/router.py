@@ -1,4 +1,4 @@
-"""认证路由：/auth/captcha、/auth/register、/auth/login、/auth/me。
+"""认证路由：/auth/captcha、/auth/captcha/verify、/auth/register、/auth/login、/auth/me。
 
 所有接口遵循项目统一响应包络 {code, message, data}（code=0 成功）；
 业务失败以 HTTPException(400/401, detail=...) 抛出，前端 axios 拦截器
@@ -13,14 +13,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import User, get_db
 from .deps import get_current_user
-from .schemas import LoginRequest, RegisterRequest
+from .schemas import CaptchaVerifyRequest, LoginRequest, RegisterRequest
 from .security import (
+    consume_verified_captcha,
     create_access_token,
-    generate_captcha,
+    generate_slider_captcha,
     hash_password,
     is_valid_password,
-    verify_captcha,
     verify_password,
+    verify_slider_captcha,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -30,23 +31,43 @@ def _now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
 
 
-# ── 图形验证码 ───────────────────────────────────────────────────
+# ── 滑块拼图验证码 ───────────────────────────────────────────────
 @router.get("/captcha")
 async def get_captcha():
-    """获取注册用图形验证码（6 位数字+字母，不区分大小写，5 分钟有效）。"""
-    captcha_id, image = generate_captcha()
-    return {"code": 0, "message": "success", "data": {"captchaId": captcha_id, "image": image}}
+    """获取注册用滑块拼图验证码（5 分钟有效；横向答案不下发，仅存服务端）。"""
+    data = generate_slider_captcha()
+    return {
+        "code": 0,
+        "message": "success",
+        "data": {
+            "captchaId": data["captcha_id"],
+            "backgroundImage": data["background"],
+            "pieceImage": data["piece"],
+            "sliderY": data["slider_y"],
+        },
+    }
+
+
+@router.post("/captcha/verify")
+async def verify_captcha(req: CaptchaVerifyRequest):
+    """校验滑块位置：通过则标记该 captchaId 为已验证（注册时消费），失败立即作废。"""
+    if not verify_slider_captcha(req.captchaId, req.x):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="滑块验证未通过，请重试",
+        )
+    return {"code": 0, "message": "验证通过", "data": {"verified": True}}
 
 
 # ── 注册 ─────────────────────────────────────────────────────────
 @router.post("/register")
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     """邮箱（作为初始用户名）注册，注册成功角色为普通用户 user。"""
-    # 1. 验证码（一次性，先销毁再校验）
-    if not verify_captcha(req.captchaId, req.captchaCode):
+    # 1. 滑块验证码（须已通过 /auth/captcha/verify；此处取出即销毁，一次性）
+    if not consume_verified_captcha(req.captchaId):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="验证码错误或已过期，请刷新后重试",
+            detail="滑块验证未通过或已过期，请重新验证",
         )
     # 2. 邮箱格式（email-validator 本地校验，不做 DNS 递送检查）
     try:

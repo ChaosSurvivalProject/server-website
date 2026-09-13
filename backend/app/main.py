@@ -9,7 +9,8 @@ Endpoints (matching the existing Vue frontend):
   DELETE /announcement/delete/{id} 删除公告（管理员）
   POST /announcement/upload/image  上传富文本图片（管理员）
   GET  /announcement/uploads/*     上传图片静态目录
-  GET  /auth/captcha               图形验证码
+  GET  /auth/captcha               滑块拼图验证码
+  POST /auth/captcha/verify        校验滑块位置
   POST /auth/register              注册
   POST /auth/login                 登录（签发 JWT）
   GET  /auth/me                    当前用户信息

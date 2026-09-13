@@ -109,8 +109,9 @@ npm run preview  # 本地预览构建产物
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/auth/captcha` | 获取注册用图形验证码（返回 `{captchaId, image}`，5 分钟有效、一次性） |
-| POST | `/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId, captchaCode}`，邮箱作为初始用户名，角色为普通用户） |
+| GET | `/auth/captcha` | 获取注册用滑块拼图验证码（返回 `{captchaId, backgroundImage, pieceImage, sliderY}`，5 分钟有效；横向答案不下发仅存服务端） |
+| POST | `/auth/captcha/verify` | 校验滑块位置（body: `{captchaId, x}`，误差 ≤5px 通过并标记该 captchaId；失败即作废，一次性防爆破） |
+| POST | `/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId}`，captchaId 须已通过滑块校验，注册时消费；邮箱作为初始用户名，角色为普通用户） |
 | POST | `/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, username, role}`） |
 | GET | `/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`） |
 
@@ -193,7 +194,7 @@ docker compose up -d --build
 | `/announcements/:id` | AnnouncementDetail | 公告详情（自动累加阅读量） |
 | `/faction-beta` | FactionBetaApply | 阵营对战玩法内测资格申请（需登录后填写，展示审核状态） |
 | `/login` | AuthView（登录） | 登录页（用户名/邮箱 + 密码） |
-| `/register` | AuthView（注册） | 注册页（邮箱 + 密码 + 确认密码 + 图形验证码） |
+| `/register` | AuthView（注册） | 注册页（邮箱 + 密码 + 确认密码 + 滑块拼图人机验证） |
 
 ### 关键组件
 
