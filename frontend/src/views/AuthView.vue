@@ -486,9 +486,12 @@ export default {
   }
 
   .captcha-img {
-    height: 50px;
+    display: block;
     width: 100%;
-    object-fit: cover;
+    height: auto;
+    /* 后端生成的验证码为 160×60，按原比例完整展示（不裁剪）；加载前预留高度防布局跳动 */
+    aspect-ratio: 160 / 60;
+    object-fit: contain;
   }
 }
 </style>
