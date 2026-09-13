@@ -10,7 +10,8 @@ export const useUserStore = defineStore("pure-user", {
     token: storageLocal().getItem<DataInfo<number>>(userKey)?.accessToken ?? "",
     username: storageLocal().getItem<DataInfo<number>>(userKey)?.username ?? "",
     role: storageLocal().getItem<DataInfo<number>>(userKey)?.role ?? "",
-    email: ""
+    email: "",
+    nickname: ""
   }),
   actions: {
     SET_TOKEN(token: string) {
@@ -24,6 +25,9 @@ export const useUserStore = defineStore("pure-user", {
     },
     SET_EMAIL(email: string) {
       this.email = email;
+    },
+    SET_NICKNAME(nickname: string) {
+      this.nickname = nickname;
     },
 
     /** 登入 */
@@ -40,6 +44,7 @@ export const useUserStore = defineStore("pure-user", {
               this.SET_TOKEN(res.token);
               this.SET_USERNAME(res.username);
               this.SET_ROLE(res.role);
+              this.SET_NICKNAME(res.nickname ?? "");
               resolve();
             } else {
               reject(new Error("登录失败：未获取到 token"));
@@ -60,6 +65,7 @@ export const useUserStore = defineStore("pure-user", {
               this.SET_USERNAME(res.username);
               this.SET_EMAIL(res.email);
               this.SET_ROLE(res.role);
+              this.SET_NICKNAME(res.nickname ?? "");
               resolve();
             } else {
               reject(new Error("获取用户信息失败"));
@@ -77,6 +83,7 @@ export const useUserStore = defineStore("pure-user", {
       this.username = "";
       this.role = "";
       this.email = "";
+      this.nickname = "";
       removeToken();
       useMultiTagsStoreHook().handleTags("equal", []);
       resetRouter();

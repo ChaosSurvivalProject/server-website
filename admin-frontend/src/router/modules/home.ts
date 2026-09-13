@@ -60,6 +60,16 @@ export default {
         icon: "ep/flag",
         showLink: true
       }
+    },
+    {
+      path: "/user/list",
+      name: "UserList",
+      component: () => import("@/views/user/list.vue"),
+      meta: {
+        title: "用户管理",
+        icon: "ep/user",
+        showLink: true
+      }
     }
   ]
 } satisfies RouteConfigsTable;
