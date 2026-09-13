@@ -111,12 +111,27 @@ npm run preview  # 本地预览构建产物
 |------|------|------|
 | GET | `/auth/captcha` | 获取注册用滑块拼图验证码（返回 `{captchaId, backgroundImage, pieceImage, sliderY}`，5 分钟有效；横向答案不下发仅存服务端） |
 | POST | `/auth/captcha/verify` | 校验滑块位置（body: `{captchaId, x}`，误差 ≤5px 通过并标记该 captchaId；失败即作废，一次性防爆破） |
-| POST | `/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId}`，captchaId 须已通过滑块校验，注册时消费；邮箱作为初始用户名，角色为普通用户） |
-| POST | `/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, username, role}`） |
-| GET | `/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`） |
+| POST | `/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId}`，captchaId 须已通过滑块校验，注册时消费；邮箱作为账号，昵称默认取邮箱前缀，角色为普通用户） |
+| POST | `/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, username, nickname, role}`；禁用/已删除用户无法登录） |
+| GET | `/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{username, nickname, email, role}`；禁用/已删除用户的旧 token 一律失效） |
 
 - JWT 默认 24 小时有效，环境变量 `JWT_EXPIRE_HOURS` 可调；签名密钥取环境变量 `JWT_SECRET`，未设置时自动生成并持久化到数据目录。
 - 系统管理员 `xqly-admin` 在后端首次启动时自动初始化，随机强密码写入数据目录 `admin_initial_password.txt`（仅首次初始化时写入，请妥善保管并及时删除）。
+
+### 用户管理（管理员）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/auth/admin/users` | 分页查询用户（参数: page, pageSize, status 可选；status 1=正常, 0=禁用, 2=已删除，缺省查全部） |
+| POST | `/auth/admin/users` | 新增用户（body: `{username, nickname?, password, role, email?}`；账号 2-100 位字母/数字及 . _ % + -，昵称 ≤50 字符，密码 8-32 位含字母数字，role 仅 admin/user） |
+| PUT | `/auth/admin/users/{id}` | 编辑用户（body: `{nickname?, role?, email?, password?}`；**账号 username 不允许修改**；昵称/角色/邮箱可改，密码留空=不修改（忘记密码重置场景）；已删除用户禁止编辑） |
+| PUT | `/auth/admin/users/{id}/status` | 切换用户状态（body: `{status: 1\|0\|2}`；1=启用, 0=禁用, 2=删除（软删除，数据保留可恢复）） |
+| DELETE | `/auth/admin/users/{id}` | 软删除用户（status 置为已删除，无法登录，数据保留可恢复） |
+
+- 所有接口需 `Authorization: Bearer <JWT>` 且角色为 `admin`，无 token 返回 401，普通用户返回 403。
+- 用户 `status` 三态：`1=正常`、`0=禁用`（无法登录，可重新启用）、`2=已删除`（软删除，无法登录，数据保留可恢复）。
+- 用户表 `username`（账号）为登录标识，创建后不可修改；`nickname`（昵称）为展示名，可随时修改。
+- 存量数据库首次启动自动补 `users.status` / `users.nickname` 列（status 默认 1=正常，nickname 默认为空）。
 
 ### 阵营对战内测申请
 
@@ -246,6 +261,7 @@ docker compose up -d --build
 | `/admin/server/list` | 服务器地址管理 | 服务器列表（新建/编辑/删除/设为主） |
 | `/admin/server/edit` | 服务器编辑 | 新建或编辑服务器（名称、地址、端口、是否主服务器） |
 | `/admin/faction-beta/list` | 阵营内测申请 | 内测申请列表（状态过滤、详情、通过/拒绝、删除） |
+| `/admin/user/list` | 用户管理 | 用户列表（新增/编辑/启用/禁用/软删除/恢复、状态过滤） |
 
 ### 开发命令
 
