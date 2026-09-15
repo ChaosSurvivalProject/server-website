@@ -16,7 +16,7 @@
 # 端口:
 #   backend   :5000  (backend/run.py 固定)
 #   frontend  :5173  (vite 默认)
-#   wiki      :5175  (脚本用 --port 指定，避开 frontend 的 5173，不改 wiki 配置文件)
+#   wiki      :5174  (脚本用 --port 指定，避开 frontend 的 5173，不改 wiki 配置文件)
 #   admin     :3005  (读取 admin-frontend/.env.development 的 VITE_PORT，缺省 8848)
 #
 # 日志与 PID 统一写在 logs/ 下（.gitignore 已忽略该目录）。
@@ -39,7 +39,7 @@ DIRS=("$ROOT/backend" "$ROOT/frontend" "$ROOT/wiki" "$ROOT/admin-frontend")
 # admin 端口取自 .env.development 的 VITE_PORT（纯数字），读不到则回退 8848
 PORT_ADMIN="$(grep -E '^[[:space:]]*VITE_PORT' "$ROOT/admin-frontend/.env.development" 2>/dev/null | head -n 1 | grep -oE '[0-9]+' || true)"
 PORT_ADMIN="${PORT_ADMIN:-8848}"
-PORTS=(5000 5173 5175 "$PORT_ADMIN")
+PORTS=(5000 5173 5174 "$PORT_ADMIN")
 
 pid_file() { echo "$LOG_DIR/$1.pid"; }
 log_file() { echo "$LOG_DIR/$1.log"; }
@@ -71,8 +71,8 @@ cmd_for() {
       echo "npm run dev -- --port 5173 --strictPort"
       ;;
     wiki)
-      # wiki 默认端口同为 5173，这里固定 5175 避免与 frontend 冲突
-      echo "npm run dev -- --port 5175 --strictPort"
+      # wiki 默认端口同为 5173，这里固定 5174 避免与 frontend 冲突
+      echo "npm run dev -- --port 5174 --strictPort"
       ;;
     admin)
       # 优先直接调 vite（复刻 package.json dev 脚本里的 NODE_OPTIONS），绕开 pnpm 的
@@ -214,7 +214,7 @@ do_status() {
     printf '%-10s :%-7s %b\n' "$name" "$port" "$state"
   done
   echo
-  echo "官网 http://localhost:5173   Wiki http://localhost:5175   后台 http://localhost:$PORT_ADMIN   API http://localhost:5000/docs"
+  echo "官网 http://localhost:5173   Wiki http://localhost:5174   后台 http://localhost:$PORT_ADMIN   API http://localhost:5000/docs"
 }
 
 do_logs() {

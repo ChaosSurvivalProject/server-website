@@ -4,7 +4,7 @@
 :::
 
 ## 第一步 下载客户端
-前往[基岩版客户端下载页面](https://xz.klpz.net/)下载并安装基岩版客户端，选择最新的正式版（目前为`1.21.132.1`）进行安装。
+前往[基岩版客户端下载页面](https://xz.klpz.net/)下载并安装基岩版客户端，选择**最新正式版**进行安装即可（服务器通过 Geyser 持续适配基岩版最新协议）。
 
 ## 第二步 注册账号
 参考视频教程：[https://www.bilibili.com/video/BV13S4y177Fc](https://www.bilibili.com/video/BV13S4y177Fc)，注册账号并登录。

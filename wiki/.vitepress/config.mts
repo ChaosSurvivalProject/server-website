@@ -36,6 +36,13 @@ export default defineConfig({
             ]
           },
           {
+            text: '阵营玩法', collapsed: true, items: [
+              { text: '阵营玩法总览', link: '/for-new/factions/' },
+              { text: '阵营使用指南', link: '/for-new/factions/usage' },
+              { text: '阵营对抗机制', link: '/for-new/factions/mechanics' }
+            ]
+          },
+          {
             text: '服务器玩家相关条例', collapsed: true, items: [
               { text: '服务器游玩规则与惩罚条例', link: '/for-new/law/player-agreement' },
               { text: '服务器法典', link: '/for-new/law/server-code' },
@@ -58,6 +65,7 @@ export default defineConfig({
         text: '服务器建设',
         collapsed: true,
         items: [
+          { text: '服务器架构', link: '/develop/architecture' },
           { text: '发展路线', link: '/develop/roadmap' },
           { text: 'Issues', link: '/develop/issues' }
         ]
