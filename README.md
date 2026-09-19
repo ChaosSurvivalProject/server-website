@@ -105,6 +105,8 @@ npm run preview  # 本地预览构建产物
 | POST | `/announcement/upload/image` | 上传富文本图片（multipart `file`，≤5MB，png/jpg/jpeg/gif/webp，**需管理员**；返回 `data.url` 相对路径，可直接写入公告内容） |
 | GET | `/announcement/uploads/{...}` | 上传图片静态目录（按月份分目录存放） |
 
+- 公告正文对外字段为 `rawContent`（原始内容）+ `contentType`（内容格式，`'html'`=富文本 / `'markdown'`=Markdown；create/update 传参同名字段，缺省 `html`）。Markdown 渲染在前端完成，后端不做转换。
+
 ### 认证
 
 | 方法 | 路径 | 说明 |
@@ -173,7 +175,10 @@ npm run preview  # 本地预览构建产物
 - 默认路径：`backend/data/announcements.db`（启动时自动建表）
 - 可通过环境变量 `ANNOUNCEMENT_DB` 自定义
 
-公告内容为富文本编辑器（wangEditor）产出的 HTML，入库前由后端 `nh3` 白名单消毒（仅放行常用标签 + `style` 内联样式）。
+公告正文支持两种格式（`contentType` 字段区分，存量数据自动归为 `html`）：
+
+- `html`：富文本编辑器（wangEditor）产出的 HTML，入库前由后端 `nh3` 白名单消毒（仅放行常用标签 + `style` 内联样式）。
+- `markdown`：Markdown 源码，原样入库（nh3 会破坏 Markdown 语法），由前端渲染——主站用 `marked` + `DOMPurify` 消毒后展示，后台编辑器为 md-editor-v3（双编辑器共存，按格式自动切换）。
 
 ### 图片上传
 
