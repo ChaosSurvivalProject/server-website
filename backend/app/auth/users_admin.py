@@ -31,7 +31,7 @@ from .security import hash_password, is_valid_password
 
 router = APIRouter(prefix="/auth/admin/users", tags=["auth-admin-users"])
 
-_USERNAME_RE = re.compile(r"^[A-Za-z0-9._%+-]{2,100}$")
+_USERNAME_RE = re.compile(r"^[A-Za-z0-9._%+@-]{2,100}$")
 
 
 def _now_iso() -> str:
@@ -106,7 +106,7 @@ async def admin_create_user(
     """管理员：直接创建用户账号（运营场景：给玩家/管理发账号）。
 
     校验规则：
-    - 账号（username）2-100 个字母/数字/. _ % + -，全局唯一，创建后不可修改
+    - 账号（username）2-100 个字母/数字/. _ % + @ -，全局唯一，创建后不可修改
     - 昵称（nickname）可选，最长 50 个字符
     - 密码 8-32 位且含字母和数字（与注册同一规则）
     - 角色仅允许 admin / user；邮箱可选，填写时须合法且唯一
@@ -115,7 +115,7 @@ async def admin_create_user(
     if not _USERNAME_RE.fullmatch(username):
         raise HTTPException(
             status_code=400,
-            detail="账号需为 2-100 个字符，仅可包含字母、数字及 . _ % + -",
+            detail="账号需为 2-100 个字符，仅可包含字母、数字及 . _ % + @ -",
         )
     nickname = (req.nickname or "").strip() or None
     if nickname is not None and len(nickname) > 50:

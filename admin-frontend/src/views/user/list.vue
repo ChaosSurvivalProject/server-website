@@ -70,8 +70,8 @@ const rules: FormRules = {
   username: [
     { required: true, message: "请输入账号（登录名）", trigger: "blur" },
     {
-      pattern: /^[A-Za-z0-9._%+-]{2,100}$/,
-      message: "账号 2-100 位，仅可含字母、数字及 . _ % + -",
+      pattern: /^[A-Za-z0-9._%+@-]{2,100}$/,
+      message: "账号 2-100 位，仅可含字母、数字及 . _ % + @ -",
       trigger: "blur"
     }
   ],
