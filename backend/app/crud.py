@@ -39,6 +39,18 @@ def _sanitize_content(html: str) -> str:
     return nh3.clean(html, attributes=_SANITIZE_ATTRIBUTES)
 
 
+def _prepare_content(content: str, content_type: str) -> str:
+    """按内容格式决定入库前的处理。
+
+    - html（富文本）：沿用 nh3 白名单消毒（主站 v-html 直接渲染）。
+    - markdown：源码原样入库——nh3 会转义/剥除 Markdown 里的尖括号内容，
+      破坏代码块等语法；XSS 由前端 DOMPurify 在渲染时拦截。
+    """
+    if content_type == "markdown":
+        return content
+    return _sanitize_content(content)
+
+
 def _now_iso() -> str:
     return datetime.now(_TZ).strftime("%Y-%m-%dT%H:%M:%S")
 
@@ -60,7 +72,8 @@ async def create_announcement(db: AsyncSession, data: AnnouncementCreate) -> Ann
     now = _now_iso()
     obj = Announcement(
         title=data.title,
-        content=_sanitize_content(data.content),
+        content=_prepare_content(data.content, data.content_type),
+        content_type=data.content_type,
         is_published=data.is_published,
         creator=data.creator,
         publish_time=_normalize_publish_time(data.publish_time),
@@ -133,7 +146,9 @@ async def update_announcement(
             update_data["publish_time"]
         )
     if update_data.get("content") is not None:
-        update_data["content"] = _sanitize_content(update_data["content"])
+        # 内容格式未随本次更新传入时，沿用该行已有格式
+        effective_type = update_data.get("content_type") or obj.content_type
+        update_data["content"] = _prepare_content(update_data["content"], effective_type)
     for key, value in update_data.items():
         setattr(obj, key, value)
     obj.update_time = _now_iso()
@@ -161,3 +176,35 @@ async def add_watch_count(db: AsyncSession, announcement_id: int) -> bool:
     )
     await db.commit()
     return result.rowcount > 0
+
+
+async def get_prev_next(db: AsyncSession, announcement_id: int) -> dict:
+    """上一篇/下一篇导航（与列表页一致，按 id 顺序；只统计已发布公告）。
+
+    - prev（上一篇）：比当前更早（id 更小）的最近一条已发布公告
+    - next（下一篇）：比当前更新（id 更大）的最近一条已发布公告
+    边界处对应方向无公告时返回 None。
+    """
+    prev_result = await db.execute(
+        select(Announcement)
+        .where(
+            Announcement.id < announcement_id,
+            Announcement.is_published == 1,
+        )
+        .order_by(Announcement.id.desc())
+        .limit(1)
+    )
+    prev = prev_result.scalar_one_or_none()
+
+    next_result = await db.execute(
+        select(Announcement)
+        .where(
+            Announcement.id > announcement_id,
+            Announcement.is_published == 1,
+        )
+        .order_by(Announcement.id.asc())
+        .limit(1)
+    )
+    next_ = next_result.scalar_one_or_none()
+
+    return {"prev": prev, "next": next_}

@@ -3,6 +3,7 @@
 Endpoints (matching the existing Vue frontend):
   GET  /announcement/page          分页查询公告
   GET  /announcement/detail/{id}   查询公告详情
+  GET  /announcement/prev-next/{id} 上一篇/下一篇导航（已发布公告，按 id 顺序）
   POST /announcement/addWatchCount 增加公告阅读量
   POST /announcement/create        创建公告（管理员）
   PUT  /announcement/update/{id}   更新公告（管理员）
@@ -46,6 +47,7 @@ from .schemas import (
     AnnouncementCreate,
     AnnouncementUpdate,
     AnnouncementResponse,
+    PrevNextResponse,
     PageResponse,
     AddWatchCountRequest,
     CommonResponse,
@@ -54,6 +56,7 @@ from .crud import (
     create_announcement,
     get_announcement,
     get_page,
+    get_prev_next,
     update_announcement,
     delete_announcement,
     add_watch_count,
@@ -143,6 +146,16 @@ async def get_detail(
     if obj is None:
         raise HTTPException(status_code=404, detail="公告不存在")
     return obj
+
+
+# ── 上一篇/下一篇导航 ─────────────────────────────────────────
+@app.get("/announcement/prev-next/{announcement_id}", response_model=PrevNextResponse)
+async def get_prev_next_endpoint(
+    announcement_id: int,
+    db=Depends(get_db),
+):
+    """上一篇/下一篇（已发布公告，按 id 顺序；prev=更早，next=更新）。"""
+    return await get_prev_next(db, announcement_id)
 
 
 # ── 增加阅读量 ────────────────────────────────────────────────

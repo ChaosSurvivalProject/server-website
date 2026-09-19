@@ -42,7 +42,8 @@ class Announcement(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)  # 原始内容：contentType=html 时为富文本 HTML，markdown 时为 Markdown 源码
+    content_type: Mapped[str] = mapped_column(String(20), nullable=False, default="html")  # 'html'=富文本, 'markdown'=Markdown（渲染在前端）
     is_published: Mapped[int] = mapped_column(Integer, default=0)  # 0=draft, 1=published
     creator: Mapped[str] = mapped_column(String(100), nullable=False)
     publish_time: Mapped[str] = mapped_column(String(30), nullable=False)  # ISO format string
@@ -84,9 +85,11 @@ class User(Base):
 
 # ── 存量表轻量迁移 ────────────────────────────────────────────────
 # SQLite 下 SQLAlchemy 的 create_all 不会给已有表补新列，
-# 因此对 users.status / users.nickname（用户管理功能引入）做幂等补列
+# 因此对 users.status / users.nickname（用户管理功能引入）、
+# announcements.content_type（公告 Markdown 支持引入）做幂等补列
 # （同步连接直接执行 PRAGMA / ALTER，不经异步池）。
 _user_extra_migrated = False
+_announcement_content_migrated = False
 
 
 def migrate_user_extra_columns() -> None:
@@ -120,6 +123,40 @@ def migrate_user_extra_columns() -> None:
     except Exception as e:
         # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
         logger.warning("users 表 status/nickname 列迁移检查失败: %s", e)
+
+
+def migrate_announcement_content_columns() -> None:
+    """announcements 表补 content_type 列（幂等；已存在的表结构不受影响）。
+
+    存量行经 ALTER 的 DEFAULT 'html' 自动归为富文本格式，
+    保证 Markdown 功能上线前后端行为不变。
+    """
+    global _announcement_content_migrated
+    if _announcement_content_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [
+                row[1] for row in con.execute("PRAGMA table_info('announcements')")
+            ]
+            if "content_type" not in col_names:
+                con.execute(
+                    "ALTER TABLE announcements ADD COLUMN content_type VARCHAR(20) "
+                    "NOT NULL DEFAULT 'html'"
+                )
+                con.commit()
+                logger.info(
+                    "已为 announcements 表补充 content_type 列（'html'=富文本, 'markdown'=Markdown）"
+                )
+        finally:
+            con.close()
+        _announcement_content_migrated = True
+    except Exception as e:
+        # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
+        logger.warning("announcements 表 content_type 列迁移检查失败: %s", e)
 
 
 class FactionBetaApplication(Base):
@@ -159,3 +196,4 @@ async def init_db():
         await conn.run_sync(Base.metadata.create_all)
     # 存量库补列（新库 create_all 已含新列，迁移幂等直接跳过）
     migrate_user_extra_columns()
+    migrate_announcement_content_columns()
