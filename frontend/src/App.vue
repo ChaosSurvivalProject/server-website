@@ -8,12 +8,36 @@
     <!-- 页脚 -->
     <footer>
       <div class="container">
-        <p>
-          <span style="font-weight: bold">©</span> 2025-2026 星穹旅驿 Minecraft服务器
-          | 本服务器与Mojang及Microsoft无关
-        </p>
-        <p>联系我们: 3896301937@qq.com</p>
-        <p>加入QQ群: 942235691</p>
+        <div class="footer-row">
+          <div class="footer-nav-col">
+            <span class="footer-nav-title">本项目由快跑云集团扶持</span>
+            <p><a href="https://www.fastrun.com.cn/" target="_blank" rel="noopener"><img :src="fastRunLogo" alt="快跑云" class="footer-logo"></a></p>
+            <p>快跑云集团 · 基础AIDC服务商</p>
+            <p>定义下一代AIDC算力基线</p>
+          </div>
+          <div class="footer-nav-col">
+            <span class="footer-nav-title">服务器信息</span>
+            <a href="/" class="footer-nav-link">首页</a>
+            <a href="/announcements" class="footer-nav-link">服务器公告</a>
+          </div>
+          <div class="footer-nav-col">
+            <span class="footer-nav-title">活动信息</span>
+            <a href="/faction-beta" class="footer-nav-link">阵营内测</a>
+          </div>
+          <div class="footer-nav-col">
+            <span class="footer-nav-title">联系我们</span>
+            <a href="mailto:3896301937@qq.com" class="footer-nav-link">联系服主</a>
+            <a href="https://jq.qq.com/?_wv=1027194278" class="footer-nav-link">加入我们</a>
+          </div>
+        </div>
+        <div class="footer-info">
+          <p>
+            <span style="font-weight: bold">©</span> 2025-2026 星穹旅驿 Minecraft服务器
+            | 本服务器与Mojang及Microsoft无关
+          </p>
+          <p>联系我们: 3896301937@qq.com</p>
+          <p>加入QQ群: 942235691</p>
+        </div>
       </div>
     </footer>
     <!-- 返回顶部按钮 -->
@@ -24,6 +48,7 @@
 <script>
 import NavBar from "./components/NavBar.vue";
 import BackToTop from "./components/BackToTop.vue";
+import fastRunLogo from "./assets/images/download/logo.png";
 import { authAPI } from "./api/api.js";
 import { getToken, setAuth } from "./utils/auth.js";
 
@@ -32,6 +57,9 @@ export default {
   components: {
     NavBar,
     BackToTop,
+  },
+  setup() {
+    return { fastRunLogo };
   },
   mounted() {
     // 恢复登录态：本地存有 token 时向后端校验并刷新用户信息，
@@ -212,6 +240,53 @@ footer {
   padding: 20px 0;
   font-size: 14px;
   border-top: 4px solid var(--border-color);
+}
+
+.footer-row {
+  display: flex;
+  gap: 32px;
+}
+
+.footer-nav-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: flex-start;
+}
+
+.footer-nav-title {
+  color: #aaa;
+  font-size: 12px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+
+.footer-nav-link {
+  color: #ccc;
+  text-decoration: none;
+  font-size: 14px;
+  transition: color 0.3s ease;
+}
+
+.footer-nav-link:hover {
+  color: white;
+}
+
+.footer-info {
+  text-align: center;
+  margin-top: 16px;
+}
+
+.footer-logo {
+  height: 48px;
+  vertical-align: middle;
+  margin: 4px 0;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 6px 10px;
+  border-radius: 4px;
 }
 
 /* 响应式设计 */
