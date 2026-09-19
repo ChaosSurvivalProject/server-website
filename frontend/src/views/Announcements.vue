@@ -111,7 +111,7 @@
             >
           </div>
           <div class="announcement-content">
-            {{ truncateContent(announcement.content) }}
+            {{ truncateContent(announcement.rawContent, announcement.contentType) }}
           </div>
         </div>
 
@@ -167,6 +167,7 @@
 <script>
 import { announcementAPI } from "../api/api.js";
 import { formatDateTime } from "../utils/date.js";
+import { renderAnnouncementContent } from "../utils/markdown.js";
 
 export default {
   name: "Announcements",
@@ -197,11 +198,13 @@ export default {
       try {
         const res = await announcementAPI.queryPage(page, pageSize);
         // 转换接口返回的数据格式为组件需要的格式
+        // rawContent/contentType 回退兼容后端尚未更新时返回的旧字段 content
         this.announcements = res.items.map((item) => ({
           id: item.id,
           date: formatDateTime(item.publishTime),
           title: item.title,
-          content: item.content,
+          rawContent: item.rawContent ?? item.content ?? "",
+          contentType: item.contentType || "html",
           isPublished: item.isPublished,
           creator: item.creator,
           readCount: item.readCount,
@@ -223,9 +226,12 @@ export default {
     goToAnnouncementDetail(announcementId) {
       this.$router.push(`/announcements/${announcementId}`);
     },
-    truncateContent(content) {
-      // 去除HTML标签和换行符，并解码富文本编辑器产出的常见实体（如 &nbsp;）
-      const plainText = content
+    truncateContent(rawContent, contentType) {
+      // Markdown 先在前端渲染为 HTML，再与富文本走同一套剥标签/解码/截断逻辑
+      let html = renderAnnouncementContent(rawContent, contentType);
+      // 去掉代码块 header（语言标签 + 复制按钮），避免"js""复制"等混进摘要纯文本
+      html = html.replace(/<div class="announcement-code-header">[\s\S]*?<\/div>/g, "");
+      const plainText = html
         .replace(/<[^>]*>/g, "")
         .replace(/&nbsp;/gi, " ")
         .replace(/&amp;/gi, "&")

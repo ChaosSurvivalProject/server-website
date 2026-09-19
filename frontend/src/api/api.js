@@ -80,7 +80,8 @@ export const serverMonitorAPI = {
   }
 };
 
-// 公告API
+// 公告API（契约参照 backend/app/schemas.py：正文对外字段为 rawContent 原始内容 +
+// contentType 内容格式（'html'=富文本 / 'markdown'=Markdown，Markdown 由前端渲染））
 export const announcementAPI = {
   /**
    * 获取公告列表
@@ -106,6 +107,15 @@ export const announcementAPI = {
    */
   getDetail: (announcementId) => {
     return axiosInstance.get(`/announcement/detail/${announcementId}`);
+  },
+
+  /**
+   * 获取上一篇/下一篇公告导航（已发布公告，按 id 顺序；prev=更早，next=更新）
+   * @param {number} announcementId - 公告ID
+   * @returns {Promise} - data: {prev: {id, title, publishTime} | null, next: {id, title, publishTime} | null}
+   */
+  getPrevNext: (announcementId) => {
+    return axiosInstance.get(`/announcement/prev-next/${announcementId}`);
   },
 
   /**
