@@ -31,7 +31,12 @@ marked.use({
         `<div class="announcement-code-block">\n` +
         `  <div class="announcement-code-header">` +
         `<span class="announcement-code-lang">${langLabel}</span>` +
-        `<button type="button" class="announcement-code-copy">复制</button>` +
+        // 复制按钮为纯 icon：默认双页签「copy」图标，使用方切 .copied 类后显示「对勾」
+        // 图标并播放成功动画（icon 切换与动画全部走 CSS，见 AnnouncementDetail.vue 非 scoped 样式）
+        `<button type="button" class="announcement-code-copy" aria-label="复制代码">\n` +
+        `      <svg class="icon-copy" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>\n` +
+        `      <svg class="icon-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"></polyline></svg>\n` +
+        `    </button>\n` +
         `</div>\n` +
         `  <pre class="hljs"><code class="language-${langLabel}">${highlighted}</code></pre>\n` +
         `</div>\n`

@@ -47,7 +47,11 @@
             >{{ announcement.readCount }}人已查看</span
           >
         </div>
-        <div class="announcement-content" v-html="renderedContent"></div>
+        <div
+          class="announcement-content"
+          v-html="renderedContent"
+          @click="handleContentClick"
+        ></div>
 
         <!-- 上一篇/下一篇导航（仅已发布公告之间导航，边界方向无对应公告时不渲染） -->
         <div
@@ -125,11 +129,10 @@ export default {
     this.addWatchCount();
     this.fetchAnnouncementDetail();
     this.fetchPrevNext();
-    // 在公告内容容器上挂一次 click 委托（内容异步渲染完成前就绑定好）
-    this.$nextTick(() => {
-      const container = this.$el.querySelector(".announcement-content");
-      if (container) container.addEventListener("click", this.handleContentClick);
-    });
+    // 代码块复制按钮的 click 委托绑定在模板 .announcement-content 的 @click 上：
+    // 该容器在 loading 结束后（v-else-if="announcement"）才渲染，模板事件会自动跟随
+    // 组件实例挂载/销毁，无需（也不能）在 mounted 里用 JS addEventListener——
+    // 那时容器还没渲染，querySelector 恒为 null，监听永远挂不上（复制无效的根因）
   },
   watch: {
     // 从上一篇/下一篇跳转到另一条详情时，路由复用本组件、仅 id 变化，
@@ -143,9 +146,7 @@ export default {
     },
   },
   beforeUnmount() {
-    // 移除事件委托，防止内存泄漏
-    const container = this.$el?.querySelector(".announcement-content");
-    if (container) container.removeEventListener("click", this.handleContentClick);
+    // 内容容器的事件由模板 @click 管理，随组件销毁自动解绑；仅需清理复制成功计时器
     clearTimeout(this._copyBtnTimer);
   },
   methods: {
@@ -198,9 +199,9 @@ export default {
       this.$router.go(-1);
     },
     /**
-     * 代码块复制按钮（事件委托）：v-html 注入的节点是运行时插入的，无法用模板事件绑定，
-     * 因此监听 .announcement-content 容器上的 click，命中 .announcement-code-copy 时复制
-     * 相邻 pre code 的纯文本，按钮文案临时切换为"已复制"。
+     * 代码块复制按钮（模板 @click 事件委托）：命中 .announcement-code-copy 时复制相邻
+     * pre code 的纯文本，按钮切 .copied 类 → copy 图标换成对勾图标并播放成功动画，
+     * 1500ms 后还原（若用户期间又点一次，先清旧计时器、强制重放动画）
      */
     handleContentClick(event) {
       const btn = event.target.closest?.(".announcement-code-copy");
@@ -208,15 +209,16 @@ export default {
       const block = btn.closest(".announcement-code-block");
       const code = block?.querySelector("pre code");
       if (!code) return;
+      // 已处于「已复制」态时连点：清旧计时器并强制重放成功动画（移除类 + 强制回流）
+      clearTimeout(this._copyBtnTimer);
+      if (btn.classList.contains("copied")) {
+        btn.classList.remove("copied");
+        void btn.offsetWidth;
+      }
       copyText(code.textContent || "")
         .then(() => {
-          const original = btn.textContent;
-          btn.textContent = "已复制";
           btn.classList.add("copied");
-          // 1500ms 后恢复按钮文案（若用户期间又点一次，先清掉旧计时器再重置）
-          clearTimeout(this._copyBtnTimer);
           this._copyBtnTimer = setTimeout(() => {
-            btn.textContent = original;
             btn.classList.remove("copied");
           }, 1500);
         })
@@ -577,15 +579,24 @@ a.pagenav-item:hover {
   text-transform: uppercase;
 }
 
+/* icon 按钮：默认显示 copy 图标，.copied 时换对勾并播放成功动画（节点由 v-html 注入，必须非 scoped） */
 .announcement-code-block .announcement-code-copy {
-  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
   color: #666;
   background-color: rgba(0, 0, 0, 0.05);
   border: none;
   border-radius: 4px;
-  padding: 3px 10px;
   cursor: pointer;
   transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.announcement-code-block .announcement-code-copy svg {
+  width: 14px;
+  height: 14px;
 }
 
 .announcement-code-block .announcement-code-copy:hover {
@@ -593,9 +604,49 @@ a.pagenav-item:hover {
   color: #333;
 }
 
+.announcement-code-block .announcement-code-copy .icon-check {
+  display: none;
+}
+
 .announcement-code-block .announcement-code-copy.copied {
   color: #4caf50;
   background-color: rgba(76, 175, 80, 0.15);
+  animation: copy-btn-pulse 0.45s ease;
+}
+
+.announcement-code-block .announcement-code-copy.copied .icon-copy {
+  display: none;
+}
+
+.announcement-code-block .announcement-code-copy.copied .icon-check {
+  display: block;
+  animation: copy-check-pop 0.3s ease;
+}
+
+@keyframes copy-btn-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes copy-check-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .announcement-code-block pre {
