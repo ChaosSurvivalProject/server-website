@@ -1,9 +1,13 @@
 import { http } from "@/utils/http";
 
+export type AnnouncementContentType = "html" | "markdown";
+
 export type AnnouncementItem = {
   id: number;
   title: string;
-  content: string;
+  /** 原始内容：contentType=html 时为富文本 HTML，markdown 时为 Markdown 源码 */
+  rawContent: string;
+  contentType: AnnouncementContentType;
   isPublished: number;
   creator: string;
   publishTime: string;

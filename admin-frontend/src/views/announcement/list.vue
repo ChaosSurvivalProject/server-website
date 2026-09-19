@@ -110,6 +110,12 @@ onMounted(() => {
         </template>
       </el-table-column>
       <el-table-column prop="creator" label="发布人" width="100" />
+      <el-table-column label="格式" width="100">
+        <template #default="{ row }">
+          <el-tag v-if="row.contentType === 'markdown'" type="primary" size="small">Markdown</el-tag>
+          <el-tag v-else type="info" size="small">富文本</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="状态" width="80">
         <template #default="{ row }">
           <el-tag v-if="row.isPublished" type="success" size="small">已发布</el-tag>
