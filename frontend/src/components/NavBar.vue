@@ -105,9 +105,6 @@
         <router-link to="/announcements" class="nav-icon"
           ><i class="fa-solid fa-bullhorn"></i>服务器公告</router-link
         >
-        <router-link to="/faction-beta" class="nav-icon"
-          ><i class="fa-solid fa-flag"></i>阵营内测</router-link
-        >
         <!-- 论坛入口开发中：已移除原外链地址，保留不可点击的占位提示 -->
         <span class="nav-icon nav-icon-dev" title="开发中，敬请期待"
           ><i class="fa-solid fa-users"></i>星穹旅驿社区（开发中）</span
@@ -125,11 +122,6 @@
           <li>
             <router-link to="/announcements" @click="closeMenu()"
               ><i class="fa-solid fa-bullhorn"></i>服务器公告</router-link
-            >
-          </li>
-          <li>
-            <router-link to="/faction-beta" @click="closeMenu()"
-              ><i class="fa-solid fa-flag"></i>阵营内测</router-link
             >
           </li>
           <li>
@@ -399,7 +391,7 @@ nav {
 }
 
 /* 窄桌面（≤1024px，未到移动端断点）：桌面菜单收起不可用的「社区开发中」占位项，
-   保证加入「阵营内测」后 4 个真实菜单项仍不与左侧 logo 重叠 */
+   保证菜单项仍不与左侧 logo 重叠（「阵营内测」已改为首页顶部横幅，不再是菜单项） */
 @media (max-width: 1024px) {
   .nav-right .nav-icon-dev {
     display: none;

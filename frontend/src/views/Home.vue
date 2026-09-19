@@ -1,5 +1,16 @@
 <template>
   <div class="home-container">
+    <!-- 阵营内测提示横幅：替代原「阵营内测」顶部菜单项，展示于首页内容区最上方（常驻显示，不可关闭）；
+         外层整条白底与下方 home-hero 的白色背景衔接，避免页面灰底在横幅两侧露出 -->
+    <div class="faction-banner-wrap">
+      <div class="faction-banner">
+        <span class="faction-banner-text">
+          🔔 全新阵营对战玩法内测开启，名额有限 · 申请时间 2026-09-21 ~ 2026-10-07
+          <router-link to="/faction-beta" class="faction-banner-link">申请内测</router-link>
+        </span>
+      </div>
+    </div>
+
     <!-- 横幅区域 -->
     <div class="home-hero" id="home-hero">
       <div class="hero-content">
@@ -1152,6 +1163,65 @@ export default {
   .forum-link {
     padding: 10px 20px;
     font-size: 14px;
+  }
+}
+
+/* ── 阵营内测提示横幅（首页内容区最上方，与菜单栏、下方内容保持间距；常驻显示） ── */
+/* 外层整条白底：与下方 home-hero 白色背景衔接（页面 body 是 #f0f0f0 灰底，不包白底会把白底"挤下去"） */
+.faction-banner-wrap {
+  background-color: white;
+  /* 顶部 16px 与绿色菜单栏保持间距（白底内）；下方间距由 home-hero 的 padding-top 提供 */
+  padding: 16px 0 0;
+}
+
+.faction-banner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 80%;
+  margin: 0 auto;
+  padding: 12px 18px;
+  background-color: #3b82f6;
+  color: white;
+  font-size: 15px;
+  font-weight: 500;
+  text-align: center;
+  white-space: nowrap;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+}
+
+.faction-banner-text {
+  letter-spacing: 0.5px;
+}
+
+.faction-banner-link {
+  margin-left: 8px;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.faction-banner-link:hover {
+  opacity: 0.9;
+}
+
+/* 移动端：横幅占满屏幕宽度，文字允许换行 */
+@media (max-width: 768px) {
+  .faction-banner-wrap {
+    padding: 10px 0 0;
+  }
+
+  .faction-banner {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 13px;
+    white-space: normal;
+    border-radius: 0;
+    box-shadow: none;
   }
 }
 
