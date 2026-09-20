@@ -196,7 +196,19 @@ export default {
       }
     },
     goBack() {
-      this.$router.go(-1);
+      // 按钮语义是「返回公告列表」，不能用 router.go(-1)：
+      // 经上一篇/下一篇在详情间跳转时，历史栈里会压入多条详情记录
+      // （/announcements → /announcements/A → /announcements/B），
+      // go(-1) 只回退一步，落在上一篇公告而非列表。
+      // 上一条历史记录恰好是列表时用 back()（还原列表滚动位置、不压重复记录）；
+      // 否则（历史栈顶不是列表，如直接打开详情链接）显式 push 到列表。
+      // window.history.state.back 由 vue-router 4 维护，值为上一条路由的完整 href
+      const backPath = window.history.state?.back?.split("?")[0];
+      if (backPath === "/announcements") {
+        this.$router.back();
+      } else {
+        this.$router.push({ name: "Announcements" });
+      }
     },
     /**
      * 代码块复制按钮（模板 @click 事件委托）：命中 .announcement-code-copy 时复制相邻
