@@ -1,12 +1,13 @@
 # 星穹旅驿 · 服务器网站
 
-星穹旅驿 Minecraft 服务器的官方网站，单仓库（monorepo）包含三个子项目：
+星穹旅驿 Minecraft 服务器的官方网站，单仓库（monorepo）包含四个子项目：
 
 | 模块 | 说明 | 技术栈 |
 |------|------|--------|
 | `frontend/` | 官网前端（首页、公告） | Vue 3 + Vite + Vue Router + Axios + ECharts |
-| `backend/` | 官网后端（公告管理、服务器状态） | FastAPI + SQLAlchemy (async) + SQLite (aiosqlite) + Pydantic v2 |
+| `backend/` | 官网后端（公告管理、用户认证、服务器状态） | FastAPI + SQLAlchemy (async) + SQLite (aiosqlite) + Pydantic v2 |
 | `wiki/` | 服务器文档站 | VitePress |
+| `admin-frontend/` | 后台管理前端（公告 / 服务器地址 / 用户 / 阵营内测申请管理） | Vue 3 + TypeScript + Element Plus + Pinia（[pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)） |
 
 ## 项目结构
 
@@ -50,6 +51,23 @@ server-website/
 │   ├── develop/                 # 服务器建设（发展路线、Issues）
 │   ├── index.md                 # 首页（hero 布局）
 │   └── package.json
+├── admin-frontend/              # 后台管理前端（pure-admin-thin，部署在 /admin/）
+│   ├── src/
+│   │   ├── api/                 # 接口封装（announcement / server / user / factionBeta / routes）
+│   │   ├── components/          # 通用组件（RePureTableBar、ReDialog、ReAuth 等 pure-admin 封装）
+│   │   ├── config/              # 平台配置读取层（Title 等，值来自 public/platform-config.json）
+│   │   ├── directives/          # 自定义指令（auth / perms / ripple / longpress 等）
+│   │   ├── layout/              # 后台框架（侧边菜单 + 顶栏 + 多标签页）
+│   │   ├── plugins/             # Element Plus / ECharts 全局注册
+│   │   ├── router/              # 路由与守卫（modules/home.ts 业务路由、remaining.ts 登录与错误页）
+│   │   ├── store/modules/       # Pinia 模块（user 存 token/role、permission、multiTags 等）
+│   │   ├── utils/http/          # PureHttp：axios 封装（JWT 注入、{code,message,data} 解包、错误提取）
+│   │   ├── views/               # 页面（login、announcement、server、faction-beta、user、error）
+│   │   └── main.ts              # 应用入口
+│   ├── .env / .env.development / .env.production   # 端口、base 路径、路由模式
+│   ├── public/platform-config.json                 # 平台标题等运行时配置
+│   ├── vite.config.ts           # dev proxy 把 API 前缀转发到后端 :5000
+│   └── package.json
 └── README.md
 ```
 
@@ -90,6 +108,17 @@ npm run preview  # 本地预览构建产物
 
 站点以 `/wiki` 为 base 部署（见 `.vitepress/config.mts`）。
 
+### 后台管理（admin-frontend）
+
+```bash
+cd admin-frontend
+pnpm install
+pnpm dev      # 开发服务器（端口取 .env.development 的 VITE_PORT，当前 3005，覆盖 .env 的 8848）
+pnpm build    # 构建到 dist/（base: /admin/，hash 路由）
+```
+
+开发模式下 API 请求经 `vite.config.ts` 的 proxy（`/announcement`、`/monitor`、`/auth`、`/faction-beta`、`/health`）转发到后端 `http://localhost:5000`。登录账号即后端自动初始化的系统管理员（见「认证」一节）。
+
 ## 后端 API
 
 ### 公告
@@ -97,7 +126,9 @@ npm run preview  # 本地预览构建产物
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/announcement/page` | 分页查询公告（参数: page, pageSize, isPublished） |
+| GET | `/announcement/admin/page` | 管理员分页查询（**需管理员**；含草稿，参数: page, pageSize） |
 | GET | `/announcement/detail/{id}` | 查询公告详情 |
+| GET | `/announcement/prev-next/{id}` | 上一篇/下一篇导航（仅已发布公告按 id 序，跳过草稿；返回 `brief={id,title,publishTime}`） |
 | POST | `/announcement/addWatchCount` | 阅读量 +1（body: `{announcementId}`） |
 | POST | `/announcement/create` | 创建公告（**需管理员**） |
 | PUT | `/announcement/update/{id}` | 更新公告（部分更新，**需管理员**） |
@@ -154,6 +185,13 @@ npm run preview  # 本地预览构建产物
 |------|------|------|
 | GET | `/monitor/servers` | 游戏服务器地址列表（前端展示的唯一数据源） |
 | GET | `/monitor/server-info/{serverId}` | 服务器在线状态（TCP 探测，供首页在线状态组件） |
+| GET | `/monitor/admin/servers` | 管理员获取全部服务器（**需管理员**） |
+| POST | `/monitor/admin/servers` | 新增服务器（**需管理员**） |
+| PUT | `/monitor/admin/servers/{id}` | 更新服务器（**需管理员**） |
+| DELETE | `/monitor/admin/servers/{id}` | 删除服务器（**需管理员**） |
+| POST | `/monitor/admin/servers/{id}/primary` | 设为主服务器（**需管理员**） |
+
+- 服务器地址的增删改经上述 admin 接口（后台「服务器地址管理」页调用），直接读写内存中的 `SERVERS` 注册表（`backend/app/monitor.py`），**改动在进程重启后不保留**（持久化待做）；不能删除主服务器，设主 / 设 `isPrimary` 会自动清除其他服务器的主标记，全表始终至多一个主服务器。
 
 ### 其他
 
@@ -254,30 +292,57 @@ docker compose up -d --build
 
 ## 后台管理（admin-frontend）
 
-独立的后台管理前端，基于 [pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)（Vue 3 + TypeScript + Element Plus + Pinia + Vite + TailwindCSS），部署在 `/admin/` 路径下。
+独立的后台管理前端，基于 [pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)（Vue 3 + TypeScript + Element Plus + Pinia + TailwindCSS 4 + Vite），生产部署在 `/admin/` 路径下，**hash 路由模式**。
 
-### 模块与页面
+### 页面与路由
 
-| 路径 | 页面 | 说明 |
+业务路由在 `src/router/modules/home.ts` 中静态注册（登录/错误页在 `remaining.ts`），根路由 `/` 登录后重定向到 `/announcement/list`。后端未实现 `/get-async-routes` 动态菜单接口，动态路由为空，仅静态路由生效。
+
+| 路由（hash） | 页面 | 说明 |
 |------|------|------|
-| `/admin/login` | 登录页 | 管理员 JWT 登录 |
-| `/admin/announcement/list` | 公告管理 | 公告列表（分页、新建/编辑/删除） |
-| `/admin/announcement/edit` | 公告编辑 | 新建或编辑公告（标题、内容、发布人、发布时间、状态） |
-| `/admin/server/list` | 服务器地址管理 | 服务器列表（新建/编辑/删除/设为主） |
-| `/admin/server/edit` | 服务器编辑 | 新建或编辑服务器（名称、地址、端口、是否主服务器） |
-| `/admin/faction-beta/list` | 阵营内测申请 | 内测申请列表（状态过滤、详情、通过/拒绝、删除） |
-| `/admin/user/list` | 用户管理 | 用户列表（新增/编辑/启用/禁用/软删除/恢复、状态过滤） |
+| `/login` | 登录页 | 用户名 + 密码（JWT；无验证码） |
+| `/announcement/list` | 公告管理 | 公告列表（分页，含草稿；新建/编辑/删除） |
+| `/announcement/edit` | 公告编辑 | 新建或编辑公告（标题、正文、发布人、发布时间、发布状态；正文按 `contentType` 切换 wangEditor 富文本 / md-editor-v3 Markdown，富文本图片经 `/announcement/upload/image` 上传） |
+| `/server/list` | 服务器地址管理 | 服务器列表（新增/编辑/删除/设为主服务器；数据存内存注册表，重启不保留，见「服务器监控」） |
+| `/server/edit` | 服务器编辑 | 新建或编辑服务器（名称、地址、端口、是否主服务器） |
+| `/faction-beta/list` | 阵营内测申请 | 申请列表（状态过滤、详情弹窗、通过/拒绝、删除） |
+| `/user/list` | 用户管理 | 用户列表（新增/编辑/启用/禁用/软删除/恢复、状态过滤；编辑模式密码留空=不修改） |
+| `/access-denied` `/server-error` | 403 / 500 | 全屏错误页 |
 
-### 开发命令
+浏览器 URL 带部署前缀与 hash：开发 `http://localhost:3005/#/announcement/list`，生产 `http://<host>/admin/#/announcement/list`。
+
+### HTTP 层（`src/utils/http/`）与 API 模块（`src/api/`）
+
+- `utils/http/index.ts`（PureHttp）— axios 封装：`baseURL` 留空（同源相对路径，dev 由 Vite proxy、prod 由 Nginx 反代到后端）；请求拦截器对 `/auth/login`、`/auth/register`、`/auth/captcha` 白名单放行，其余自动携带 `Authorization: Bearer <token>`；响应拦截器统一解包 `{code, message, data}`（`code=0` 直接返回 `data`），业务错误与 HTTP 非 2xx 都把 FastAPI `detail` 或包络 `message` 提取到 `error.message`——页面 catch 里直接 `ElMessage.error(e.message)`，不要重复解析错误体；401（HTTP 401 或包络 401/1001）自动清除登录态并跳回登录页
+- `api/` — `announcement.ts` / `server.ts` / `user.ts` / `factionBeta.ts` 分别封装对应 admin 接口，TS 类型与后端契约一致；**新增或修改后端接口时必须同步主站契约参照 `frontend/src/api/api.js` 与本目录**（见 AGENTS.md 契约规约）
+- 传 `FormData`（文件上传）时必须显式加 `Content-Type: multipart/form-data` 请求头，否则 axios 会把 FormData 序列化成 JSON，后端解析不到字段直接 422
+
+### 登录与鉴权
+
+- 登录走 `/auth/login`，token 与用户信息（含 `role`）存 localStorage（`utils/auth.ts`）；路由守卫（`router/index.ts`）对未登录访问一律重定向 `/login`，已登录访问 `/login` 保持当前页
+- 后端所有 admin 接口要求 `role=admin`，普通用户 token 调用返回 403
+
+### 环境配置（`admin-frontend/.env*`）
+
+| 变量 | 说明 | dev（`.env.development`） | prod（`.env.production`） |
+|------|------|--------------------------|---------------------------|
+| `VITE_PORT` | dev server 端口（`.env` 默认 8848，被覆盖） | `3005` | — |
+| `VITE_PUBLIC_PATH` | 构建基础路径 | `/` | `/admin/` |
+| `VITE_ROUTER_HISTORY` | 路由模式 | `hash` | `hash` |
+| `VITE_CDN` / `VITE_COMPRESSION` | CDN 依赖 / 构建压缩 | — | `false` / `none` |
+
+页面标题等运行时配置在 `public/platform-config.json`（`Title` 等，经 `src/config/index.ts` 读取）。
+
+### 开发与部署
 
 ```bash
 cd admin-frontend
-pnpm dev      # 开发服务器（:9528，API 代理到后端 :5000）
-pnpm build    # 构建到 dist/
+pnpm install
+pnpm dev        # 开发服务器（:3005，API 经 vite proxy 转发到后端 :5000）
+pnpm build      # 构建到 dist/（base: /admin/）
+pnpm typecheck  # tsc + vue-tsc 类型检查
 ```
 
-### 部署
-
-- 开发模式：Vite dev server（:9528），API 通过 `vite.config.ts` 中的 proxy 转发到后端 FastAPI（:5000）
-- 生产模式：`pnpm build` → `dist/`，由 Nginx 将 `/admin/` 路径反向代理到 `dist/` 目录
-- 管理员入口：主站已登录管理员点击头像下拉菜单 → 「后台管理」（仅管理员角色可见）
+- 开发模式：Vite dev server（:3005），`vite.config.ts` 的 proxy 把 `/announcement`、`/monitor`、`/auth`、`/faction-beta`、`/health` 转发到后端 FastAPI（:5000）
+- 生产模式：`pnpm build` → `dist/`，由 Nginx 挂在 `/admin/` 路径下；hash 路由刷新无需 `try_files` 兜底，API 请求为同源相对路径，命中 Nginx 既有反代规则
+- 管理员入口：主站已登录管理员点击头像下拉菜单 → 「后台管理」（仅管理员角色可见，URL 来自 `frontend` 的 `VITE_ADMIN_URL`，默认 `/admin`）
