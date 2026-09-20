@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# 后端密钥配置（含 LLM / Embedding API Key，禁止提交）
+backend/.env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

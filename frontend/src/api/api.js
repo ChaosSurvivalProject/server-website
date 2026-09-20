@@ -1,4 +1,5 @@
 import axiosInstance from './axiosInstance';
+import McConfig from '../config/mc-config.js';
 
 // 认证API（登录 / 注册 / 滑块验证码 / 当前用户）
 export const authAPI = {
@@ -151,10 +152,67 @@ export const factionBetaAPI = {
   }
 };
 
+// 客服 API（智能客服 P0）
+// 注意：/kb/chat 是 SSE 流式接口，浏览器端 axios 不支持读取 POST 响应的增量 body，
+// 因此这里用 fetch + ReadableStream 实现（baseURL 仍取自 McConfig，与其他接口保持一致）。
+// 该接口是全项目唯一不返回 {code, message, data} 包络的接口，
+// 帧协议见 docs/智能客服P0落地方案.md §4.3
+export const chatAPI = {
+  /** 客服元信息：data: {enabled, title, greeting, faq, model} */
+  getInfo: () => axiosInstance.get('/kb/info'),
+
+  /**
+   * 流式问答。逐帧回调 onEvent(frame)，帧形如：
+   *   {sources: [{id, title, sourceType, score}]}   首帧固定
+   *   {reasoning: "..."} / {delta: "..."}           交错出现
+   *   {fallback: true} / {error: "..."}             可选
+   * 收尾以流结束（服务端保证发 [DONE]，此处作为普通帧结束处理）为准。
+   * @param {{message: string, history?: Array, signal?: AbortSignal, onEvent: Function}} options
+   */
+  streamChat: async ({ message, history = [], signal, onEvent }) => {
+    const url = `${McConfig.baseApiURL}/kb/chat`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, history }),
+      signal,
+    });
+    if (!res.ok) {
+      // 流开始前的错误走标准 HTTP：FastAPI detail / 包络 message（项目统一错误口径）
+      let msg = `请求失败：${res.status}`;
+      try {
+        const j = await res.json();
+        if (Array.isArray(j.detail)) msg = j.detail[0]?.msg || msg; // Pydantic 校验错误
+        else msg = j.detail || j.message || msg;
+      } catch {}
+      throw new Error(msg);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const frames = buf.split('\n\n');
+      buf = frames.pop() || '';                    // 末段可能不完整，留到下一轮
+      for (const frame of frames) {
+        for (const line of frame.split('\n')) {
+          if (!line.startsWith('data:')) continue;  // 忽略 ": ping" 保活注释
+          const payload = line.slice(5).trim();
+          if (!payload || payload === '[DONE]') continue;
+          try { onEvent(JSON.parse(payload)); } catch { /* 单帧解析失败不中断整条流 */ }
+        }
+      }
+    }
+  },
+};
+
 // 导出所有API
 export default {
   auth: authAPI,
   serverConfig: serverConfigAPI,
   serverMonitor: serverMonitorAPI,
-  factionBeta: factionBetaAPI
+  factionBeta: factionBetaAPI,
+  chat: chatAPI
 };

@@ -42,24 +42,30 @@
     </footer>
     <!-- 返回顶部按钮 -->
     <BackToTop />
+    <!-- 智能客服悬浮组件（VITE_CHAT_WIDGET_ENABLED 控制前端开关，后端 /kb/info enabled 为二级开关） -->
+    <ChatWidget v-if="chatWidgetEnabled" />
   </div>
 </template>
 
 <script>
 import NavBar from "./components/NavBar.vue";
 import BackToTop from "./components/BackToTop.vue";
+import ChatWidget from "./components/ChatWidget.vue";
 import fastRunLogo from "./assets/images/download/logo.png";
 import { authAPI } from "./api/api.js";
 import { getToken, setAuth } from "./utils/auth.js";
+import McConfig from "./config/mc-config.js";
 
 export default {
   name: "App",
   components: {
     NavBar,
     BackToTop,
+    ChatWidget,
   },
   setup() {
-    return { fastRunLogo };
+    // Options API 下模板绑定的静态资源/配置必须经 setup 显式返回
+    return { fastRunLogo, chatWidgetEnabled: McConfig.chatWidget.enabled };
   },
   mounted() {
     // 恢复登录态：本地存有 token 时向后端校验并刷新用户信息，

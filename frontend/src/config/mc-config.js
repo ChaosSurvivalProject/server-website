@@ -25,6 +25,13 @@ const McConfig = {
     // Wiki 入口：相对路径或绝对路径，默认 /wiki/（VitePress 构建产物）；
     // 开发模式由 .env.development 覆盖为本地 VitePress dev server 绝对地址
     wikiUrl: env.VITE_WIKI_URL,
+    // 智能客服悬浮组件（后端总开关在 /kb/info 的 enabled，两级都开才渲染）
+    chatWidget: {
+        enabled: (env.VITE_CHAT_WIDGET_ENABLED ?? 'true') !== 'false',
+        title: env.VITE_CHAT_WIDGET_TITLE,
+        greeting: env.VITE_CHAT_WIDGET_GREETING,
+        faq: (env.VITE_CHAT_WIDGET_FAQ ?? '').split('|').map(s => s.trim()).filter(Boolean),
+    },
 }
 
 export default McConfig

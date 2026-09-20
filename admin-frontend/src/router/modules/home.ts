@@ -62,6 +62,16 @@ export default {
       }
     },
     {
+      path: "/kb/list",
+      name: "KBList",
+      component: () => import("@/views/kb/list.vue"),
+      meta: {
+        title: "知识库",
+        icon: "ep/collection",
+        showLink: true
+      }
+    },
+    {
       path: "/user/list",
       name: "UserList",
       component: () => import("@/views/user/list.vue"),

@@ -25,6 +25,9 @@ Endpoints (matching the existing Vue frontend):
   GET  /faction-beta/admin/page    管理员分页查询申请（需管理员）
   PUT  /faction-beta/admin/{id}/review  审核申请（需管理员）
   DELETE /faction-beta/admin/{id}  删除申请（需管理员）
+  GET  /kb/info                    智能客服元信息（开关 / 标题 / 欢迎语）
+  POST /kb/chat                    智能客服流式问答（SSE，唯一不走包络的接口）
+  GET/POST/DELETE /kb/admin/...    知识库管理（列表/新增/删除/切片/重建/统计，需管理员）
 """
 import os
 import uuid
@@ -37,7 +40,8 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .database import BASE_DIR, init_db, get_db, Announcement
-from .monitor import router as monitor_router
+from .monitor import router as monitor_router, load_servers
+from . import kb as kb_module
 from .auth import bootstrap
 from .auth.deps import require_admin
 from .auth.router import router as auth_router
@@ -107,6 +111,9 @@ app.include_router(auth_admin_users_router)
 # 阵营对战玩法内测资格申请
 app.include_router(faction_beta_router)
 
+# 知识库 / 智能客服（/kb/info、/kb/chat SSE、/kb/admin/*）
+app.include_router(kb_module.router)
+
 # 静态托管富文本上传的图片。
 # 生产 Nginx 已按 /announcement 前缀反代到本服务，该子路径无需额外配置即可访问。
 app.mount(
@@ -121,6 +128,10 @@ async def on_startup():
     await init_db()
     # 检测系统管理员是否初始化，未初始化则创建（密码写入临时 txt 文件）
     await bootstrap.ensure_admin()
+    # 服务器地址持久化：DB 为唯一权威，内存 SERVERS 为读缓存（表空时用默认注册表做种子）
+    await load_servers()
+    # 智能客服启动三查（总开关 / API Key / 维度一致性，只记日志不阻断）+ 预热向量索引
+    await kb_module.startup_check()
 
 
 # ── 公告分页查询 ──────────────────────────────────────────────

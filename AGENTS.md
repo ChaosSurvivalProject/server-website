@@ -49,12 +49,22 @@ pnpm build                # 产物 dist/，部署到 /admin/
 5. **布尔语义用 int**：如 `isPublished`，`0=草稿, 1=已发布`，不要改成 bool。
 6. **监控接口**：`GET /monitor/server-info/{id}` 目前是 TCP 探测的最小实现（`online/offline` + 占位字段），响应结构被首页 `OnlineCounter` 组件依赖，扩展时不能破坏现有字段。
 7. **公告正文双格式**：对外字段为 `rawContent`（原始内容）+ `contentType`（`'html'`=富文本 / `'markdown'`=Markdown，缺省 `html`；Pydantic 侧 Python 字段名仍是 `content`/`content_type`，仅 alias 对外）。`html` 行入库前经 `nh3` 消毒；`markdown` 行**原样入库**（nh3 会破坏 Markdown 语法），渲染全在前端——主站 `src/utils/markdown.js`（marked + DOMPurify）统一渲染并消毒，后台按格式切换 wangEditor / md-editor-v3。新加内容格式相关逻辑时不要绕过这两个入口。
+8. **SSE 包络例外（全项目唯一）**：`POST /kb/chat` 返回 `text/event-stream`，**不返回 `{code, message, data}` 包络**——SSE 流无法包络，这不是遗漏，不要"修正"它。帧协议见 `docs/智能客服P0落地方案.md` §4.3（首帧 `sources`、`delta`/`reasoning` 交错、`[DONE]` 收尾；流前错误走标准 HTTP + 包络口径的 `detail`，流开始后只能发 `{"error":...}` 帧）。`frontend/src/api/api.js` 的 `chatAPI.streamChat` 因此用 `fetch` + `ReadableStream` 而非 axios。
+
+## 知识库 / 智能客服规约
+
+- **wiki 是知识库的单一数据源**：`source_type='wiki'` 的文档由 `backend/kb_sync.py`（CLI，按文件 MD5 增量）维护，后台管理页对 wiki 来源只读（删除接口直接 400）；手动粘贴入库为 `manual` 来源。改动知识库一律先改 wiki，再跑脚本。
+- **索引热更新是设计点**：脚本/后台每次摄入或删除都自增 `kb_settings.index_version`，服务端每轮对话轻量 SELECT 比对版本，不同才重建内存向量索引——**服务端不需要重启**，别改成"重启生效"。
+- 检索为向量 + FTS5 trigram 双路 RRF 融合（`KB_HYBRID_ENABLED=0` 关混合）；FTS 表是**独立表**（非 external content），写入/删除时手动同步 `rowid = kb_chunks.id`，不要加触发器。
+- 限流状态在**进程内**（滑动窗口 + 并发计数），P0 按单 worker 部署；改多 worker 必须换共享存储，否则限流失效。
+- 知识库配置在 `backend/.env`（**已 gitignore，含 API Key 禁止提交**），`app/config.py` 启动期一次性读入模块级 `KB` 对象——改 `.env` 需重启进程，不要做请求级读取。
+- 流式渲染必须复用 `frontend/src/utils/markdown.js` 管线：新增的 `splitMarkdownBlocks`（lexer 切块 → 逐块 parser → DOMPurify）与整篇 parse 等价，ChatWidget 的块级 keyed 渲染 + 末块未闭合补全都建立在它之上，不要绕开另写渲染入口。
 
 ## 游戏服务器地址：单一数据源
 
-- 游戏服务器地址**只**维护在 `backend/app/monitor.py` 的 `SERVERS` 注册表中。
+- 游戏服务器地址持久化在 SQLite `servers` 表（**DB 为唯一权威**）；`backend/app/monitor.py` 的内存 `SERVERS` 字典只是读缓存，启动时 `load_servers()` 从库加载（表空时用文件内默认注册表做种子）。后台「服务器地址管理」页经 admin 接口增删改（先改内存再同步落库，失败回滚内存）。
 - **禁止在前端硬编码服务器地址**；前端一律通过 `GET /monitor/servers` 获取（env 里只保留监控接口所需的 `VITE_SERVER_ID`，经 `mc-config.js` 暴露为 `server.id`）。
-- 新增/修改服务器 = 改 `SERVERS` 一个地方。
+- 新增/修改服务器 = 后台管理页操作或调 admin 接口（持久化）；不要再改代码里的注册表。
 
 ## 前端配置规约
 
@@ -80,7 +90,7 @@ pnpm build                # 产物 dist/，部署到 /admin/
 同域单入口，Nginx 统一分发：
 
 - `/` → `frontend` 构建产物（SPA 使用 history 路由，Nginx 需配置 `try_files $uri $uri/ /index.html;`，否则刷新 `/announcements` 等深层路由会 404）
-- `/announcement`、`/monitor`、`/health` → 反代到本机 FastAPI（:5000）
+- `/announcement`、`/monitor`、`/kb`、`/health` → 反代到本机 FastAPI（:5000）；`/kb/` 的反代必须为 SSE 追加 `proxy_buffering off` + `proxy_http_version 1.1` + `proxy_set_header Connection ''` + `gzip off`（与后端 `X-Accel-Buffering: no` 两个都要，否则流式变一次性返回）
 - `/wiki/` → `wiki` 构建产物（VitePress 已按 `/wiki` base 打包）
 - `/admin/` → `admin-frontend` 构建产物（pure-admin-thin，已按 `/admin/` base 打包）
 
@@ -90,3 +100,5 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 - 后端 CORS 当前 `allow_origins=["*"]`（开发便利），生产收紧时需与同源部署方案一起评估。
 - `backend/app/monitor.py` 中 `server-info` 的 `start_time` / `end_time` / `time_period` 参数是预留参数，当前实现未使用，不要误删（前端会传）。
+- 智能客服（P0）遗留项见 `TODO.md`：真实玩家在线人数（mcstatus）、限流多 worker 共享存储、知识库自动定时任务（当前用 crontab）、检索效果看板等。
+- 生产 Nginx 的 `/kb/` SSE 反代未配置前，`/kb/chat` 在生产会被缓冲成一次性返回（本地/dev 直连 5000 不受影响）。

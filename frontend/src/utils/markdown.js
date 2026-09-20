@@ -21,10 +21,12 @@ marked.use({
         return `<code>${text.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</code>`;
       }
       const language = lang && hljs.getLanguage(lang) ? lang : null;
-      // hljs.highlight 输出的 value 已是转义后的 HTML，直接用，不再二次转义
+      // 无语言标注时按 plain text 原样输出，不调 hljs.highlightAuto：
+      // 实测 highlightAuto 1.449ms/次，是指定语言的 22.5 倍，且对半截代码
+      // 做语言嗅探会给出随机配色（决策记录 §3.3）；输出需自行做 HTML 转义
       const highlighted = language
         ? hljs.highlight(text, { language }).value
-        : hljs.highlightAuto(text).value;
+        : text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
       // 无语言标注时按 plain text 兜底（highlightAuto 对纯文本也会返回原文）
       const langLabel = language || "text";
       return (
@@ -51,4 +53,24 @@ export function renderAnnouncementContent(content, contentType) {
   // DOMPurify 默认白名单包含 class / style / data-*，div/button/span/pre/code 均在默认
   // 标签白名单内，hljs 输出的 <span class="hljs-keyword"> 等不会被剥掉，无需额外配置
   return DOMPurify.sanitize(html);
+}
+
+/**
+ * Markdown → 块级 HTML 列表（智能客服流式渲染用，ChatWidget.vue 消费）。
+ *
+ * marked.lexer 切块 → 逐块 parser 出 HTML → 过滤空块 → 每块独立过 DOMPurify 消毒
+ * （渲染统一走本文件管线，XSS 拦截规约不破）。与整篇 marked.parse 逐字符一致，
+ * 上下文依赖的边界情形（引用式链接/脚注/表格后列表等）已实测无损（决策记录 §3.4）。
+ *
+ * @param {string} text Markdown 源码
+ * @returns {{type: string, html: string}[]}
+ */
+export function splitMarkdownBlocks(text) {
+  const tokens = marked.lexer(text || "");
+  const blocks = [];
+  for (const token of tokens) {
+    if (token.type === "space") continue; // 空块会产出空 DOM 节点，直接过滤
+    blocks.push({ type: token.type, html: DOMPurify.sanitize(marked.parser([token])) });
+  }
+  return blocks;
 }

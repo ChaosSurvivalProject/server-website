@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Integer, String, Text
+from sqlalchemy import Integer, LargeBinary, String, Text
 from sqlalchemy.pool import StaticPool
 
 logger = logging.getLogger("uvicorn.error")
@@ -190,10 +190,100 @@ async def get_db():
         yield session
 
 
+# ── 知识库（智能客服 P0） ──────────────────────────────────────────
+# 设计见 docs/智能客服P0落地方案.md §3。与 Announcement/User 并列，不新建包。
+
+
+class KBDocument(Base):
+    """知识库文档：wiki 同步或后台手动粘贴产生，正文切片存 kb_chunks。"""
+
+    __tablename__ = "kb_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(16), nullable=False)  # 'wiki' | 'manual'
+    source_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # wiki 相对路径
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")  # 内容 MD5
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ready")  # ready | failed
+    error_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    content_length: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class KBChunk(Base):
+    """知识库切片：embedding 为 L2 归一化 float32 BLOB（点积即余弦）。"""
+
+    __tablename__ = "kb_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    document_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    chunk_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    heading: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # 标题路径，进 prompt 用
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    char_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class KBSetting(Base):
+    """知识库键值设置（index_version / embed_model / embed_dim / kb_schema_version）。"""
+
+    __tablename__ = "kb_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+
+
+class ServerRecord(Base):
+    """游戏服务器地址持久化（monitor.SERVERS 的权威存储，内存字典为读缓存）。
+
+    id 沿用原有数字 id 语义；is_primary 布尔语义用 int（项目规约）。
+    """
+
+    __tablename__ = "servers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    address: Mapped[str] = mapped_column(String(255), nullable=False)
+    port: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_primary: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+async def get_db():
+    """FastAPI dependency: provide an async database session."""
+    async with async_session_maker() as session:
+        yield session
+
+
+# FTS5 可用性标志（init_db 时探测；个别发行版的 SQLite 未编译 FTS5 时降级为仅向量检索）
+fts_available = True
+
+
 async def init_db():
     """Create all tables on startup."""
+    global fts_available
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # WAL：kb_sync.py 是另一个进程要写同一个库文件，不开 WAL 必然 database is locked。
+        # journal_mode 持久化在库文件里；busy_timeout / synchronous 是连接级，每次启动都要设。
+        (await conn.exec_driver_sql("PRAGMA journal_mode=WAL")).scalar()
+        await conn.exec_driver_sql("PRAGMA busy_timeout=8000")
+        await conn.exec_driver_sql("PRAGMA synchronous=NORMAL")
+        # FTS5 全文索引：trigram 分词（unicode61 不切分中文，中文检索会完全失效）。
+        # 独立表（非 external content）：写入时显式指定 rowid = kb_chunks.id，
+        # 删除时 DELETE ... WHERE rowid IN (...)，不需要触发器（决策记录 §4）。
+        try:
+            await conn.exec_driver_sql(
+                "CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts "
+                "USING fts5(content, tokenize='trigram')"
+            )
+            fts_available = True
+        except Exception as e:  # 编译期未带 FTS5 的 SQLite：不阻断启动，降级仅向量
+            fts_available = False
+            logger.error("SQLite 不支持 FTS5，知识库全文检索不可用（仅向量检索）: %s", e)
     # 存量库补列（新库 create_all 已含新列，迁移幂等直接跳过）
     migrate_user_extra_columns()
     migrate_announcement_content_columns()
