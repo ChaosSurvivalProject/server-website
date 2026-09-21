@@ -61,7 +61,13 @@
 
           <!-- AI 消息 -->
           <div v-else class="chat-msg chat-msg--ai">
-            <details v-if="msg.reasoning" class="chat-reasoning">
+            <!-- 思考阶段默认展开流式思考内容；用户手动收起/展开后，:open 仅在绑定值变化时才被
+                 Vue 覆写（思考中值恒 true 不重写，手动状态得以保留），回答开始时自动折叠 -->
+            <details
+              v-if="msg.reasoning"
+              class="chat-reasoning"
+              :open="msg.streaming && !msg.raw"
+            >
               <summary>{{ msg.streaming && !msg.raw ? '思考中…' : '思考过程' }}</summary>
               <pre>{{ msg.reasoning }}</pre>
             </details>
@@ -104,8 +110,8 @@
         </template>
       </div>
 
-      <!-- 首屏示例问题 -->
-      <div v-if="!messages.length && faq.length" class="chat-faq">
+      <!-- 首屏示例问题（未登录不展示：点了也发不出） -->
+      <div v-if="loggedIn && !messages.length && faq.length" class="chat-faq">
         <button
           v-for="q in faq"
           :key="q"
@@ -115,7 +121,17 @@
         >{{ q }}</button>
       </div>
 
-      <form class="chat-input" @submit.prevent="send">
+      <!-- 未登录：登录引导替换输入区（仅登录用户可与客服对话，后端 /kb/chat 同步校验） -->
+      <div v-if="!loggedIn" class="chat-login-gate">
+        <p class="chat-login-text">登录后即可与 {{ title }} 对话</p>
+        <router-link
+          class="chat-login-btn"
+          :to="{ path: '/login', query: { redirect: $route.fullPath } }"
+          @click="close"
+        >立即登录</router-link>
+      </div>
+
+      <form v-else class="chat-input" @submit.prevent="send">
         <textarea
           v-model="draft"
           rows="1"
@@ -141,6 +157,7 @@
 import { chatAPI } from "../api/api.js";
 import { splitMarkdownBlocks } from "../utils/markdown.js";
 import { copyText } from "../utils/clipboard.js";
+import { authState, clearAuth } from "../utils/auth.js";
 import McConfig from "../config/mc-config.js";
 
 const MAX_MESSAGES = 30;       // 消息列表上限，避免长会话 DOM 膨胀
@@ -205,6 +222,12 @@ export default {
       else window.removeEventListener("keydown", this._escHandler);
     },
   },
+  computed: {
+    /** 登录态（authState 全局 reactive：登录/退出/401 清除即时联动输入区显隐） */
+    loggedIn() {
+      return !!authState.token;
+    },
+  },
   methods: {
     cleanup() {
       // 组件卸载必须 abort + 清定时器 + 摘全局监听
@@ -262,7 +285,7 @@ export default {
       }
     },
     askQuick(q) {
-      if (this.streaming) return;
+      if (this.streaming || !this.loggedIn) return;
       this.draft = q;
       this.send();
     },
@@ -278,11 +301,12 @@ export default {
     },
     async send() {
       const text = this.draft.trim();
-      if (!text || this.streaming) return;
+      // 未登录不允许对话（UI 已替换为登录引导，此处兜底）
+      if (!text || this.streaming || !this.loggedIn) return;
       const history = this.buildHistory();
 
       const userMsg = { role: "user", content: text };
-      const aiMsg = {
+      this.messages.push(userMsg, {
         role: "assistant",
         raw: "",
         blocks: [],
@@ -291,11 +315,13 @@ export default {
         fallback: false,
         error: "",
         streaming: true,
-      };
-      this.messages.push(userMsg, aiMsg);
+      });
       if (this.messages.length > MAX_MESSAGES) {
         this.messages.splice(0, this.messages.length - MAX_MESSAGES);
       }
+      // 关键：必须从响应式数组取回「代理」再保存使用。Vue3 中直接改原始对象不触发依赖，
+      // 流式过程将完全不渲染，直到 finishStream 改 this.streaming 才一次性蹦出全部文本（踩过）。
+      const aiMsg = this.messages[this.messages.length - 1];
       this.draft = "";
       this.streaming = true;
       this._aiMsg = aiMsg;
@@ -313,6 +339,11 @@ export default {
       } catch (e) {
         if (e?.name === "AbortError") {
           // 用户主动停止：保留已收到的内容
+        } else if (e?.status === 401) {
+          // 会话过期：清除本地登录态（输入区随之切换为登录引导）；
+          // 不整页跳 /login，避免冲掉已有会话内容（与 axios 拦截器的整页跳转口径不同，此处体验优先）
+          clearAuth();
+          aiMsg.error = "登录状态已失效，请重新登录后再试";
         } else {
           aiMsg.error = e?.message || "请求失败，请稍后再试";
         }
@@ -403,9 +434,9 @@ export default {
 <style scoped>
 .chat-widget {
   position: fixed;
-  right: 24px;
-  bottom: 88px; /* 避开 BackToTop */
-  z-index: 1200;
+  right: 29px; /* 与 BackToTop 对中：按钮 right:30px/宽50px → 中心线距右 55px；球宽 52px → 29px */
+  bottom: 120px; /* 按钮顶 80px + 40px 上下间距 */
+  z-index: 10000; /* 高于 BackToTop(9999)：客服面板打开时覆盖回到顶部按钮（含全屏/移动端） */
   font-family: inherit;
 }
 
@@ -429,15 +460,16 @@ export default {
   box-shadow: 0 8px 24px rgba(76, 175, 80, 0.5);
 }
 
-/* 面板 */
+/* 面板：固定压在右下角，直接覆盖 BackToTop（30~88px）与悬浮球，关闭走头部 ✕；
+   移动端 / 全屏态由下方媒体查询与 .chat-panel--fullscreen 覆盖为 inset:0 */
 .chat-panel {
-  position: absolute;
-  right: 0;
-  bottom: 64px;
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
   width: 380px;
   max-width: calc(100vw - 32px);
   height: 560px;
-  max-height: calc(100vh - 140px);
+  max-height: calc(100vh - 48px);
   display: flex;
   flex-direction: column;
   background: #fff;
@@ -662,6 +694,34 @@ export default {
   color: var(--primary-color, #4caf50);
 }
 
+/* 未登录登录引导（替换输入区） */
+.chat-login-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 12px 18px;
+  background: #fff;
+  border-top: 1px solid #eef1ef;
+  flex-shrink: 0;
+}
+.chat-login-text {
+  font-size: 13px;
+  color: #6b7280;
+}
+.chat-login-btn {
+  padding: 8px 24px;
+  font-size: 14px;
+  color: #fff;
+  background: var(--primary-color, #4caf50);
+  border-radius: 10px;
+  text-decoration: none;
+}
+.chat-login-btn:hover {
+  background: #43a047;
+  color: #fff;
+}
+
 /* 输入区 */
 .chat-input {
   display: flex;
@@ -708,8 +768,8 @@ export default {
 /* 移动端全屏（避免半屏遮挡）；本就恒为全屏，全屏切换按钮无意义，隐藏 */
 @media (max-width: 768px) {
   .chat-widget {
-    right: 16px;
-    bottom: 80px;
+    right: 14px; /* 与移动端 BackToTop（right:20px/宽40px，中心距右 40px）对中 */
+    bottom: 100px; /* 按钮顶 60px + 40px 上下间距 */
   }
   .chat-fs {
     display: none;

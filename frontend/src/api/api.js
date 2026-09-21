@@ -1,5 +1,6 @@
 import axiosInstance from './axiosInstance';
 import McConfig from '../config/mc-config.js';
+import { getToken } from '../utils/auth.js';
 
 // 认证API（登录 / 注册 / 滑块验证码 / 当前用户）
 export const authAPI = {
@@ -171,9 +172,13 @@ export const chatAPI = {
    */
   streamChat: async ({ message, history = [], signal, onEvent }) => {
     const url = `${McConfig.baseApiURL}/kb/chat`;
+    // /kb/chat 仅登录用户可用：fetch 不走 axiosInstance，需自行按请求拦截器同口径携带 JWT
+    const headers = { 'Content-Type': 'application/json' };
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ message, history }),
       signal,
     });
@@ -185,7 +190,9 @@ export const chatAPI = {
         if (Array.isArray(j.detail)) msg = j.detail[0]?.msg || msg; // Pydantic 校验错误
         else msg = j.detail || j.message || msg;
       } catch {}
-      throw new Error(msg);
+      const err = new Error(msg);
+      err.status = res.status; // 调用方可按状态码处理（如 401 → 会话过期引导重新登录）
+      throw err;
     }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();

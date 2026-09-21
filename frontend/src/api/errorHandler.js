@@ -14,7 +14,7 @@ export function showError(message, title = '错误提示') {
   errorModal.className = 'error-modal';
   errorModal.style.cssText = `
     position: fixed;
-    z-index: 2000;
+    z-index: 10001; /* 高于 ChatWidget(10000)：阻塞式错误弹窗保持在客服面板之上 */
     left: 0;
     top: 0;
     width: 100%;

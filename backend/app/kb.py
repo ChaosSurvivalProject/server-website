@@ -1,8 +1,9 @@
 """知识库（智能客服）路由：/kb/* 全部端点 + 进程内限流 + 启动校验。
 
 公开接口（主站用）：
-  GET  /kb/info     客服元信息（开关 / 标题 / 欢迎语 / FAQ / 模型名）
-  POST /kb/chat     SSE 流式问答 —— **全项目唯一不返回 {code, message, data}
+  GET  /kb/info     客服元信息（开关 / 标题 / 欢迎语 / FAQ / 模型名），公开供未登录渲染登录引导
+  POST /kb/chat     SSE 流式问答 —— **仅登录用户可用**（get_current_user，未登录/过期 401），
+                    **全项目唯一不返回 {code, message, data}
                     包络的接口**（SSE 流无法包络），帧协议见
                     docs/智能客服P0落地方案.md §4.3，此例外已写入 AGENTS.md
 
@@ -41,11 +42,12 @@ from .crud import _TZ as BEIJING_TZ
 from .database import (
     KBChunk,
     KBDocument,
+    User,
     async_session_maker,
     fts_available,
     get_db,
 )
-from .auth.deps import require_admin
+from .auth.deps import get_current_user, require_admin
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -499,8 +501,13 @@ async def kb_info():
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest, request: Request, db: AsyncSession = Depends(get_db)):
-    """SSE 流式问答（全项目唯一不走包络的接口）。"""
+async def chat(
+    req: ChatRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),  # 仅登录用户可对话；401 属流前错误，走标准 HTTP
+):
+    """SSE 流式问答（全项目唯一不走包络的接口；未登录 401）。"""
     if not state.enabled:
         raise HTTPException(status_code=503, detail="智能客服暂未开放，请稍后再试")
     message = (req.message or "").strip()
