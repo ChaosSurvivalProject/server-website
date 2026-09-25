@@ -98,6 +98,11 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 后端 Docker 部署时注意：`docker-compose.yml` 位于 `backend/` 下，但**构建上下文是项目根目录**（`context: ..`），因为 Dockerfile 里 `COPY backend/` 依赖该路径——移动文件时两者要一起改。
 
+## for-deploy 留档目录
+
+- `for-deploy/` 存放生产实际生效、但不属于任何子项目构建产物的配置留档（当前 `chaos-web.conf` = nginx 站点配置快照；同步方法与改 conf 前的注意事项见该目录 `README.md`）。
+- **该目录随仓库提交到公开仓库，禁止放任何敏感信息**：SSL 证书/私钥、API Key、密码/token/JWT secret、生产数据库数据等一律不进；普通配置里如无必要也不要写外部 IP/端口。敏感文件（证书、`backend/.env`、生产库）只存在于服务器对应路径，不落仓库。
+
 ## 已知遗留 / 注意事项
 
 - 后端 CORS 当前 `allow_origins=["*"]`（开发便利），生产收紧时需与同源部署方案一起评估。
