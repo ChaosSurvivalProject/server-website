@@ -43,8 +43,10 @@ server-website/
 │   │   ├── kb_index.py          # 知识库：内存向量索引（版本失效 + TopK，纯 stdlib）
 │   │   ├── kb_retrieve.py       # 知识库：向量 + FTS5 trigram + RRF 混合检索
 │   │   ├── kb_llm.py            # 知识库：OpenAI 兼容 chat 流式客户端（httpx）
-│   │   └── kb.py                # 知识库：/api/kb/* 全部路由（SSE 问答 + 限流 + 管理接口）
+│   │   ├── kb.py                # 知识库：/api/kb/* 全部路由（SSE 问答 + 限流 + 管理接口）
+│   │   └── staff.py             # 员工名片：/api/staff/* 全部路由（验证页 + 台账 + 到期回写 + 二维码 + CSV）
 │   ├── kb_sync.py               # wiki → 知识库 同步脚本（CLI，按 MD5 增量）
+│   ├── staff_expire.py          # 员工名片到期检查脚本（CLI，crontab 每日一次）
 │   ├── run.py                   # uvicorn 启动脚本
 │   ├── seed.py                  # 测试数据种子
 │   ├── Dockerfile
@@ -60,7 +62,7 @@ server-website/
 │   └── package.json
 ├── admin-frontend/              # 后台管理前端（pure-admin-thin，部署在 /admin/）
 │   ├── src/
-│   │   ├── api/                 # 接口封装（announcement / server / user / factionBeta / kb / routes）
+│   │   ├── api/                 # 接口封装（announcement / server / user / factionBeta / kb / staff / routes）
 │   │   ├── components/          # 通用组件（RePureTableBar、ReDialog、ReAuth 等 pure-admin 封装）
 │   │   ├── config/              # 平台配置读取层（Title 等，值来自 public/platform-config.json）
 │   │   ├── directives/          # 自定义指令（auth / perms / ripple / longpress 等）
@@ -69,7 +71,7 @@ server-website/
 │   │   ├── router/              # 路由与守卫（modules/home.ts 业务路由、remaining.ts 登录与错误页）
 │   │   ├── store/modules/       # Pinia 模块（user 存 token/role、permission、multiTags 等）
 │   │   ├── utils/http/          # PureHttp：axios 封装（JWT 注入、{code,message,data} 解包、错误提取）
-│   │   ├── views/               # 页面（login、announcement、server、faction-beta、kb、user、error）
+│   │   ├── views/               # 页面（login、announcement、server、faction-beta、kb、user、staff、error）
 │   │   └── main.ts              # 应用入口
 │   ├── .env / .env.development / .env.production   # 端口、base 路径、路由模式
 │   ├── public/platform-config.json                 # 平台标题等运行时配置
@@ -246,6 +248,37 @@ python3 kb_sync.py --list            # 列出库内文档与切片数
 
 知识库配置（`backend/.env`，**已 gitignore，含 API Key 勿提交**）：总开关 `KB_ENABLED`；对话模型 `KB_CHAT_BASE_URL` / `KB_CHAT_API_KEY` / `KB_CHAT_MODEL`（OpenAI 兼容）+ 可选 `KB_CHAT_EXTRA_BODY`（厂商私有参数原样 merge）；Embedding `KB_EMBED_BASE_URL` / `KB_EMBED_API_KEY` / `KB_EMBED_MODEL` / `KB_EMBED_DIM`；检索 `KB_TOP_K` / `KB_MIN_SCORE` / `KB_MAX_CHUNKS` 等；文案 `KB_TITLE` / `KB_GREETING` / `KB_FALLBACK_HINT`。改 `.env` 需重启后端生效。启动自检：密钥缺失 → 客服自动关闭（`/kb/info` 返回 `enabled:false`，`/kb/chat` 503）；库内向量维度/模型与配置不一致 → 关闭向量检索降级为仅 FTS，`/kb/admin/stats` 标记"需重建索引"。
 
+### 员工名片
+
+工作人员名片系统（只读公开核验页 + 管理员台账）：名片上印二维码 → 扫码打开 `/staff/{身份码}` 验证页 → 后台可撤销/续期/换码。实施规格见 `docs/员工名片模块需求规格.md`，落地设计见 `docs/员工名片模块评审与落地方案.md`。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/staff/public/{code}` | 验证页数据（匿名；四态 `valid` / `revoked` / `expired` / `not_found`，白名单模型不含 remark 与完整身份码；"格式非法 / 不存在 / 超长"返回逐字节一致的 `not_found`） |
+| GET | `/api/staff/public/team` | 管理组总览（匿名；仅现任且在有效期内的公开字段） |
+| GET | `/api/staff/admin/page` | 台账分页（**需管理员**；参数: page, pageSize, status=`active\|expiring\|expired\|revoked`, keyword） |
+| GET | `/api/staff/admin/stats` | 顶部统计条（**需管理员**；全部 / 现任 / 即将到期≤30天 / 已过期 / 已撤销） |
+| POST | `/api/staff/admin` | 新增工作人员（**需管理员**；自动生成 12 位身份码 + 一年有效期） |
+| PUT | `/api/staff/admin/{id}` | 编辑公开信息（**需管理员**；公开字段变更时 `cardVersion` 自动递增） |
+| POST | `/api/staff/admin/{id}/regenerate-code` | 重生成身份码（**需管理员**；旧码立即失效，适用于码泄露等） |
+| POST | `/api/staff/admin/{id}/revoke` | 撤销（**需管理员**；body: `{reason}`，仅接受 `离职/转岗/暂停/码异常`） |
+| POST | `/api/staff/admin/{id}/restore` | 恢复已撤销人员（**需管理员**；强制换新身份码，旧码立即失效） |
+| POST | `/api/staff/admin/{id}/renew` | 续期一年（**需管理员**；因到期失效的记录自动恢复 active、二维码不变；人工撤销的记录返回 400 须先恢复） |
+| GET | `/api/staff/admin/{id}/qrcode` | 二维码 PNG（**需管理员**；410×410，URL 由后端 `STAFF_PUBLIC_BASE_URL` 统一拼接） |
+| GET | `/api/staff/admin/export` | 导出名单 CSV（**需管理员**；⚠️ 这是"不返回完整身份码列表"的唯一豁免点——公开接口一律只给展示码后四位，勿把本豁免当漏洞"修掉"） |
+
+- **状态模型**：`status` 只存 `active` / `revoked` 两态；过期判定权威是 `valid_to`（`now > valid_to` 即过期），命中时把 `active` **回写**为 `revoked`（`revoked_reason='expired'`，仅系统写入、后台下拉不可见）。回写有两条触发路径、共用同一函数 `expire_due()`：公开验证接口查询时懒更新（幂等）+ `backend/staff_expire.py` CLI（crontab 每日一次，服务启动时也跑一次）——**crontab 漏挂不影响核验正确性**，只影响台账刷新时效。
+- **身份码**：12 位全小写（`23456789abcdefghijkmnpqrstuvwxyz`，去掉易混的 `0 1 l o`），`secrets` 安全随机 + 查重重试；对外任何公开响应都不下发完整码（页面正文只显示后四位 `••••xxxx`）。
+- **二维码**：后端 `qrcode` 库生成，纠错 M、留白 4 模块、`box_size=10`（410×410px）；**禁止硬编码 `version=`**（49 字节 URL 实测 v4 / 33×33，由库自动选版）；URL 只含域名 + 路径 + 随机码，无隐私字段。
+- 头像复用 `POST /api/announcement/upload/image` 上传接口（png/jpg/gif/webp、≤5MB）。
+- 到期检查脚本（仿 `kb_sync.py`，可挂 crontab）：
+
+```bash
+cd backend
+python3 staff_expire.py             # 全表到期回写，输出刷新行数
+python3 staff_expire.py --dry-run   # 只统计，不写库
+```
+
 ### 其他
 
 | 方法 | 路径 | 说明 |
@@ -306,6 +339,8 @@ docker compose up -d --build
 | `/announcements` | Announcements | 公告列表（分页） |
 | `/announcements/:id` | AnnouncementDetail | 公告详情（自动累加阅读量） |
 | `/faction-beta` | FactionBetaApply | 阵营对战玩法内测资格申请（需登录后填写，展示审核状态） |
+| `/staff/:code` | StaffVerify | 工作人员名片验证页（扫码直达；四态横幅 + 防伪提示，正文不显示完整身份码） |
+| `/team` | TeamOverview | 管理组总览（公开的现任名录 + 官方入口 + 安全提示） |
 | `/login` | AuthView（登录） | 登录页（用户名/邮箱 + 密码） |
 | `/register` | AuthView（注册） | 注册页（邮箱 + 密码 + 确认密码 + 滑块拼图人机验证） |
 
@@ -320,7 +355,7 @@ docker compose up -d --build
 ### API 层（`src/api/`）
 
 - `axiosInstance.js` — axios 实例，baseURL 来自环境变量 `VITE_BASE_API_URL`（经 `mc-config.js` 统一读取）；响应拦截器统一解包 `{code, message, data}`，失败时弹出错误提示；请求拦截器自动携带 JWT，401 时清除登录态并跳转 `/login`
-- `api.js` — 接口封装：`authAPI` / `announcementAPI` / `factionBetaAPI` / `serverMonitorAPI` / `serverConfigAPI` / `chatAPI`（`chatAPI.streamChat` 因 SSE 流式改用 `fetch` + `ReadableStream`，其余走 axios）
+- `api.js` — 接口封装：`authAPI` / `announcementAPI` / `factionBetaAPI` / `staffAPI`（验证页与总览页的公开只读接口，silent 模式） / `serverMonitorAPI` / `serverConfigAPI` / `chatAPI`（`chatAPI.streamChat` 因 SSE 流式改用 `fetch` + `ReadableStream`，其余走 axios）
 - `errorHandler.js` — 统一错误弹窗工具
 
 ### 环境配置（`frontend/.env*` 文件）
@@ -336,6 +371,10 @@ docker compose up -d --build
 | `VITE_ADMIN_URL` | 后台管理入口地址 | `/admin` | `/admin` |
 | `VITE_CHAT_WIDGET_ENABLED` | 智能客服悬浮球前端开关（后端 `/kb/info` enabled 为二级开关，两级都开才渲染） | `true` | `true` |
 | `VITE_CHAT_WIDGET_TITLE` / `VITE_CHAT_WIDGET_GREETING` / `VITE_CHAT_WIDGET_FAQ` | 客服标题 / 欢迎语 / 首屏示例问题（`\|` 分隔） | 见 `.env` | 见 `.env` |
+| `VITE_SERVER_NAME` | 服务器名称（名片验证页 / 总览页展示） | `星穹旅驿` | 同左 |
+| `VITE_STAFF_OFFICIAL_URL` | 验证页展示的官方网址（二维码前缀在后端 `STAFF_PUBLIC_BASE_URL`，前端不拼 URL） | 见 `.env` | 同左 |
+| `VITE_STAFF_DISCORD_URL` | 官方 Discord 入口（留空则验证页不展示该项） | 留空 | 同左 |
+| `VITE_STAFF_ANTI_FRAUD_TEXT` | 防伪提示文案（需求 §9.3，`\|` 分行） | 见 `.env` | 同左 |
 
 环境变量在构建期静态替换，修改后需重启 dev server 或重新构建才生效。
 
@@ -366,6 +405,8 @@ docker compose up -d --build
 | `/faction-beta/list` | 阵营内测申请 | 申请列表（状态过滤、详情弹窗、通过/拒绝、删除） |
 | `/kb/list` | 知识库 | 统计条（文档/切片/索引版本/维度状态）+ 文档列表（来源过滤、切片预览抽屉、重建索引、删除；wiki 来源只读由 `kb_sync.py` 维护）+ 粘贴新增 |
 | `/user/list` | 用户管理 | 用户列表（新增/编辑/启用/禁用/软删除/恢复、状态过滤；编辑模式密码留空=不修改） |
+| `/staff/list` | 工作人员名片 | 台账列表（状态过滤/关键词搜索、新增/编辑、撤销（选原因）/恢复/续期/重生成码、二维码下载、CSV 导出、顶部统计条、即将到期行高亮） |
+| `/staff/card` | 名片制作 | 统一名片模板出图页（选人 + 横/竖版切换；PNG/JPG 走本地 `html2canvas`，PDF 走浏览器打印；二维码纯白底 200px、头像像素渲染、正面含名片版本与防伪提示） |
 | `/access-denied` `/server-error` | 403 / 500 | 全屏错误页 |
 
 浏览器 URL 带部署前缀与 hash：开发 `http://localhost:3005/#/announcement/list`，生产 `http://<host>/admin/#/announcement/list`。
@@ -373,7 +414,7 @@ docker compose up -d --build
 ### HTTP 层（`src/utils/http/`）与 API 模块（`src/api/`）
 
 - `utils/http/index.ts`（PureHttp）— axios 封装：`baseURL` 留空（同源相对路径，dev 由 Vite proxy、prod 由 Nginx 反代到后端）；请求拦截器对 `/api/auth/login`、`/api/auth/register`、`/api/auth/captcha` 白名单放行，其余自动携带 `Authorization: Bearer <token>`；响应拦截器统一解包 `{code, message, data}`（`code=0` 直接返回 `data`），业务错误与 HTTP 非 2xx 都把 FastAPI `detail` 或包络 `message` 提取到 `error.message`——页面 catch 里直接 `ElMessage.error(e.message)`，不要重复解析错误体；401（HTTP 401 或包络 401/1001）自动清除登录态并跳回登录页
-- `api/` — `announcement.ts` / `server.ts` / `user.ts` / `factionBeta.ts` / `kb.ts` 分别封装对应 admin 接口，TS 类型与后端契约一致；**新增或修改后端接口时必须同步主站契约参照 `frontend/src/api/api.js` 与本目录**（见 AGENTS.md 契约规约）
+- `api/` — `announcement.ts` / `server.ts` / `user.ts` / `factionBeta.ts` / `kb.ts` / `staff.ts` 分别封装对应 admin 接口，TS 类型与后端契约一致；**新增或修改后端接口时必须同步主站契约参照 `frontend/src/api/api.js` 与本目录**（见 AGENTS.md 契约规约）
 - 传 `FormData`（文件上传）时必须显式加 `Content-Type: multipart/form-data` 请求头，否则 axios 会把 FormData 序列化成 JSON，后端解析不到字段直接 422
 
 ### 登录与鉴权

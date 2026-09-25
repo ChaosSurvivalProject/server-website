@@ -29,7 +29,11 @@ Endpoints (matching the existing Vue frontend):
   GET  /kb/info                    智能客服元信息（开关 / 标题 / 欢迎语）
   POST /kb/chat                    智能客服流式问答（SSE，唯一不走包络的接口）
   GET/POST/DELETE /kb/admin/...    知识库管理（列表/新增/删除/切片/重建/统计，需管理员）
+  GET  /staff/public/{code}        工作人员名片验证页数据（匿名，四态白名单）
+  GET  /staff/public/team          管理组总览（匿名，仅有效期内公开字段）
+  GET/POST/PUT/POST... /staff/admin/*  工作人员台账（分页/统计/新增/编辑/重生成码/撤销/恢复/续期/二维码/导出，需管理员）
 """
+import logging
 import os
 import uuid
 from datetime import datetime
@@ -40,9 +44,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .database import BASE_DIR, init_db, get_db, Announcement
+from .database import BASE_DIR, init_db, get_db, Announcement, async_session_maker
 from .monitor import router as monitor_router, load_servers
 from . import kb as kb_module
+from . import staff as staff_module
 from .auth import bootstrap
 from .auth.deps import require_admin
 from .auth.router import router as auth_router
@@ -67,6 +72,8 @@ from .crud import (
     add_watch_count,
     _TZ as BEIJING_TZ,
 )
+
+logger = logging.getLogger("uvicorn.error")
 
 # ── 富文本图片上传配置 ────────────────────────────────────────
 # 上传目录：默认 backend/data/uploads，可用环境变量覆盖（Docker 中指向挂载卷 /app/data/uploads）
@@ -118,6 +125,9 @@ app.include_router(faction_beta_router, prefix="/api")
 # 知识库 / 智能客服（/api/kb/info、/api/kb/chat SSE、/api/kb/admin/*）
 app.include_router(kb_module.router, prefix="/api")
 
+# 员工名片（/api/staff/public/*、/api/staff/admin/*）
+app.include_router(staff_module.router, prefix="/api")
+
 app.include_router(api_router)
 
 # 静态托管富文本上传的图片。
@@ -145,6 +155,15 @@ async def on_startup():
     await load_servers()
     # 智能客服启动三查（总开关 / API Key / 维度一致性，只记日志不阻断）+ 预热向量索引
     await kb_module.startup_check()
+    # 员工名片到期检查（定时批量路径的启动兜底之一；漏跑不影响核验正确性——
+    # 判定权威是 valid_to，公开验证接口查询时懒更新会兜底回写）
+    try:
+        async with async_session_maker() as session:
+            changed = await staff_module.expire_due(session)
+            if changed:
+                logger.info("员工名片启动到期检查：回写 %s 条为 revoked('expired')", changed)
+    except Exception as e:  # 不阻断启动
+        logger.warning("员工名片启动到期检查失败: %s", e)
 
 
 # ── 公告分页查询 ──────────────────────────────────────────────

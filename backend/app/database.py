@@ -235,6 +235,43 @@ class KBSetting(Base):
     value: Mapped[str] = mapped_column(String(255), nullable=False, default="")
 
 
+class Staff(Base):
+    """工作人员名片台账（员工名片模块 P0，见 docs/员工名片模块需求规格.md §7.1）。
+
+    status 仅两态：active / revoked（不引入第三态 expired）。
+    过期判定权威是 valid_to（now > valid_to 即已过期），命中时由
+    app.staff.expire_due() 把 active 回写为 revoked（revoked_reason='expired'）——
+    status 只是快照，避免"定时任务漏跑 = 已过期却显示有效"（规格 §4.5）。
+
+    revoked_reason 取值：离职 / 转岗 / 暂停 / 码异常（人工撤销，后台只能选）+
+    'expired'（仅系统写入，后台下拉框不可见）。
+
+    本表不得包含任何隐私字段（真实姓名 / 手机号 / 住址 / 身份证等），
+    规格 §3.3 红线从数据层天然满足。
+    """
+
+    __tablename__ = "staff"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    staff_code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)  # 完整身份码（唯一，任何公开响应不下发）
+    display_code: Mapped[str] = mapped_column(String(16), nullable=False, default="")  # 展示码（身份码后四位，页面只回这个）
+    game_id: Mapped[str] = mapped_column(String(50), nullable=False)  # 游戏 ID
+    nickname: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # 公开昵称（可空）
+    role: Mapped[str] = mapped_column(String(30), nullable=False)  # 服主/技术员/财务/管理员/建筑/客服
+    duty: Mapped[str] = mapped_column(Text, nullable=False, default="")  # 职责范围
+    avatar_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # 头像相对 URL（复用公告上传目录），默认空
+    public_email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)  # 工作邮箱（可空）
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")  # active | revoked
+    card_version: Mapped[str] = mapped_column(String(16), nullable=False, default="V1")  # 名片版本
+    valid_from: Mapped[str] = mapped_column(String(30), nullable=False)  # 生效时间（北京时间 ISO 字符串）
+    valid_to: Mapped[str] = mapped_column(String(30), nullable=False)  # 到期时间（过期判定唯一权威）
+    remark: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # 内部备注（任何对外响应不下发）
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    revoked_at: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)  # 撤销/失效时间
+    revoked_reason: Mapped[str] = mapped_column(String(30), nullable=False, default="")  # 离职|转岗|暂停|码异常|expired
+
+
 class ServerRecord(Base):
     """游戏服务器地址持久化（monitor.SERVERS 的权威存储，内存字典为读缓存）。
 

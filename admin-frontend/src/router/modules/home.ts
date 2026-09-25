@@ -80,6 +80,26 @@ export default {
         icon: "ep/user",
         showLink: true
       }
+    },
+    {
+      path: "/staff/list",
+      name: "StaffList",
+      component: () => import("@/views/staff/list.vue"),
+      meta: {
+        title: "工作人员名片",
+        icon: "ep/postcard",
+        showLink: true
+      }
+    },
+    {
+      path: "/staff/card",
+      name: "StaffCard",
+      component: () => import("@/views/staff/card.vue"),
+      meta: {
+        title: "名片制作",
+        icon: "ep/printer",
+        showLink: true
+      }
     }
   ]
 } satisfies RouteConfigsTable;

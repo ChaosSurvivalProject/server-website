@@ -215,11 +215,38 @@ export const chatAPI = {
   },
 };
 
+// 员工名片 API（验证页 /staff/:code 与总览页 /team 的公开只读接口）
+// 响应为白名单模型：不含 remark、不含完整 staffCode（只有展示码后四位 displayCode）；
+// "格式非法 / 不存在 / 超长输入"统一返回 state='not_found'（同一响应体，规格 §6.4）
+export const staffAPI = {
+  /**
+   * 验证页数据（四态）
+   * @param {string} code - 完整身份码（路由参数；后端只做 strip，不做大小写归一）
+   * @returns {Promise} - data:
+   *   valid    → {state:'valid', displayCode, gameId, nickname, role, duty, avatarPath, publicEmail, cardVersion, updateTime, validFrom, validTo}
+   *   revoked  → {state:'revoked', reason: '离职'|'转岗'|'暂停'|'码异常'}（白名单：不含旧联系方式）
+   *   expired  → {state:'expired'}
+   *   not_found→ {state:'not_found'}
+   */
+  getVerify: (code) => {
+    return axiosInstance.get(`/api/staff/public/${encodeURIComponent(code)}`, { silent: true });
+  },
+
+  /**
+   * 管理组总览（现任且在有效期内）
+   * @returns {Promise} - data: {items: [{gameId, nickname, role, duty, avatarPath}], total}
+   */
+  getTeam: () => {
+    return axiosInstance.get('/api/staff/public/team', { silent: true });
+  }
+};
+
 // 导出所有API
 export default {
   auth: authAPI,
   serverConfig: serverConfigAPI,
   serverMonitor: serverMonitorAPI,
   factionBeta: factionBetaAPI,
+  staff: staffAPI,
   chat: chatAPI
 };

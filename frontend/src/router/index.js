@@ -28,6 +28,19 @@ const routes = [
     component: () => import('../views/FactionBetaApply.vue')
   },
   {
+    path: '/staff/:code',
+    name: 'StaffVerify',
+    // 工作人员名片验证页（扫码直达，SPA 深层路由依赖 nginx try_files 兜底）
+    component: () => import('../views/StaffVerify.vue'),
+    props: true
+  },
+  {
+    path: '/team',
+    name: 'TeamOverview',
+    // 管理组总览（公开的现任名录；/staff 前缀留给验证页，故用 /team）
+    component: () => import('../views/TeamOverview.vue')
+  },
+  {
     path: '/login',
     name: 'Login',
     // 登录/注册共用 AuthView，通过 initialMode 区分

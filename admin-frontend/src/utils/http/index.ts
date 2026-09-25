@@ -111,6 +111,8 @@ class PureHttp {
         // HTTP 层面的错误（非 2xx）：把后端错误信息提取到 error.message，
         // 覆盖 axios 默认的 "Request failed with status code xxx"，方便调用方直接用 e.message 弹提示。
         // 兼容两种错误体：FastAPI HTTPException 的 {detail: "..."} 与业务包络 {code, message, data}
+        // 另兼容 Pydantic 校验错误（422）：detail 是数组 [{loc, msg, input}]，
+        // 取第一项的 msg（与主站 api.js streamChat 的处理口径一致），否则只能弹笼统的"请求失败：422"
         if ($error.response) {
           const status = $error.response.status;
           const data: unknown = $error.response.data;
@@ -119,9 +121,15 @@ class PureHttp {
           }
           if (data && typeof data === "object") {
             const errBody = data as { message?: unknown; detail?: unknown };
+            const validationMsg =
+              Array.isArray(errBody.detail) &&
+              typeof errBody.detail[0]?.msg === "string"
+                ? errBody.detail[0].msg
+                : "";
             $error.message =
               (typeof errBody.message === "string" && errBody.message) ||
               (typeof errBody.detail === "string" && errBody.detail) ||
+              validationMsg ||
               `请求失败：${status}`;
           } else if (typeof data === "string" && data) {
             $error.message = data;

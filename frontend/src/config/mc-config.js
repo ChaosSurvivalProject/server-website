@@ -32,6 +32,20 @@ const McConfig = {
         greeting: env.VITE_CHAT_WIDGET_GREETING,
         faq: (env.VITE_CHAT_WIDGET_FAQ ?? '').split('|').map(s => s.trim()).filter(Boolean),
     },
+    // 员工名片模块（验证页 /staff/:code、总览页 /team）
+    staff: {
+        // 服务器名称（名片 / 验证页顶部展示）
+        serverName: env.VITE_SERVER_NAME,
+        // 官方网址（验证页展示值；二维码前缀在后端 STAFF_PUBLIC_BASE_URL，前端不拼 URL）
+        officialUrl: env.VITE_STAFF_OFFICIAL_URL,
+        // 官方 Discord（留空则不展示）
+        discordUrl: env.VITE_STAFF_DISCORD_URL,
+        // 防伪提示（需求 §9.3），| 分行
+        antiFraudLines: (env.VITE_STAFF_ANTI_FRAUD_TEXT ?? '')
+            .split('|')
+            .map((s) => s.trim())
+            .filter(Boolean),
+    },
 }
 
 export default McConfig

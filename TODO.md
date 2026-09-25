@@ -22,6 +22,16 @@
 - [ ] Embedding 模型/维度变更的引导式全量重建（当前手动 `kb_sync.py --all --force`）
 - [ ] 后台文档上传（PDF/DOCX 解析）、标签体系、对话历史落库与满意度反馈
 
+## 员工名片 P0 上线清单
+
+- [ ] `pip3 install -r requirements.txt`（唯一新依赖 `qrcode`；Pillow 已有）
+- [ ] 生产 `backend/.env` 增加 `STAFF_PUBLIC_BASE_URL=https://xqly.xt91tv.shop:23333`（无尾斜杠；改后重启 chaos-api 生效）
+- [ ] 重启后端，冒烟：`curl localhost:5000/api/staff/public/team`（包络 code=0）、无 token 调 `/api/staff/admin/page` 应 401
+- [ ] 到期检查挂 crontab（每天 04:00）：`0 4 * * * cd /opt/chaos-web-backend && venv/bin/python staff_expire.py >> ../logs/staff_expire.log 2>&1`（**漏挂不影响核验正确性**，查询路径懒更新会兜底）
+- [ ] 前端与后台重新构建发布（`frontend` npm run build、`admin-frontend` pnpm build）
+- [ ] **手机实测（不可自动化，批量印名片前的最后一关）**：iPhone 相机 / 安卓相机 / 微信扫一扫 / QQ 扫一扫，全部在**移动流量**下用真实印刷尺寸扫码，关注证书警告与非标端口 23333 是否被网络策略阻断（需求规格 §10.5 / §11.2）
+- [ ] 名片红线复核：对已产出的名片图逐张目视核对——**不得出现私人微信号**，仅允许企业微信 / 工作邮箱 / 官方 QQ 群 / Discord / 官网（规格 §0.3 / §3.3）
+
 ## 员工名片模块 P1 候选（按 `docs/员工名片模块评审与落地方案.md` §4.6 / §4.7 / §7 顺延）
 
 - [ ] **应用层限流**：分级滑动窗口（未命中 20 次/分/IP 硬限；命中走宽松兜底 120 次/分/IP），设计见方案 §4.6。启用时**必须与下一项同时上线**（限流负责封顶日志写入速率）

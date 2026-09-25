@@ -75,6 +75,25 @@ def _env_json(key: str) -> dict:
 
 
 @dataclass(frozen=True)
+class StaffConfig:
+    """员工名片模块配置（docs/员工名片模块需求规格.md §0.2 定值清单）。
+
+    public_base_url 是二维码 URL 前缀的**唯一来源**（后端拼接
+    f"{public_base_url}/staff/{身份码}"，前端不得拼 URL、不得传 URL）。
+    无尾斜杠；改 .env 后需重启进程生效（与 KB 同语义）。
+    """
+
+    public_base_url: str
+
+
+STAFF = StaffConfig(
+    public_base_url=_env_str(
+        "STAFF_PUBLIC_BASE_URL", "https://xqly.xt91tv.shop:23333"
+    ).rstrip("/"),
+)
+
+
+@dataclass(frozen=True)
 class KBConfig:
     # 总开关
     enabled: bool
