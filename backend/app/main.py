@@ -1,5 +1,6 @@
 """FastAPI application — 服务器公告后端。
 
+所有业务接口统一挂载在 /api 前缀下（nginx 按前缀反代；下表省略 /api）。
 Endpoints (matching the existing Vue frontend):
   GET  /announcement/page          分页查询公告
   GET  /announcement/detail/{id}   查询公告详情
@@ -34,7 +35,7 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, FastAPI, Depends, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -99,27 +100,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 统一 API 前缀：全部业务路由挂在 /api 下（本文件内公告路由 + 各子模块 router 经 include_router(prefix="/api") 挂载）
+api_router = APIRouter(prefix="/api")
+
 # 服务器监控（最小 TCP 探测实现）
-app.include_router(monitor_router)
+app.include_router(monitor_router, prefix="/api")
 
 # 认证（验证码 / 注册 / 登录 / 当前用户）
-app.include_router(auth_router)
+app.include_router(auth_router, prefix="/api")
 
 # 管理员用户管理（新增 / 编辑 / 启停 / 软删除 / 分页）
-app.include_router(auth_admin_users_router)
+app.include_router(auth_admin_users_router, prefix="/api")
 
 # 阵营对战玩法内测资格申请
-app.include_router(faction_beta_router)
+app.include_router(faction_beta_router, prefix="/api")
 
-# 知识库 / 智能客服（/kb/info、/kb/chat SSE、/kb/admin/*）
-app.include_router(kb_module.router)
+# 知识库 / 智能客服（/api/kb/info、/api/kb/chat SSE、/api/kb/admin/*）
+app.include_router(kb_module.router, prefix="/api")
+
+app.include_router(api_router)
 
 # 静态托管富文本上传的图片。
-# 生产 Nginx 已按 /announcement 前缀反代到本服务，该子路径无需额外配置即可访问。
+# 规范路径 /api/announcement/uploads；nginx 将 /api 反代到本服务。
+app.mount(
+    "/api/announcement/uploads",
+    StaticFiles(directory=str(UPLOAD_DIR)),
+    name="uploads",
+)
+# 存量兼容：历史公告正文（生产库已入库内容）内嵌的旧 URL /announcement/uploads/...，
+# 保留旧路径别名指向同一目录，勿删除（新上传返回的是 /api 前缀 URL）
 app.mount(
     "/announcement/uploads",
     StaticFiles(directory=str(UPLOAD_DIR)),
-    name="uploads",
+    name="uploads-legacy",
 )
 
 
@@ -135,7 +148,7 @@ async def on_startup():
 
 
 # ── 公告分页查询 ──────────────────────────────────────────────
-@app.get("/announcement/page", response_model=PageResponse)
+@api_router.get("/announcement/page", response_model=PageResponse)
 async def query_page(
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=10, ge=1, le=100),
@@ -147,7 +160,7 @@ async def query_page(
 
 
 # ── 公告详情 ──────────────────────────────────────────────────
-@app.get("/announcement/detail/{announcement_id}", response_model=AnnouncementResponse)
+@api_router.get("/announcement/detail/{announcement_id}", response_model=AnnouncementResponse)
 async def get_detail(
     announcement_id: int,
     db=Depends(get_db),
@@ -160,7 +173,7 @@ async def get_detail(
 
 
 # ── 上一篇/下一篇导航 ─────────────────────────────────────────
-@app.get("/announcement/prev-next/{announcement_id}", response_model=PrevNextResponse)
+@api_router.get("/announcement/prev-next/{announcement_id}", response_model=PrevNextResponse)
 async def get_prev_next_endpoint(
     announcement_id: int,
     db=Depends(get_db),
@@ -170,7 +183,7 @@ async def get_prev_next_endpoint(
 
 
 # ── 增加阅读量 ────────────────────────────────────────────────
-@app.post("/announcement/addWatchCount")
+@api_router.post("/announcement/addWatchCount")
 async def add_watch_count_endpoint(
     req: AddWatchCountRequest,
     db=Depends(get_db),
@@ -183,7 +196,7 @@ async def add_watch_count_endpoint(
 
 
 # ── 公告创建（管理员接口） ─────────────────────────────────────
-@app.post("/announcement/create", response_model=AnnouncementResponse)
+@api_router.post("/announcement/create", response_model=AnnouncementResponse)
 async def create_announcement_endpoint(
     data: AnnouncementCreate,
     db=Depends(get_db),
@@ -195,7 +208,7 @@ async def create_announcement_endpoint(
 
 
 # ── 公告更新（管理员接口） ─────────────────────────────────────
-@app.put("/announcement/update/{announcement_id}", response_model=AnnouncementResponse)
+@api_router.put("/announcement/update/{announcement_id}", response_model=AnnouncementResponse)
 async def update_announcement_endpoint(
     announcement_id: int,
     data: AnnouncementUpdate,
@@ -210,7 +223,7 @@ async def update_announcement_endpoint(
 
 
 # ── 公告删除（管理员接口） ─────────────────────────────────────
-@app.delete("/announcement/delete/{announcement_id}")
+@api_router.delete("/announcement/delete/{announcement_id}")
 async def delete_announcement_endpoint(
     announcement_id: int,
     db=Depends(get_db),
@@ -224,7 +237,7 @@ async def delete_announcement_endpoint(
 
 
 # ── 管理员：公告分页（含草稿） ─────────────────────────────────
-@app.get("/announcement/admin/page", response_model=PageResponse)
+@api_router.get("/announcement/admin/page", response_model=PageResponse)
 async def admin_query_page(
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=10, ge=1, le=100),
@@ -236,7 +249,7 @@ async def admin_query_page(
 
 
 # ── 公告图片上传（管理员接口，富文本编辑器使用） ───────────────
-@app.post("/announcement/upload/image")
+@api_router.post("/announcement/upload/image")
 async def upload_image_endpoint(
     file: UploadFile = File(...),
     _admin=Depends(require_admin),
@@ -261,11 +274,12 @@ async def upload_image_endpoint(
     name = f"{uuid.uuid4().hex}{ext}"
     (target_dir / name).write_bytes(data)
 
-    url = f"/announcement/uploads/{sub_dir}/{name}"
+    url = f"/api/announcement/uploads/{sub_dir}/{name}"
     return {"code": 0, "message": "success", "data": {"url": url}}
 
 
-# ── 健康检查 ──────────────────────────────────────────────────
+# ── 健康检查（/api/health 为主；/health 保留兼容旧部署门禁与外部监控） ──
 @app.get("/health")
+@api_router.get("/health", include_in_schema=False)
 async def health():
     return {"status": "ok"}

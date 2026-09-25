@@ -35,7 +35,7 @@ export const queryPage = (params: {
   pageSize?: number;
   status?: FactionBetaStatus;
 }) => {
-  return http.request<FactionBetaPageResult>("get", "/faction-beta/admin/page", {
+  return http.request<FactionBetaPageResult>("get", "/api/faction-beta/admin/page", {
     params
   });
 };
@@ -47,12 +47,12 @@ export const review = (
 ) => {
   return http.request<FactionBetaItem>(
     "put",
-    `/faction-beta/admin/${id}/review`,
+    `/api/faction-beta/admin/${id}/review`,
     { data }
   );
 };
 
 /** 管理员：删除申请 */
 export const remove = (id: number) => {
-  return http.request("delete", `/faction-beta/admin/${id}`);
+  return http.request("delete", `/api/faction-beta/admin/${id}`);
 };

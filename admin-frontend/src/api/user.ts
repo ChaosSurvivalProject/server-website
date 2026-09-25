@@ -17,12 +17,12 @@ export type UserInfo = {
 
 /** 管理员登录 */
 export const login = (data?: object) => {
-  return http.request<LoginResult>("post", "/auth/login", { data });
+  return http.request<LoginResult>("post", "/api/auth/login", { data });
 };
 
 /** 获取当前用户信息 */
 export const getInfo = () => {
-  return http.request<UserInfo>("get", "/auth/me");
+  return http.request<UserInfo>("get", "/api/auth/me");
 };
 
 // ── 用户管理（新增 / 编辑 / 启停 / 软删除 / 分页） ──────────────
@@ -55,7 +55,7 @@ export const queryPage = (params: {
   pageSize?: number;
   status?: UserStatus;
 }) => {
-  return http.request<UserPageResult>("get", "/auth/admin/users", {
+  return http.request<UserPageResult>("get", "/api/auth/admin/users", {
     params
   });
 };
@@ -68,7 +68,7 @@ export const createUser = (data: {
   role: string;
   email?: string;
 }) => {
-  return http.request<UserItem>("post", "/auth/admin/users", { data });
+  return http.request<UserItem>("post", "/api/auth/admin/users", { data });
 };
 
 /** 管理员：编辑用户（账号不可改；昵称/角色/邮箱/密码可改，密码留空 = 不修改） */
@@ -81,17 +81,17 @@ export const updateUser = (
     password?: string;
   }
 ) => {
-  return http.request<UserItem>("put", `/auth/admin/users/${id}`, { data });
+  return http.request<UserItem>("put", `/api/auth/admin/users/${id}`, { data });
 };
 
 /** 管理员：切换用户状态（1=启用, 0=禁用, 2=删除） */
 export const setUserStatus = (id: number, status: UserStatus) => {
-  return http.request<UserItem>("put", `/auth/admin/users/${id}/status`, {
+  return http.request<UserItem>("put", `/api/auth/admin/users/${id}/status`, {
     data: { status }
   });
 };
 
 /** 管理员：软删除用户（数据保留可恢复，无法登录） */
 export const removeUser = (id: number) => {
-  return http.request<UserItem>("delete", `/auth/admin/users/${id}`);
+  return http.request<UserItem>("delete", `/api/auth/admin/users/${id}`);
 };

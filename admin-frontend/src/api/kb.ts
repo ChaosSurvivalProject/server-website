@@ -48,7 +48,7 @@ export type KBStats = {
 
 /** 知识库统计 */
 export const getKBStats = () => {
-  return http.request<KBStats>("get", "/kb/admin/stats");
+  return http.request<KBStats>("get", "/api/kb/admin/stats");
 };
 
 /** 知识库文档分页列表 */
@@ -57,28 +57,28 @@ export const getKBDocuments = (params: {
   pageSize?: number;
   sourceType?: string;
 }) => {
-  return http.request<KBDocumentPage>("get", "/kb/admin/documents", { params });
+  return http.request<KBDocumentPage>("get", "/api/kb/admin/documents", { params });
 };
 
 /** 手动新增知识（粘贴 Markdown，同步切片 + Embedding，1-3s） */
 export const createKBDocument = (data: { title: string; content: string }) => {
-  return http.request<KBDocumentItem>("post", "/kb/admin/documents", { data });
+  return http.request<KBDocumentItem>("post", "/api/kb/admin/documents", { data });
 };
 
 /** 删除文档（wiki 来源会被后端 400 拒绝） */
 export const deleteKBDocument = (id: number) => {
-  return http.request("delete", `/kb/admin/documents/${id}`);
+  return http.request("delete", `/api/kb/admin/documents/${id}`);
 };
 
 /** 切片预览 */
 export const getKBChunks = (id: number) => {
-  return http.request<KBChunkItem[]>("get", `/kb/admin/documents/${id}/chunks`);
+  return http.request<KBChunkItem[]>("get", `/api/kb/admin/documents/${id}/chunks`);
 };
 
 /** 重建（幂等：wiki 来源整篇重建，manual 来源重嵌入现有切片） */
 export const reindexKBDocument = (id: number) => {
   return http.request<KBDocumentItem>(
     "post",
-    `/kb/admin/documents/${id}/reindex`
+    `/api/kb/admin/documents/${id}/reindex`
   );
 };

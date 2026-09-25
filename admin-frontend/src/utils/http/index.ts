@@ -59,7 +59,7 @@ class PureHttp {
           return config;
         }
         /** 请求白名单，放置一些不需要`token`的接口 */
-        const whiteList = ["/auth/login", "/auth/register", "/auth/captcha"];
+        const whiteList = ["/api/auth/login", "/api/auth/register", "/api/auth/captcha"];
         const isWhite = whiteList.some(url =>
           config.url?.endsWith(url)
         );

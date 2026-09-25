@@ -43,7 +43,7 @@ server-website/
 │   │   ├── kb_index.py          # 知识库：内存向量索引（版本失效 + TopK，纯 stdlib）
 │   │   ├── kb_retrieve.py       # 知识库：向量 + FTS5 trigram + RRF 混合检索
 │   │   ├── kb_llm.py            # 知识库：OpenAI 兼容 chat 流式客户端（httpx）
-│   │   └── kb.py                # 知识库：/kb/* 全部路由（SSE 问答 + 限流 + 管理接口）
+│   │   └── kb.py                # 知识库：/api/kb/* 全部路由（SSE 问答 + 限流 + 管理接口）
 │   ├── kb_sync.py               # wiki → 知识库 同步脚本（CLI，按 MD5 增量）
 │   ├── run.py                   # uvicorn 启动脚本
 │   ├── seed.py                  # 测试数据种子
@@ -124,7 +124,7 @@ pnpm dev      # 开发服务器（端口取 .env.development 的 VITE_PORT，当
 pnpm build    # 构建到 dist/（base: /admin/，hash 路由）
 ```
 
-开发模式下 API 请求经 `vite.config.ts` 的 proxy（`/announcement`、`/monitor`、`/auth`、`/faction-beta`、`/kb`、`/health`）转发到后端 `http://localhost:5000`。登录账号即后端自动初始化的系统管理员（见「认证」一节）。
+开发模式下 API 请求经 `vite.config.ts` 的 proxy（`/api`）转发到后端 `http://localhost:5000`。登录账号即后端自动初始化的系统管理员（见「认证」一节）。
 
 ## 后端 API
 
@@ -132,16 +132,16 @@ pnpm build    # 构建到 dist/（base: /admin/，hash 路由）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/announcement/page` | 分页查询公告（参数: page, pageSize, isPublished） |
-| GET | `/announcement/admin/page` | 管理员分页查询（**需管理员**；含草稿，参数: page, pageSize） |
-| GET | `/announcement/detail/{id}` | 查询公告详情 |
-| GET | `/announcement/prev-next/{id}` | 上一篇/下一篇导航（仅已发布公告按 id 序，跳过草稿；返回 `brief={id,title,publishTime}`） |
-| POST | `/announcement/addWatchCount` | 阅读量 +1（body: `{announcementId}`） |
-| POST | `/announcement/create` | 创建公告（**需管理员**） |
-| PUT | `/announcement/update/{id}` | 更新公告（部分更新，**需管理员**） |
-| DELETE | `/announcement/delete/{id}` | 删除公告（**需管理员**） |
-| POST | `/announcement/upload/image` | 上传富文本图片（multipart `file`，≤5MB，png/jpg/jpeg/gif/webp，**需管理员**；返回 `data.url` 相对路径，可直接写入公告内容） |
-| GET | `/announcement/uploads/{...}` | 上传图片静态目录（按月份分目录存放） |
+| GET | `/api/announcement/page` | 分页查询公告（参数: page, pageSize, isPublished） |
+| GET | `/api/announcement/admin/page` | 管理员分页查询（**需管理员**；含草稿，参数: page, pageSize） |
+| GET | `/api/announcement/detail/{id}` | 查询公告详情 |
+| GET | `/api/announcement/prev-next/{id}` | 上一篇/下一篇导航（仅已发布公告按 id 序，跳过草稿；返回 `brief={id,title,publishTime}`） |
+| POST | `/api/announcement/addWatchCount` | 阅读量 +1（body: `{announcementId}`） |
+| POST | `/api/announcement/create` | 创建公告（**需管理员**） |
+| PUT | `/api/announcement/update/{id}` | 更新公告（部分更新，**需管理员**） |
+| DELETE | `/api/announcement/delete/{id}` | 删除公告（**需管理员**） |
+| POST | `/api/announcement/upload/image` | 上传富文本图片（multipart `file`，≤5MB，png/jpg/jpeg/gif/webp，**需管理员**；返回 `data.url` 相对路径，可直接写入公告内容） |
+| GET | `/api/announcement/uploads/{...}` | 上传图片静态目录（按月份分目录存放） |
 
 - 公告正文对外字段为 `rawContent`（原始内容）+ `contentType`（内容格式，`'html'`=富文本 / `'markdown'`=Markdown；create/update 传参同名字段，缺省 `html`）。Markdown 渲染在前端完成，后端不做转换。
 
@@ -149,11 +149,11 @@ pnpm build    # 构建到 dist/（base: /admin/，hash 路由）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/auth/captcha` | 获取注册用滑块拼图验证码（返回 `{captchaId, backgroundImage, pieceImage, sliderY}`，5 分钟有效；横向答案不下发仅存服务端） |
-| POST | `/auth/captcha/verify` | 校验滑块位置（body: `{captchaId, x}`，误差 ≤5px 通过并标记该 captchaId；失败即作废，一次性防爆破） |
-| POST | `/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId}`，captchaId 须已通过滑块校验，注册时消费；邮箱作为账号，昵称默认取邮箱前缀，角色为普通用户） |
-| POST | `/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, username, nickname, role}`；禁用/已删除用户无法登录） |
-| GET | `/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{username, nickname, email, role}`；禁用/已删除用户的旧 token 一律失效） |
+| GET | `/api/auth/captcha` | 获取注册用滑块拼图验证码（返回 `{captchaId, backgroundImage, pieceImage, sliderY}`，5 分钟有效；横向答案不下发仅存服务端） |
+| POST | `/api/auth/captcha/verify` | 校验滑块位置（body: `{captchaId, x}`，误差 ≤5px 通过并标记该 captchaId；失败即作废，一次性防爆破） |
+| POST | `/api/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId}`，captchaId 须已通过滑块校验，注册时消费；邮箱作为账号，昵称默认取邮箱前缀，角色为普通用户） |
+| POST | `/api/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, username, nickname, role}`；禁用/已删除用户无法登录） |
+| GET | `/api/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{username, nickname, email, role}`；禁用/已删除用户的旧 token 一律失效） |
 
 - JWT 默认 24 小时有效，环境变量 `JWT_EXPIRE_HOURS` 可调；签名密钥取环境变量 `JWT_SECRET`，未设置时自动生成并持久化到数据目录。
 - 系统管理员 `xqly-admin` 在后端首次启动时自动初始化，随机强密码写入数据目录 `admin_initial_password.txt`（仅首次初始化时写入，请妥善保管并及时删除）。
@@ -162,11 +162,11 @@ pnpm build    # 构建到 dist/（base: /admin/，hash 路由）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/auth/admin/users` | 分页查询用户（参数: page, pageSize, status 可选；status 1=正常, 0=禁用, 2=已删除，缺省查全部） |
-| POST | `/auth/admin/users` | 新增用户（body: `{username, nickname?, password, role, email?}`；账号 2-100 位字母/数字及 . _ % + -，昵称 ≤50 字符，密码 8-32 位含字母数字，role 仅 admin/user） |
-| PUT | `/auth/admin/users/{id}` | 编辑用户（body: `{nickname?, role?, email?, password?}`；**账号 username 不允许修改**；昵称/角色/邮箱可改，密码留空=不修改（忘记密码重置场景）；已删除用户禁止编辑） |
-| PUT | `/auth/admin/users/{id}/status` | 切换用户状态（body: `{status: 1\|0\|2}`；1=启用, 0=禁用, 2=删除（软删除，数据保留可恢复）） |
-| DELETE | `/auth/admin/users/{id}` | 软删除用户（status 置为已删除，无法登录，数据保留可恢复） |
+| GET | `/api/auth/admin/users` | 分页查询用户（参数: page, pageSize, status 可选；status 1=正常, 0=禁用, 2=已删除，缺省查全部） |
+| POST | `/api/auth/admin/users` | 新增用户（body: `{username, nickname?, password, role, email?}`；账号 2-100 位字母/数字及 . _ % + -，昵称 ≤50 字符，密码 8-32 位含字母数字，role 仅 admin/user） |
+| PUT | `/api/auth/admin/users/{id}` | 编辑用户（body: `{nickname?, role?, email?, password?}`；**账号 username 不允许修改**；昵称/角色/邮箱可改，密码留空=不修改（忘记密码重置场景）；已删除用户禁止编辑） |
+| PUT | `/api/auth/admin/users/{id}/status` | 切换用户状态（body: `{status: 1\|0\|2}`；1=启用, 0=禁用, 2=删除（软删除，数据保留可恢复）） |
+| DELETE | `/api/auth/admin/users/{id}` | 软删除用户（status 置为已删除，无法登录，数据保留可恢复） |
 
 - 所有接口需 `Authorization: Bearer <JWT>` 且角色为 `admin`，无 token 返回 401，普通用户返回 403。
 - 用户 `status` 三态：`1=正常`、`0=禁用`（无法登录，可重新启用）、`2=已删除`（软删除，无法登录，数据保留可恢复）。
@@ -177,11 +177,11 @@ pnpm build    # 构建到 dist/（base: /admin/，hash 路由）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/faction-beta/apply` | 提交内测申请（**需登录**；body: `{mcId, email, faction, experience, weeklyHours, motivation}`，每账号一份，被拒后可重新提交覆盖） |
-| GET | `/faction-beta/my` | 查询当前用户申请（**需登录**；未提交时 `data.application` 为 `null`） |
-| GET | `/faction-beta/admin/page` | 管理员分页查询（**需管理员**；参数: page, pageSize, status 可选过滤） |
-| PUT | `/faction-beta/admin/{id}/review` | 审核申请（**需管理员**；body: `{status: 1\|2, reviewNote?}`） |
-| DELETE | `/faction-beta/admin/{id}` | 删除申请（**需管理员**） |
+| POST | `/api/faction-beta/apply` | 提交内测申请（**需登录**；body: `{mcId, email, faction, experience, weeklyHours, motivation}`，每账号一份，被拒后可重新提交覆盖） |
+| GET | `/api/faction-beta/my` | 查询当前用户申请（**需登录**；未提交时 `data.application` 为 `null`） |
+| GET | `/api/faction-beta/admin/page` | 管理员分页查询（**需管理员**；参数: page, pageSize, status 可选过滤） |
+| PUT | `/api/faction-beta/admin/{id}/review` | 审核申请（**需管理员**；body: `{status: 1\|2, reviewNote?}`） |
+| DELETE | `/api/faction-beta/admin/{id}` | 删除申请（**需管理员**） |
 
 - 申请状态 `status`：`0=待审核, 1=已通过, 2=未通过`；字段 camelCase（`mcId` / `weeklyHours` / `reviewNote` / `reviewTime` 等）。
 - 表单选项（期望阵营 / PvP 经验 / 每周时长）以后端 `faction_beta.py` 白名单为唯一权威，前端选项需与其保持一致。
@@ -190,13 +190,13 @@ pnpm build    # 构建到 dist/（base: /admin/，hash 路由）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/monitor/servers` | 游戏服务器地址列表（前端展示的唯一数据源） |
-| GET | `/monitor/server-info/{serverId}` | 服务器在线状态（TCP 探测，供首页在线状态组件） |
-| GET | `/monitor/admin/servers` | 管理员获取全部服务器（**需管理员**） |
-| POST | `/monitor/admin/servers` | 新增服务器（**需管理员**） |
-| PUT | `/monitor/admin/servers/{id}` | 更新服务器（**需管理员**） |
-| DELETE | `/monitor/admin/servers/{id}` | 删除服务器（**需管理员**） |
-| POST | `/monitor/admin/servers/{id}/primary` | 设为主服务器（**需管理员**） |
+| GET | `/api/monitor/servers` | 游戏服务器地址列表（前端展示的唯一数据源） |
+| GET | `/api/monitor/server-info/{serverId}` | 服务器在线状态（TCP 探测，供首页在线状态组件） |
+| GET | `/api/monitor/admin/servers` | 管理员获取全部服务器（**需管理员**） |
+| POST | `/api/monitor/admin/servers` | 新增服务器（**需管理员**） |
+| PUT | `/api/monitor/admin/servers/{id}` | 更新服务器（**需管理员**） |
+| DELETE | `/api/monitor/admin/servers/{id}` | 删除服务器（**需管理员**） |
+| POST | `/api/monitor/admin/servers/{id}/primary` | 设为主服务器（**需管理员**） |
 
 - 服务器地址持久化在 SQLite `servers` 表（**DB 为唯一权威，内存 `SERVERS` 字典为读缓存**）：启动时 `load_servers()` 读库填充内存，表为空时用默认注册表做种子；后台管理页的增删改先改内存再同步落库（先 commit 再返回，失败回滚内存），**重启不再丢失**（原"重启即重置"行为属 bug，已修复）。不能删除主服务器，设主 / 设 `isPrimary` 会自动清除其他服务器的主标记，全表始终至多一个主服务器。
 
@@ -206,14 +206,14 @@ pnpm build    # 构建到 dist/（base: /admin/，hash 路由）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/kb/info` | 客服元信息（`enabled` / `title` / `greeting` / `faq` / `model`；未配置 API Key 时 `enabled:false`，前端不渲染悬浮球） |
-| POST | `/kb/chat` | **SSE 流式问答**（body: `{message, history?}`；`text/event-stream`，**全项目唯一不走 `{code, message, data}` 包络的接口**，帧协议见下方） |
-| GET | `/kb/admin/documents` | 文档分页列表（**需管理员**；参数: page, pageSize, sourceType 可选） |
-| POST | `/kb/admin/documents` | 手动新增知识（**需管理员**；body: `{title, content}`，同步切片 + Embedding） |
-| DELETE | `/kb/admin/documents/{id}` | 删除文档（**需管理员**；`wiki` 来源返回 400，提示走同步脚本） |
-| GET | `/kb/admin/documents/{id}/chunks` | 切片预览（**需管理员**） |
-| POST | `/kb/admin/documents/{id}/reindex` | 重建（**需管理员**；幂等：wiki 来源读源文件整篇重建，manual 来源重嵌入现有切片） |
-| GET | `/kb/admin/stats` | 统计（**需管理员**；文档数 / 切片数 / 索引版本 / 维度一致性 / 总字符数） |
+| GET | `/api/kb/info` | 客服元信息（`enabled` / `title` / `greeting` / `faq` / `model`；未配置 API Key 时 `enabled:false`，前端不渲染悬浮球） |
+| POST | `/api/kb/chat` | **SSE 流式问答**（body: `{message, history?}`；`text/event-stream`，**全项目唯一不走 `{code, message, data}` 包络的接口**，帧协议见下方） |
+| GET | `/api/kb/admin/documents` | 文档分页列表（**需管理员**；参数: page, pageSize, sourceType 可选） |
+| POST | `/api/kb/admin/documents` | 手动新增知识（**需管理员**；body: `{title, content}`，同步切片 + Embedding） |
+| DELETE | `/api/kb/admin/documents/{id}` | 删除文档（**需管理员**；`wiki` 来源返回 400，提示走同步脚本） |
+| GET | `/api/kb/admin/documents/{id}/chunks` | 切片预览（**需管理员**） |
+| POST | `/api/kb/admin/documents/{id}/reindex` | 重建（**需管理员**；幂等：wiki 来源读源文件整篇重建，manual 来源重嵌入现有切片） |
+| GET | `/api/kb/admin/stats` | 统计（**需管理员**；文档数 / 切片数 / 索引版本 / 维度一致性 / 总字符数） |
 
 SSE 帧协议（UTF-8 JSON，空行分隔，`ensure_ascii=False`）：
 
@@ -251,8 +251,8 @@ python3 kb_sync.py --list            # 列出库内文档与切片数
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/health` | 健康检查 |
-| GET | `/kb/info` | 智能客服元信息（见「知识库 / 智能客服」） |
-| POST | `/kb/chat` | 智能客服流式问答（SSE，唯一不走包络） |
+| GET | `/api/kb/info` | 智能客服元信息（见「知识库 / 智能客服」） |
+| POST | `/api/kb/chat` | 智能客服流式问答（SSE，唯一不走包络） |
 
 **约定**
 
@@ -275,10 +275,10 @@ python3 kb_sync.py --list            # 列出库内文档与切片数
 
 ### 图片上传
 
-富文本图片默认存放于 `backend/data/uploads/`（按月份分目录，随机文件名），应用启动时自动创建，经 `/announcement/uploads/` 静态目录对外提供：
+富文本图片默认存放于 `backend/data/uploads/`（按月份分目录，随机文件名），应用启动时自动创建，经 `/api/announcement/uploads/` 静态目录对外提供（2026-09-25 起接口统一 /api 前缀；`/announcement/uploads/` 旧路径保留别名，兼容历史正文内嵌的旧图片 URL）：
 
 - 可通过环境变量 `ANNOUNCEMENT_UPLOAD_DIR` 自定义（Docker 部署已在 docker-compose.yml 中指向挂载卷 `/app/data/uploads`）
-- 生产 Nginx 已按 `/announcement` 前缀反代到 FastAPI，该子路径无需额外配置
+- 生产 Nginx 将 `/api` 反代到 FastAPI，该子路径无需额外配置；`/announcement/uploads/` 旧路径保留兼容反代
 
 ### 种子数据
 
@@ -344,7 +344,7 @@ docker compose up -d --build
 前后端同域部署，由 Nginx 统一入口：
 
 - `frontend` 构建产物（`npm run build` → `dist/`）作为静态站点托管
-- `/announcement`、`/monitor`、`/auth`、`/faction-beta`、`/kb`、`/health` 等 API 路径反向代理到本机 FastAPI（5000 端口）；其中 `/kb/` 的反代需为 SSE 追加：`proxy_http_version 1.1`、`proxy_set_header Connection ''`、`proxy_buffering off`、`proxy_cache off`、`gzip off`、`proxy_read_timeout 300s`（与后端响应头 `X-Accel-Buffering: no` 两个都要，否则流式被缓冲成一次性返回）
+- `/api` 反向代理到本机 FastAPI（5000 端口，后端所有接口统一挂 /api 前缀）；其中 `/api/kb/` 的反代需为 SSE 追加：`proxy_http_version 1.1`、`proxy_set_header Connection ''`、`proxy_buffering off`、`proxy_cache off`、`gzip off`、`proxy_read_timeout 300s`（与后端响应头 `X-Accel-Buffering: no` 两个都要，否则流式被缓冲成一次性返回）
 - `wiki` 构建产物挂在 `/wiki/` 路径下（VitePress `base: '/wiki'`）
 - `admin-frontend` 构建产物挂在 `/admin/` 路径下（pure-admin-thin，`base: '/admin/'`）
 
@@ -372,7 +372,7 @@ docker compose up -d --build
 
 ### HTTP 层（`src/utils/http/`）与 API 模块（`src/api/`）
 
-- `utils/http/index.ts`（PureHttp）— axios 封装：`baseURL` 留空（同源相对路径，dev 由 Vite proxy、prod 由 Nginx 反代到后端）；请求拦截器对 `/auth/login`、`/auth/register`、`/auth/captcha` 白名单放行，其余自动携带 `Authorization: Bearer <token>`；响应拦截器统一解包 `{code, message, data}`（`code=0` 直接返回 `data`），业务错误与 HTTP 非 2xx 都把 FastAPI `detail` 或包络 `message` 提取到 `error.message`——页面 catch 里直接 `ElMessage.error(e.message)`，不要重复解析错误体；401（HTTP 401 或包络 401/1001）自动清除登录态并跳回登录页
+- `utils/http/index.ts`（PureHttp）— axios 封装：`baseURL` 留空（同源相对路径，dev 由 Vite proxy、prod 由 Nginx 反代到后端）；请求拦截器对 `/api/auth/login`、`/api/auth/register`、`/api/auth/captcha` 白名单放行，其余自动携带 `Authorization: Bearer <token>`；响应拦截器统一解包 `{code, message, data}`（`code=0` 直接返回 `data`），业务错误与 HTTP 非 2xx 都把 FastAPI `detail` 或包络 `message` 提取到 `error.message`——页面 catch 里直接 `ElMessage.error(e.message)`，不要重复解析错误体；401（HTTP 401 或包络 401/1001）自动清除登录态并跳回登录页
 - `api/` — `announcement.ts` / `server.ts` / `user.ts` / `factionBeta.ts` / `kb.ts` 分别封装对应 admin 接口，TS 类型与后端契约一致；**新增或修改后端接口时必须同步主站契约参照 `frontend/src/api/api.js` 与本目录**（见 AGENTS.md 契约规约）
 - 传 `FormData`（文件上传）时必须显式加 `Content-Type: multipart/form-data` 请求头，否则 axios 会把 FormData 序列化成 JSON，后端解析不到字段直接 422
 
@@ -402,6 +402,6 @@ pnpm build      # 构建到 dist/（base: /admin/）
 pnpm typecheck  # tsc + vue-tsc 类型检查
 ```
 
-- 开发模式：Vite dev server（:3005），`vite.config.ts` 的 proxy 把 `/announcement`、`/monitor`、`/auth`、`/faction-beta`、`/kb`、`/health` 转发到后端 FastAPI（:5000）
+- 开发模式：Vite dev server（:3005），`vite.config.ts` 的 proxy 把 `/api` 转发到后端 FastAPI（:5000）
 - 生产模式：`pnpm build` → `dist/`，由 Nginx 挂在 `/admin/` 路径下；hash 路由刷新无需 `try_files` 兜底，API 请求为同源相对路径，命中 Nginx 既有反代规则
 - 管理员入口：主站已登录管理员点击头像下拉菜单 → 「后台管理」（仅管理员角色可见，URL 来自 `frontend` 的 `VITE_ADMIN_URL`，默认 `/admin`）

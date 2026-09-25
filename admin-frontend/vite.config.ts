@@ -24,13 +24,10 @@ export default ({ mode }: ConfigEnv): UserConfigExport => {
       port: VITE_PORT,
       host: "0.0.0.0",
       // 本地跨域代理 https://cn.vitejs.dev/config/server-options.html#server-proxy
+      // 后端接口 2026-09-25 起统一挂 /api 前缀；/announcement 兼容历史正文内嵌的旧上传图片 URL
       proxy: {
-        "/announcement": "http://localhost:5000",
-        "/monitor": "http://localhost:5000",
-        "/auth": "http://localhost:5000",
-        "/faction-beta": "http://localhost:5000",
-        "/kb": "http://localhost:5000",
-        "/health": "http://localhost:5000"
+        "/api": "http://localhost:5000",
+        "/announcement": "http://localhost:5000"
       },
       // 预热文件以提前转换和缓存结果，降低启动期间的初始页面加载时长并防止转换瀑布
       warmup: {

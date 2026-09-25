@@ -28,25 +28,25 @@ export type PageResult = {
 
 /** 管理员：分页查询所有公告（含草稿） */
 export const queryPage = (params: { page?: number; pageSize?: number }) => {
-  return http.request<PageResult>("get", "/announcement/admin/page", { params });
+  return http.request<PageResult>("get", "/api/announcement/admin/page", { params });
 };
 
 /** 查询公告详情（与主站契约 frontend/src/api/api.js 的 detail 接口一致） */
 export const getDetail = (id: number) => {
-  return http.request<AnnouncementItem>("get", `/announcement/detail/${id}`);
+  return http.request<AnnouncementItem>("get", `/api/announcement/detail/${id}`);
 };
 
 /** 管理员：创建公告 */
 export const create = (data: any) => {
-  return http.request<AnnouncementItem>("post", "/announcement/create", { data });
+  return http.request<AnnouncementItem>("post", "/api/announcement/create", { data });
 };
 
 /** 管理员：更新公告 */
 export const update = (id: number, data: any) => {
-  return http.request<AnnouncementItem>("put", `/announcement/update/${id}`, { data });
+  return http.request<AnnouncementItem>("put", `/api/announcement/update/${id}`, { data });
 };
 
 /** 管理员：删除公告 */
 export const remove = (id: number) => {
-  return http.request("delete", `/announcement/delete/${id}`);
+  return http.request("delete", `/api/announcement/delete/${id}`);
 };

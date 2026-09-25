@@ -86,7 +86,7 @@ const uploadAnnouncementImage = (file: File): Promise<string> => {
   // axios 会据此把 FormData 序列化成 JSON，后端解析不到 file 字段而 422。
   // 显式声明后 axios 放行 FormData，边界由浏览器/适配器自动补全。
   return http
-    .request<{ url: string }>("post", "/announcement/upload/image", {
+    .request<{ url: string }>("post", "/api/announcement/upload/image", {
       data: fd,
       timeout: 30000,
       headers: { "Content-Type": "multipart/form-data" }

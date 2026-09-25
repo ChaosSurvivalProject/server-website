@@ -10,7 +10,7 @@ export const authAPI = {
    *   backgroundImage/pieceImage 为 PNG base64 data URI，sliderY 为拼图块纵向位置(px)
    */
   getCaptcha: () => {
-    return axiosInstance.get('/auth/captcha');
+    return axiosInstance.get('/api/auth/captcha');
   },
 
   /**
@@ -20,7 +20,7 @@ export const authAPI = {
    * @returns {Promise} - data: {verified: true}
    */
   verifyCaptcha: (payload) => {
-    return axiosInstance.post('/auth/captcha/verify', payload, { silent: true });
+    return axiosInstance.post('/api/auth/captcha/verify', payload, { silent: true });
   },
 
   /**
@@ -29,7 +29,7 @@ export const authAPI = {
    * @returns {Promise} - data: {username, role}
    */
   register: (payload) => {
-    return axiosInstance.post('/auth/register', payload);
+    return axiosInstance.post('/api/auth/register', payload);
   },
 
   /**
@@ -38,7 +38,7 @@ export const authAPI = {
    * @returns {Promise} - data: {token, username, role}
    */
   login: (payload) => {
-    return axiosInstance.post('/auth/login', payload);
+    return axiosInstance.post('/api/auth/login', payload);
   },
 
   /**
@@ -46,7 +46,7 @@ export const authAPI = {
    * @returns {Promise} - data: {username, email, role}
    */
   getMe: () => {
-    return axiosInstance.get('/auth/me');
+    return axiosInstance.get('/api/auth/me');
   }
 };
 
@@ -57,7 +57,7 @@ export const serverConfigAPI = {
    * @returns {Promise} - data: {servers: [{id, name, address, port, display}], primary}
    */
   getServers: () => {
-    return axiosInstance.get('/monitor/servers');
+    return axiosInstance.get('/api/monitor/servers');
   }
 };
 
@@ -72,7 +72,7 @@ export const serverMonitorAPI = {
    * @returns {Promise} - 返回Promise对象
    */
   getServerInfo: (serverId, startTime, endTime, timePeriod = 1) => {
-    return axiosInstance.get(`/monitor/server-info/${serverId}`, {
+    return axiosInstance.get(`/api/monitor/server-info/${serverId}`, {
       params: {
         start_time: startTime,
         end_time: endTime,
@@ -93,7 +93,7 @@ export const announcementAPI = {
    * @returns {Promise} - 返回Promise对象
    */
   queryPage: (page, pageSize, isPublished = '1') => {
-    return axiosInstance.get('/announcement/page', {
+    return axiosInstance.get('/api/announcement/page', {
       params: {
         page,
         pageSize,
@@ -108,7 +108,7 @@ export const announcementAPI = {
    * @returns {Promise} - 返回Promise对象
    */
   getDetail: (announcementId) => {
-    return axiosInstance.get(`/announcement/detail/${announcementId}`);
+    return axiosInstance.get(`/api/announcement/detail/${announcementId}`);
   },
 
   /**
@@ -117,7 +117,7 @@ export const announcementAPI = {
    * @returns {Promise} - data: {prev: {id, title, publishTime} | null, next: {id, title, publishTime} | null}
    */
   getPrevNext: (announcementId) => {
-    return axiosInstance.get(`/announcement/prev-next/${announcementId}`);
+    return axiosInstance.get(`/api/announcement/prev-next/${announcementId}`);
   },
 
   /**
@@ -126,7 +126,7 @@ export const announcementAPI = {
    * @returns {Promise} - 返回Promise对象
    */
   addWatchCount: (announcementId) => {
-    return axiosInstance.post(`/announcement/addWatchCount`,{
+    return axiosInstance.post(`/api/announcement/addWatchCount`,{
       announcementId
     });
   }
@@ -141,7 +141,7 @@ export const factionBetaAPI = {
    * @returns {Promise} - data: 申请详情（含 status）
    */
   apply: (payload) => {
-    return axiosInstance.post('/faction-beta/apply', payload);
+    return axiosInstance.post('/api/faction-beta/apply', payload);
   },
 
   /**
@@ -149,7 +149,7 @@ export const factionBetaAPI = {
    * @returns {Promise} - data: {application: 申请详情 | null}
    */
   getMyApplication: () => {
-    return axiosInstance.get('/faction-beta/my');
+    return axiosInstance.get('/api/faction-beta/my');
   }
 };
 
@@ -160,7 +160,7 @@ export const factionBetaAPI = {
 // 帧协议见 docs/智能客服P0落地方案.md §4.3
 export const chatAPI = {
   /** 客服元信息：data: {enabled, title, greeting, faq, model} */
-  getInfo: () => axiosInstance.get('/kb/info'),
+  getInfo: () => axiosInstance.get('/api/kb/info'),
 
   /**
    * 流式问答。逐帧回调 onEvent(frame)，帧形如：
@@ -171,7 +171,7 @@ export const chatAPI = {
    * @param {{message: string, history?: Array, signal?: AbortSignal, onEvent: Function}} options
    */
   streamChat: async ({ message, history = [], signal, onEvent }) => {
-    const url = `${McConfig.baseApiURL}/kb/chat`;
+    const url = `${McConfig.baseApiURL}/api/kb/chat`;
     // /kb/chat 仅登录用户可用：fetch 不走 axiosInstance，需自行按请求拦截器同口径携带 JWT
     const headers = { 'Content-Type': 'application/json' };
     const token = getToken();
