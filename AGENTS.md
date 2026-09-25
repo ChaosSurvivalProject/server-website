@@ -88,13 +88,19 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 ## 部署拓扑（生产）
 
+**生产对外地址：`https://xqly.xt91tv.shop:23333`**（2026-09-25 起启用）。NAT 外部 23333 → 内部 80，nginx 在内部 80 上**直接跑 SSL**——不是 80→443 跳转，443 无监听；明文 HTTP 请求触发 497，经 `error_page 497` 301 到 HTTPS。
+
+生产 nginx 站点配置：服务器 `/etc/nginx/http.d/chaos-web.conf`，**仓库内留档在 `for-deploy/chaos-web.conf`**（改 conf 前先读 `for-deploy/README.md`）。
+
 同域单入口，Nginx 统一分发：
 
-- `/` → `frontend` 构建产物（SPA 使用 history 路由，Nginx 需配置 `try_files $uri $uri/ /index.html;`，否则刷新 `/announcements` 等深层路由会 404）
+- `/` → `frontend` 构建产物（SPA 使用 history 路由，**`try_files $uri $uri/ /index.html;` 已配置并生效**，可直接在 `for-deploy/chaos-web.conf` 的兜底 `location /` 核对；`/announcements` 等深层路由刷新、扫码直达 `/staff/xxx` 都依赖它，改动时勿删）
 - `/api` → 反代到本机 FastAPI（:5000，后端所有接口统一挂 `/api` 前缀）；其中 `/api/kb/` 的反代必须为 SSE 追加 `proxy_buffering off` + `proxy_http_version 1.1` + `proxy_set_header Connection ''` + `gzip off`（与后端 `X-Accel-Buffering: no` 两个都要，否则流式变一次性返回）
 - 兼容旧路径（勿删）：`/health` → 反代 FastAPI（外部监控/旧部署门禁在用）；`/announcement/uploads/` → 反代 FastAPI（历史公告正文内嵌的旧图片 URL，存量数据兼容）
 - `/wiki/` → `wiki` 构建产物（VitePress 已按 `/wiki` base 打包）
 - `/admin/` → `admin-frontend` 构建产物（pure-admin-thin，已按 `/admin/` base 打包）
+
+**新增 `location` 前缀时不得与前端页面路由同名**：`location /staff` 会把 SPA 的 `/staff/:code` 一并反代走，页面再也进不去，而 dev 直连后端看不出问题。统一 `/api` 之后新模块已不需要单独加 `location`，正常不会再触发；真要加，前缀与页面路由错开（如曾考虑过的复数前缀）。`chaos-web.conf` 里 `location = /faction-beta { try_files /index.html =404; }` 就是历史上处理这类同名的补丁。
 
 后端 Docker 部署时注意：`docker-compose.yml` 位于 `backend/` 下，但**构建上下文是项目根目录**（`context: ..`），因为 Dockerfile 里 `COPY backend/` 依赖该路径——移动文件时两者要一起改。
 
@@ -108,4 +114,5 @@ pnpm build                # 产物 dist/，部署到 /admin/
 - 后端 CORS 当前 `allow_origins=["*"]`（开发便利），生产收紧时需与同源部署方案一起评估。
 - `backend/app/monitor.py` 中 `server-info` 的 `start_time` / `end_time` / `time_period` 参数是预留参数，当前实现未使用，不要误删（前端会传）。
 - 智能客服（P0）遗留项见 `TODO.md`：真实玩家在线人数（mcstatus）、限流多 worker 共享存储、知识库自动定时任务（当前用 crontab）、检索效果看板等。
+- **HTTPS 证书 2026-12-24 到期**（Let's Encrypt 通配符 `*.xt91tv.shop`，90 天一签）：到期未换证书 = **全站不可访问**。续期后替换 `/etc/nginx/ssl/` 下证书与私钥并 `nginx -s reload`，同时更新 `for-deploy/chaos-web.conf` 头部注释里的到期日期。
 - 生产 Nginx 的 `/api/kb/` SSE 反代已按四件套配置（2026-09-21 起上线，2026-09-25 随 `/api` 前缀改造迁移）；生产改 nginx 时勿丢该 location。
