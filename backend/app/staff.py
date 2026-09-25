@@ -43,6 +43,18 @@ from .auth.deps import require_admin
 from .config import STAFF
 from .crud import _TZ  # 统一北京时间（naive ISO 字符串，见 AGENTS.md 存储约定）
 from .database import Staff, User, get_db
+from .staff_core import (
+    REVOKE_REASON_EXPIRED,
+    STAFF_STATUS_ACTIVE,
+    STAFF_STATUS_REVOKED,
+    STATE_EXPIRED,
+    STATE_NOT_FOUND,
+    STATE_REVOKED,
+    STATE_VALID,
+    derive_state,
+    expire_due,
+)  # re-export：状态常量与到期回写/派生态在 app.staff_core（轻量无 FastAPI 依赖，
+#   staff_expire.py CLI 专用入口），两条触发路径语义唯一（规格 §4.5）
 
 router = APIRouter(prefix="/staff", tags=["staff"])
 
@@ -53,10 +65,8 @@ ROLE_OPTIONS = ["服主", "技术员", "财务", "管理员", "建筑", "客服"
 # 撤销原因（规格 §6.2）：人工撤销四分类，后台下拉只能选不能填，避免文案漂移；
 # 'expired' 是第五个枚举值，仅由到期回写写入（expire_due），后台不可选。
 MANUAL_REVOKE_REASONS = ["离职", "转岗", "暂停", "码异常"]
-REVOKE_REASON_EXPIRED = "expired"
-
-STAFF_STATUS_ACTIVE = "active"
-STAFF_STATUS_REVOKED = "revoked"
+# REVOKE_REASON_EXPIRED / STAFF_STATUS_* / STATE_* / derive_state / expire_due
+# 已拆至 app.staff_core（本模块顶部 re-export）
 
 # 身份码：12 位 × 32 字符表（小写字母 + 数字，去掉易混的 0 1 l o），熵 = 60 bit
 # （规格 §4.1 / §0.3 定稿项 2：全小写 → 查询侧不做大小写归一，只 strip()）
@@ -73,11 +83,7 @@ _MAX_QUERY_CODE_LEN = 64
 
 _EMAIL_RE = re.compile(r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$")
 
-# 派生态（对外四态，规格 §6）：valid / revoked（人工撤销）/ expired / not_found
-STATE_VALID = "valid"
-STATE_REVOKED = "revoked"
-STATE_EXPIRED = "expired"
-STATE_NOT_FOUND = "not_found"
+# 派生态四常量（valid / revoked / expired / not_found）已拆至 app.staff_core
 
 
 def _now_iso() -> str:
@@ -115,49 +121,8 @@ def _bump_card_version(version: str) -> str:
 
 
 # ── 状态判定 / 到期回写（两条触发路径共用，规格 §4.5） ───────────────
-
-
-def derive_state(row: Staff, now: Optional[str] = None) -> str:
-    """派生对外状态。判定权威是 valid_to，status 只是快照（§4.5 规则 2）。
-
-    优先级 revoked ＞ expired ＞ active（规格 §8.4）：
-    - 人工撤销（reason ∈ 离职/转岗/暂停/码异常）恒为 revoked，即使有效期也已过；
-    - reason='expired' 的撤销行 → expired；
-    - active 行若 valid_to 已过（懒更新未落库的间隙）→ expired（valid_to 兜底）。
-    """
-    now = now or _now_iso()
-    if row.status == STAFF_STATUS_REVOKED:
-        if (row.revoked_reason or "") == REVOKE_REASON_EXPIRED:
-            return STATE_EXPIRED
-        return STATE_REVOKED
-    if row.valid_to and row.valid_to < now:
-        return STATE_EXPIRED
-    return STATE_VALID
-
-
-async def expire_due(db: AsyncSession, only_id: Optional[int] = None) -> int:
-    """到期回写：把 status='active' 且 now > valid_to 的行刷成 revoked('expired')。
-
-    幂等（仅 active → revoked 写一次）；查询路径（公开验证接口命中时传 only_id）
-    与定时批量（staff_expire.py / main.py 启动时全表）共用本函数，语义唯一。
-    返回刷新行数。
-    """
-    now = _now_iso()
-    stmt = (
-        update(Staff)
-        .where(Staff.status == STAFF_STATUS_ACTIVE, Staff.valid_to < now)
-        .values(
-            status=STAFF_STATUS_REVOKED,
-            revoked_reason=REVOKE_REASON_EXPIRED,
-            revoked_at=now,
-            update_time=now,
-        )
-    )
-    if only_id is not None:
-        stmt = stmt.where(Staff.id == only_id)
-    result = await db.execute(stmt)
-    await db.commit()
-    return result.rowcount or 0
+# derive_state / expire_due 实现已拆至 app.staff_core（本模块顶部 re-export），
+# staff_expire.py CLI 直接从 staff_core import，避免拖入 FastAPI 路由构建。
 
 
 # ── 身份码 ────────────────────────────────────────────────────────

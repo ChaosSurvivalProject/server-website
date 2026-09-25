@@ -8,7 +8,10 @@ crontab 每日一次（漏挂不影响核验正确性——判定权威是 valid
 公开验证接口查询时懒更新会兜底回写，见 app/staff.py::expire_due）：
   0 4 * * * cd /path/to/backend && /usr/bin/python3 staff_expire.py >> ../logs/staff_expire.log 2>&1
 
-与查询路径共用同一个函数 app.staff.expire_due（规格 §4.5 硬规则：语义唯一）。
+与查询路径共用同一个函数 app.staff_core.expire_due（规格 §4.5 硬规则：语义唯一；
+从 staff_core 而非 app.staff import —— 后者是完整 APIRouter，import 即构建全部
+pydantic/fastapi 路由 schema，生产机（122MB 内存）实测 CLI 冷 import 33s、
+内存紧张时分钟级；staff_core 纯 SQLAlchemy，秒级）。
 本脚本是独立进程写同一个 SQLite 文件：init_db 已设 WAL + busy_timeout。
 """
 import argparse
@@ -20,8 +23,7 @@ BACKEND_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.database import async_session_maker, init_db  # noqa: E402
-from app.staff import STAFF_STATUS_ACTIVE, expire_due  # noqa: E402
-from app.crud import _TZ  # noqa: E402
+from app.staff_core import STAFF_STATUS_ACTIVE, _TZ, expire_due  # noqa: E402
 from datetime import datetime  # noqa: E402
 
 
