@@ -78,7 +78,7 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 - VitePress `base: '/wiki'` + `cleanUrls: true`。站内链接写相对路径（VitePress 自动加 base）；**外链必须带协议**（`http(s)://`），否则会被加上 `/wiki` 前缀。
 - 内容分三大分区，新增页面放对应分区并在 `.vitepress/config.mts` 侧边栏登记：`for-new/`（萌新指南）、`management/`（服务器管理）、`develop/`（服务器建设）。
-- 已知硬编码点：`wiki/index.md` hero 的「访问官网」按钮当前写死 IP 地址，绑定域名后需同步修改（文件内有注释标记）。
+- 站点外链域名（2026-09-25 起）：官网为 `https://xqly.xt91tv.shop:23333`（HTTPS，明文 HTTP 已禁）。wiki 内指向官网的外链（hero「访问官网」按钮、阵营文档申请入口等）统一写此地址，不要再写死 IP。
 
 ## Git 规约
 

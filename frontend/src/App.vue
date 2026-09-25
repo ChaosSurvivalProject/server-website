@@ -51,7 +51,7 @@
 import NavBar from "./components/NavBar.vue";
 import BackToTop from "./components/BackToTop.vue";
 import ChatWidget from "./components/ChatWidget.vue";
-import fastRunLogo from "./assets/images/download/logo.png";
+import fastRunLogo from "./assets/images/download/logo-white.png";
 import { authAPI } from "./api/api.js";
 import { getToken, setAuth } from "./utils/auth.js";
 import McConfig from "./config/mc-config.js";
@@ -290,9 +290,6 @@ footer {
   height: 48px;
   vertical-align: middle;
   margin: 4px 0;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 6px 10px;
-  border-radius: 4px;
 }
 
 /* 响应式设计 */
