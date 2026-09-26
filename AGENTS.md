@@ -114,9 +114,18 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 后端 Docker 部署时注意：`docker-compose.yml` 位于 `backend/` 下，但**构建上下文是项目根目录**（`context: ..`），因为 Dockerfile 里 `COPY backend/` 依赖该路径——移动文件时两者要一起改。
 
+### 生产定时任务（root crontab）
+
+生产**只有 crontab 一种定时机制**（无 celery / APScheduler / systemd timer），知识库与名片到期两条链路都挂在这里：
+
+- `0 3 * * *` → `cd /opt/chaos-web-backend && /opt/chaos-web-backend/venv/bin/python kb_sync.py --incremental >> /var/log/kb_sync.log 2>&1`（wiki 改动按 MD5 入库，自增 `index_version`；**2026-09-26 补挂，此前上线时遗漏**）
+- `0 4 * * *` → `cd /opt/chaos-web-backend && venv/bin/python staff_expire.py >> /var/log/staff_expire.log 2>&1`（**漏挂不影响核验正确性**，`valid_to` 权威 + 查询时懒更新兜底，只影响台账刷新时效）
+
+改 crontab 前先 `crontab -l > /root/crontab.bak-YYYYMMDD` 备份，再 `crontab 新文件` 安装（**勿直接 sed 改 `/var/spool/cron/crontabs/root`**，务必走 `crontab` 命令）。两条任务**都是 0 变更空跑安全**（kb_sync 无变更不动 `index_version`），漏跑不会写坏数据——但漏挂 `kb_sync` 会导致 wiki 新页面不进知识库，客服对未同步内容直接答不上来。**完整条目快照留档在 `for-deploy/crontab`（与 `chaos-web.conf` 同性质，md5 可与线上比对），改法与验证命令见 `for-deploy/README.md`「改定时任务」节**。
+
 ## for-deploy 留档目录
 
-- `for-deploy/` 存放生产实际生效、但不属于任何子项目构建产物的配置留档（当前 `chaos-web.conf` = nginx 站点配置快照；同步方法与改 conf 前的注意事项见该目录 `README.md`）。
+- `for-deploy/` 存放生产实际生效、但不属于任何子项目构建产物的配置留档（当前两个：`chaos-web.conf` = nginx 站点配置快照、`crontab` = root crontab 快照；均为**与生产字节一致**的快照，可 `md5sum` 比对，改完后须回拷留档；同步方法与改前注意事项见该目录 `README.md`）。
 - **该目录随仓库提交到公开仓库，禁止放任何敏感信息**：SSL 证书/私钥、API Key、密码/token/JWT secret、生产数据库数据等一律不进；普通配置里如无必要也不要写外部 IP/端口。敏感文件（证书、`backend/.env`、生产库）只存在于服务器对应路径，不落仓库。
 
 ## 已知遗留 / 注意事项

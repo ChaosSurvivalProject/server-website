@@ -1,0 +1,12 @@
+# do daily/weekly/monthly maintenance
+# min	hour	day	month	weekday	command
+*/15	*	*	*	*	run-parts /etc/periodic/15min
+0	*	*	*	*	run-parts /etc/periodic/hourly
+0	2	*	*	*	run-parts /etc/periodic/daily
+0	3	*	*	6	run-parts /etc/periodic/weekly
+0	5	1	*	*	run-parts /etc/periodic/monthly
+
+0 4 * * * cd /opt/chaos-web-backend && venv/bin/python staff_expire.py >> /var/log/staff_expire.log 2>&1
+
+# 知识库增量同步：wiki 源码变更按 MD5 入库，自增 index_version（服务端免重启）
+0 3 * * * cd /opt/chaos-web-backend && /opt/chaos-web-backend/venv/bin/python kb_sync.py --incremental >> /var/log/kb_sync.log 2>&1
