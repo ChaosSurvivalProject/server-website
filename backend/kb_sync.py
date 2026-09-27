@@ -10,7 +10,7 @@
   --wiki-dir PATH                     # 覆盖 KB_WIKI_DIR
   --force                             # Embedding 模型/维度与库内记录不一致时仍强制写入
 
-增量同步机制（docs/智能客服P0落地方案.md §9）：
+增量同步机制（docs/智能客服/智能客服P0落地方案.md §9）：
   对 KB_WIKI_DIR 下每个 *.md 计算 MD5
   ├─ kb_documents 中无 source_path 记录   → 新增（入库 + 切片 + Embedding）
   ├─ 有记录且 MD5 相同（且 status=ready） → 跳过（零成本）

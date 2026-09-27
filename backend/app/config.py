@@ -76,7 +76,7 @@ def _env_json(key: str) -> dict:
 
 @dataclass(frozen=True)
 class StaffConfig:
-    """员工名片模块配置（docs/员工名片模块需求规格.md §0.2 定值清单）。
+    """员工名片模块配置（docs/员工管理/员工名片模块需求规格.md §0.2 定值清单）。
 
     public_base_url 是二维码 URL 前缀的**唯一来源**（后端拼接
     f"{public_base_url}/staff/{身份码}"，前端不得拼 URL、不得传 URL）。

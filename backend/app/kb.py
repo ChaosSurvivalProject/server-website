@@ -5,7 +5,7 @@
   POST /kb/chat     SSE 流式问答 —— **仅登录用户可用**（get_current_user，未登录/过期 401），
                     **全项目唯一不返回 {code, message, data}
                     包络的接口**（SSE 流无法包络），帧协议见
-                    docs/智能客服P0落地方案.md §4.3，此例外已写入 AGENTS.md
+                    docs/智能客服/智能客服P0落地方案.md §4.3，此例外已写入 AGENTS.md
 
 管理接口（require_admin，包络正常）：
   GET    /kb/admin/documents              分页列表（page/pageSize/sourceType）

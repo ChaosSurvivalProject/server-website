@@ -4,7 +4,7 @@
 - backend/kb_sync.py        同步 CLI（独立进程，sqlite3 直写）
 - app/kb.py 管理接口        异步 FastAPI（AsyncSession + FTS 原生 SQL）
 
-切片器规格见 docs/智能客服P0落地方案.md §5.2：代码块保护、标题路径、
+切片器规格见 docs/智能客服/智能客服P0落地方案.md §5.2：代码块保护、标题路径、
 按段落/句子递归切分，目标 chunk_size=600、chunk_overlap=80。
 """
 import logging

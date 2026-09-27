@@ -21,7 +21,7 @@ from .config import KB
 logger = logging.getLogger("uvicorn.error")
 
 # 向量检索可用性开关：startup_check 发现库内 embed_dim/模型与配置不一致时置 False
-# （只记日志不阻断启动，自动降级为仅 FTS + 引导话术，见 docs/智能客服P0落地方案.md §5.9）
+# （只记日志不阻断启动，自动降级为仅 FTS + 引导话术，见 docs/智能客服/智能客服P0落地方案.md §5.9）
 vector_available = True
 
 

@@ -12,7 +12,7 @@ import { queryPage, fetchQrcode } from "@/api/staff";
 import type { StaffItem } from "@/api/staff";
 import logoUrl from "@/assets/staff/logo.png";
 
-/** 名片制作页（P0 前端出图，docs/员工名片模块评审与落地方案.md §6.5）。
+/** 名片制作页（P0 前端出图，docs/员工管理/员工名片模块评审与落地方案.md §6.5）。
  *
  * 统一模板要点（规格 §3.1 / §8.2 / §8.3 + 2026-09-25 版式定稿）：
  * - 正面：左上角站点 logo + 服务器名称（大字）+ 灰白副标题、像素头像、游戏ID、

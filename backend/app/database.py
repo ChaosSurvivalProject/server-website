@@ -191,7 +191,7 @@ async def get_db():
 
 
 # ── 知识库（智能客服 P0） ──────────────────────────────────────────
-# 设计见 docs/智能客服P0落地方案.md §3。与 Announcement/User 并列，不新建包。
+# 设计见 docs/智能客服/智能客服P0落地方案.md §3。与 Announcement/User 并列，不新建包。
 
 
 class KBDocument(Base):
@@ -236,7 +236,7 @@ class KBSetting(Base):
 
 
 class Staff(Base):
-    """工作人员名片台账（员工名片模块 P0，见 docs/员工名片模块需求规格.md §7.1）。
+    """工作人员名片台账（员工名片模块 P0，见 docs/员工管理/员工名片模块需求规格.md §7.1）。
 
     status 仅两态：active / revoked（不引入第三态 expired）。
     过期判定权威是 valid_to（now > valid_to 即已过期），命中时由
