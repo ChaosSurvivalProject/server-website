@@ -1,0 +1,2535 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>星穹旅驿社区 · 第一阶段原型（MVP）</title>
+<style>
+:root{
+  --bg:#eef2f7; --bg-soft:#f7f9fc; --card:#fff; --line:#e3e8ef; --line-soft:#eef1f6;
+  --text:#1f2937; --text-2:#5b6676; --text-3:#93a0b1;
+  --brand:#3b82f6; --brand-d:#2563eb; --brand-soft:#eff5ff;
+  --warn:#f59e0b; --warn-soft:#fff7e6;
+  --danger:#ef4444; --danger-soft:#feecec;
+  --ok:#22c55e; --ok-soft:#eafaf0;
+  --purple:#8b5cf6; --purple-soft:#f3efff;
+  --radius:12px; --radius-s:8px;
+  --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 14px rgba(16,24,40,.05);
+  --shadow-l:0 8px 28px rgba(16,24,40,.12);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:var(--bg); color:var(--text); font-size:14px; line-height:1.6;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--brand);text-decoration:none}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:inherit;font-size:inherit;color:inherit;outline:none}
+
+/* ══ 原型工具条（非产品功能） ══ */
+#proto-bar{
+  background:#111827;color:#cbd5e1;font-size:12px;padding:7px 16px;
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:90;
+}
+#proto-bar .pb-title{font-weight:600;color:#fff}
+#proto-bar .pb-dim{color:#64748b}
+#proto-bar .pb-group{display:flex;align-items:center;gap:6px}
+#proto-bar .pb-sep{width:1px;height:16px;background:#334155}
+#proto-bar button{
+  background:#1f2937;color:#cbd5e1;border:1px solid #334155;border-radius:6px;
+  padding:3px 10px;font-size:12px;transition:.15s;
+}
+#proto-bar button:hover{background:#334155;color:#fff}
+#proto-bar button.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+#proto-bar .pb-hint{margin-left:auto;color:#64748b}
+
+/* ══ 站点导航 ══ */
+#site-nav{background:#fff;border-bottom:1px solid var(--line);position:sticky;top:33px;z-index:80}
+#site-nav .nav-in{max-width:1200px;margin:0 auto;padding:0 20px;height:58px;display:flex;align-items:center;gap:26px}
+.logo{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:800;letter-spacing:.5px;color:var(--text)}
+.logo-mark{
+  width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#60a5fa,#3b82f6 55%,#8b5cf6);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;font-weight:800;
+}
+.nav-links{display:flex;gap:4px;flex:1}
+.nav-links a{padding:6px 13px;border-radius:8px;color:var(--text-2);font-weight:500;transition:.15s}
+.nav-links a:hover{background:var(--bg-soft);color:var(--text)}
+.nav-links a.active{background:var(--brand-soft);color:var(--brand-d)}
+.nav-right{display:flex;align-items:center;gap:12px}
+.icon-btn{
+  width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-2);position:relative;transition:.15s;
+}
+.icon-btn:hover{background:var(--bg-soft);color:var(--brand)}
+.nav-user{display:flex;align-items:center;gap:8px;padding:4px 10px 4px 4px;border-radius:20px;transition:.15s}
+.nav-user:hover{background:var(--bg-soft)}
+.nav-user .nm{font-weight:600;font-size:13px}
+.avatar{
+  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-weight:700;flex:0 0 auto;background:linear-gradient(135deg,#93b4fd,#3b82f6);
+}
+.av-28{width:28px;height:28px;font-size:12px}
+.av-32{width:32px;height:32px;font-size:13px}
+.av-40{width:40px;height:40px;font-size:15px}
+.av-56{width:56px;height:56px;font-size:21px}
+.av-admin{background:linear-gradient(135deg,#fbbf24,#f59e0b)}
+.av-gray{background:linear-gradient(135deg,#cbd5e1,#94a3b8)}
+
+/* ══ 通用 ══ */
+.wrap{max-width:1200px;margin:0 auto;padding:20px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:8px 16px;border-radius:9px;font-weight:600;font-size:13.5px;
+  border:1px solid var(--line);background:#fff;color:var(--text-2);transition:.15s;white-space:nowrap;
+}
+.btn:hover{border-color:#c7d2e0;color:var(--text)}
+.btn-pri{background:var(--brand);border-color:var(--brand);color:#fff}
+.btn-pri:hover{background:var(--brand-d);border-color:var(--brand-d);color:#fff}
+.btn-ok{background:var(--ok);border-color:var(--ok);color:#fff}
+.btn-ok:hover{filter:brightness(.94);color:#fff}
+.btn-warn{background:var(--warn);border-color:var(--warn);color:#fff}
+.btn-warn:hover{filter:brightness(.94);color:#fff}
+.btn-danger{background:#fff;border-color:#f7c6c6;color:var(--danger)}
+.btn-danger:hover{background:var(--danger-soft);border-color:var(--danger)}
+.btn-sm{padding:4px 11px;font-size:12.5px;border-radius:7px}
+.btn-lg{padding:11px 26px;font-size:15px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-ghost{border-color:transparent;background:transparent;color:var(--text-3)}
+.btn-ghost:hover{background:var(--bg-soft);color:var(--text-2);border-color:transparent}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card-pad{padding:18px}
+.card-hd{padding:14px 18px;border-bottom:1px solid var(--line-soft);font-weight:700;font-size:14.5px;display:flex;align-items:center;justify-content:space-between}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;flex:0 0 auto}
+.muted{color:var(--text-3)}
+.muted2{color:var(--text-2)}
+.row{display:flex;align-items:center;gap:8px}
+.spread{display:flex;align-items:center;justify-content:space-between}
+.sep{height:1px;background:var(--line-soft);margin:14px 0}
+.hidden-input{position:absolute;opacity:0;pointer-events:none}
+
+/* 徽章 / 标签 */
+.tag{
+  display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:6px;
+  font-size:11.5px;font-weight:600;line-height:1.7;white-space:nowrap;
+}
+.tag-top{background:#fee2e2;color:#b91c1c}
+.tag-featured{background:#fef3c7;color:#b45309}
+.tag-cat{background:#eef2f7;color:var(--text-2)}
+.tag-hash{background:var(--bg-soft);color:var(--text-2);border:1px solid var(--line);font-weight:500}
+.badge{display:inline-flex;align-items:center;padding:1px 8px;border-radius:5px;font-size:11px;font-weight:700}
+.b-wait{background:var(--warn-soft);color:#b45309}
+.b-pub{background:var(--ok-soft);color:#15803d}
+.b-rej{background:var(--danger-soft);color:#b91c1c}
+.b-off{background:#eef2f7;color:#64748b}
+.b-role{background:var(--purple-soft);color:#6d28d9}
+
+/* ══ 首页 ══ */
+.forum-grid{display:grid;grid-template-columns:minmax(0,1fr) 336px;gap:20px;align-items:start}
+.banner{
+  border-radius:var(--radius);overflow:hidden;position:relative;
+  background:linear-gradient(115deg,#1e3a8a 0%,#2563eb 42%,#4f46e5 100%);
+  min-height:196px;display:flex;box-shadow:var(--shadow);color:#fff;
+}
+.banner-l{flex:1;padding:30px 28px 62px;position:relative;z-index:2;min-width:0}
+.banner-l h1{font-size:27px;font-weight:800;letter-spacing:.5px;margin-bottom:9px}
+.banner-l h1 span{color:#bfdbfe;font-weight:600;font-size:19px}
+.banner-l p{color:#c7d8f7;font-size:13.5px;max-width:440px;line-height:1.75}
+.banner-r{width:300px;flex:0 0 auto;position:relative;z-index:1}
+.banner-art{position:absolute;right:0;bottom:0;width:300px;height:196px;display:block}
+.banner-art.none{display:flex;align-items:center;justify-content:center;width:100%;color:#93b4fd;font-size:12px;border:1px dashed #3b5fc4;margin:24px;border-radius:10px;width:auto;height:auto;right:24px;bottom:26px;padding:14px 20px}
+.banner-bar{
+  position:absolute;left:0;right:0;bottom:0;padding:10px 16px;z-index:3;
+  display:flex;align-items:center;gap:10px;
+  background:linear-gradient(to top,rgba(15,23,42,.5),rgba(15,23,42,0));
+}
+.banner-bar select,.banner-bar input{
+  height:34px;border-radius:8px;border:none;background:rgba(255,255,255,.94);
+  padding:0 12px;font-size:13px;color:var(--text);
+}
+.banner-bar select{padding-right:6px;font-weight:500}
+.banner-bar input{flex:1;max-width:260px}
+.banner-bar input::placeholder{color:var(--text-3)}
+.banner-bar .btn{height:34px;padding:0 16px}
+
+.cat-tabs{display:flex;gap:8px;margin:16px 0 14px;overflow-x:auto;padding-bottom:2px}
+.cat-tab{
+  display:inline-flex;align-items:center;gap:7px;padding:7px 15px;border-radius:999px;
+  background:#fff;border:1px solid var(--line);font-size:13.5px;font-weight:500;color:var(--text-2);
+  white-space:nowrap;transition:.15s;
+}
+.cat-tab:hover{border-color:#c7d2e0}
+.cat-tab.on{background:var(--brand);border-color:var(--brand);color:#fff;font-weight:600}
+.cat-tab.on .dot{background:#fff !important;opacity:.9}
+
+.post-list{display:flex;flex-direction:column;gap:12px}
+.post-card{
+  background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;
+  display:flex;gap:16px;box-shadow:var(--shadow);transition:.15s;cursor:pointer;
+}
+.post-card:hover{border-color:#c7d2e0;box-shadow:0 4px 18px rgba(16,24,40,.09);transform:translateY(-1px)}
+.post-main{flex:1;min-width:0}
+.post-tags{display:flex;gap:6px;margin-bottom:7px;flex-wrap:wrap}
+.post-title{font-size:16.5px;font-weight:700;color:var(--text);margin-bottom:6px;line-height:1.45}
+.post-card:hover .post-title{color:var(--brand-d)}
+.post-sum{
+  color:var(--text-3);font-size:13px;line-height:1.65;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.post-foot{display:flex;align-items:center;justify-content:space-between;margin-top:11px;gap:12px;flex-wrap:wrap}
+.post-author{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text-2)}
+.post-author .nm{font-weight:600;color:var(--text-2)}
+.post-stats{display:flex;gap:16px;font-size:12.5px;color:var(--text-3);align-items:center}
+.post-stats .st{display:inline-flex;align-items:center;gap:5px}
+.thumb{
+  width:98px;height:98px;border-radius:10px;flex:0 0 auto;overflow:hidden;
+  border:1px solid var(--line);background:var(--bg-soft);
+}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block;image-rendering:pixelated}
+.thumb-empty{display:flex;align-items:center;justify-content:center;height:100%;color:#c3ccd8;font-size:11px}
+
+.empty{
+  border:1.5px dashed #d3dbe6;border-radius:var(--radius);padding:46px 20px;text-align:center;
+  color:var(--text-3);background:rgba(255,255,255,.6);
+}
+.empty .em-t{font-size:15px;font-weight:600;color:var(--text-2);margin-bottom:6px}
+.pager{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:18px}
+.pager button{
+  min-width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:#fff;
+  color:var(--text-2);font-size:13px;font-weight:600;
+}
+.pager button.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.pager button:disabled{opacity:.45}
+
+/* 侧边栏 */
+.side-col{display:flex;flex-direction:column;gap:16px;position:sticky;top:105px}
+.stat3{display:grid;grid-template-columns:repeat(3,1fr);text-align:center}
+.stat3 .s-v{font-size:20px;font-weight:800;color:var(--text)}
+.stat3 .s-l{font-size:11.5px;color:var(--text-3);margin-top:2px}
+.tag-cloud{display:flex;flex-wrap:wrap;gap:8px}
+.tag-cloud .tag-hash{cursor:pointer;transition:.15s}
+.tag-cloud .tag-hash:hover{border-color:var(--brand);color:var(--brand-d)}
+.tag-cloud .tag-hash.on{background:var(--brand-soft);border-color:#bfdbfe;color:var(--brand-d);font-weight:600}
+
+/* ══ 详情页 ══ */
+.focus-wrap{max-width:1080px;margin:0 auto;padding:20px}
+.back-link{
+  display:inline-flex;align-items:center;gap:7px;color:var(--text-2);font-weight:600;
+  font-size:14px;margin-bottom:16px;padding:6px 12px;border-radius:8px;transition:.15s;
+}
+.back-link:hover{background:#fff;color:var(--brand-d)}
+.detail-grid{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px;align-items:start}
+.art-title{font-size:24px;font-weight:800;line-height:1.42;margin:10px 0 14px}
+.art-meta{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;
+  padding-bottom:16px;border-bottom:1px solid var(--line-soft)}
+.art-meta-r{display:flex;gap:20px}
+.art-meta-r .m{text-align:center}
+.art-meta-r .m b{display:block;font-size:17px;font-weight:800}
+.art-meta-r .m span{font-size:11.5px;color:var(--text-3)}
+
+.md{font-size:15px;line-height:1.85;color:#2b3648;word-break:break-word}
+.md h1,.md h2,.md h3{margin:22px 0 10px;font-weight:800;line-height:1.4}
+.md h1{font-size:21px}.md h2{font-size:18px}.md h3{font-size:16px}
+.md p{margin:13px 0}
+.md ul{margin:13px 0 13px 22px}
+.md li{margin:5px 0}
+.md blockquote{
+  margin:14px 0;padding:10px 16px;border-left:3px solid #bfdbfe;background:var(--brand-soft);
+  border-radius:0 8px 8px 0;color:var(--text-2);font-size:14px;
+}
+.md code{background:#f1f5f9;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:13px;
+  font-family:ui-monospace,Consolas,Monaco,monospace;color:#b91c1c}
+.md img{max-width:100%;border-radius:10px;border:1px solid var(--line)}
+.md a{border-bottom:1px solid #bfdbfe}
+.code-block{margin:14px 0;border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fbfcfe}
+.code-bar{
+  display:flex;align-items:center;justify-content:space-between;padding:6px 12px;
+  background:#f1f5f9;border-bottom:1px solid var(--line);font-size:11.5px;color:var(--text-3);
+  font-family:ui-monospace,Consolas,monospace;
+}
+.code-bar button{font-size:11.5px;color:var(--text-2);padding:2px 8px;border-radius:5px}
+.code-bar button:hover{background:#e2e8f0;color:var(--text)}
+.code-block pre{padding:14px;overflow-x:auto}
+.code-block code{background:none;border:none;padding:0;color:#334155;font-size:12.8px;line-height:1.65}
+
+.act-bar{display:flex;gap:12px;margin-top:24px;padding-top:20px;border-top:1px solid var(--line-soft)}
+.act{
+  flex:1;display:flex;align-items:center;justify-content:center;gap:8px;height:46px;
+  border-radius:11px;border:1px solid var(--line);background:#fff;color:var(--text-2);font-weight:600;transition:.15s;
+}
+.act:hover{border-color:#c7d2e0;background:var(--bg-soft)}
+.act.on{border-color:#fca5a5;background:#fff5f5;color:#dc2626}
+.act.on-fav{border-color:#fcd34d;background:#fffbeb;color:#b45309}
+
+.cmt-input{display:flex;gap:12px;margin:16px 0}
+.cmt-input textarea{
+  flex:1;min-height:82px;border:1px solid var(--line);border-radius:10px;padding:11px 13px;
+  resize:vertical;line-height:1.7;font-size:14px;background:#fbfcfe;
+}
+.cmt-input textarea:focus{border-color:#bfdbfe;background:#fff}
+.cmt-hint{font-size:12px;color:var(--text-3);margin-top:7px}
+.cmt-list{display:flex;flex-direction:column;gap:2px}
+.cmt{display:flex;gap:12px;padding:15px 0;border-bottom:1px solid var(--line-soft)}
+.cmt:last-child{border-bottom:none}
+.cmt-body{flex:1;min-width:0}
+.cmt-head{display:flex;align-items:center;gap:8px;font-size:12.8px;color:var(--text-3);margin-bottom:5px}
+.cmt-head .nm{font-weight:600;color:var(--text-2);font-size:13px}
+.cmt-text{color:#334155;font-size:14px;white-space:pre-wrap;word-break:break-word}
+/* 评论：两级楼中楼 + 点赞 + 内联回复框（PRD §5.4.3） */
+.cmt-acts{display:flex;align-items:center;gap:14px;margin-top:7px}
+.cmt-act{
+  display:inline-flex;align-items:center;gap:5px;font-size:12.5px;color:var(--text-3);
+  padding:2px 7px;border-radius:6px;transition:.14s;
+}
+.cmt-act:hover{background:var(--bg-soft);color:var(--text-2)}
+.cmt-act.on{color:#dc2626;font-weight:600}
+.reply-list{margin-top:6px;margin-left:6px;border-left:2px solid var(--line);padding-left:14px}
+.cmt.reply{padding:12px 0}
+.cmt.reply .cmt-text{font-size:13.5px}
+.reply-to{color:var(--brand);font-size:12.5px;font-weight:600}
+.cmt-form{
+  display:flex;gap:10px;margin:12px 0 6px;padding:12px;background:#f7f9fc;
+  border:1px solid var(--line);border-radius:10px;
+}
+.cmt-form.nested{margin-left:6px}
+.cmt-form-tip{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  font-size:12.5px;color:var(--text-2);margin-bottom:7px;
+}
+.cmt-form textarea{
+  width:100%;min-height:64px;border:1px solid var(--line);border-radius:8px;
+  padding:9px 11px;resize:vertical;line-height:1.7;font-size:13.5px;background:#fff;
+}
+.cmt-form textarea:focus{border-color:#bfdbfe}
+
+.author-card-top{display:flex;flex-direction:column;align-items:center;padding:6px 0 2px;text-align:center}
+.author-card-top .nm{font-weight:700;font-size:15.5px;margin-top:10px}
+.author-card-acts{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:13px}
+.mini-post{display:flex;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line-soft);font-size:13.2px}
+.mini-post:last-child{border-bottom:none}
+.mini-post .t{color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mini-post:hover .t{color:var(--brand-d)}
+
+.status-banner{
+  border-radius:var(--radius);padding:13px 16px;margin-bottom:16px;font-size:13.5px;
+  display:flex;align-items:center;gap:10px;font-weight:600;
+}
+.sb-wait{background:var(--warn-soft);color:#92400e;border:1px solid #fcd34d}
+.sb-rej{background:var(--danger-soft);color:#991b1b;border:1px solid #fca5a5}
+.sb-off{background:#eef2f7;color:#475569;border:1px solid #cbd5e1}
+
+/* ══ 表单页 ══ */
+.form-wrap{max-width:880px;margin:0 auto;padding:20px}
+.field{margin-bottom:20px}
+.field>label{display:block;font-weight:700;font-size:13.5px;margin-bottom:9px}
+.field .req{color:var(--danger);margin-left:3px}
+.field .tip{font-weight:400;color:var(--text-3);font-size:12px;margin-left:6px}
+.inp{
+  width:100%;height:42px;border:1px solid var(--line);border-radius:9px;padding:0 13px;
+  background:#fbfcfe;font-size:14px;transition:.15s;
+}
+.inp:focus{border-color:#bfdbfe;background:#fff;box-shadow:0 0 0 3px rgba(59,130,246,.09)}
+textarea.inp{height:auto;padding:11px 13px;line-height:1.75;resize:vertical;min-height:96px}
+.cat-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+.cat-pick .cp{
+  display:flex;align-items:center;gap:8px;padding:11px 13px;border:1px solid var(--line);
+  border-radius:10px;background:#fbfcfe;font-weight:500;font-size:13.5px;transition:.15s;
+}
+.cat-pick .cp:hover{border-color:#c7d2e0}
+.cat-pick .cp.on{border-color:var(--brand);background:var(--brand-soft);color:var(--brand-d);font-weight:700;
+  box-shadow:0 0 0 3px rgba(59,130,246,.08)}
+.cover-box{
+  border:1.5px dashed #d3dbe6;border-radius:10px;padding:18px;text-align:center;background:#fbfcfe;transition:.15s;
+}
+.cover-box:hover{border-color:#bfdbfe;background:var(--brand-soft)}
+.cover-prev{display:flex;align-items:center;gap:14px;text-align:left}
+.cover-prev .thumb{width:74px;height:74px}
+.tag-input-box{
+  display:flex;flex-wrap:wrap;gap:7px;align-items:center;border:1px solid var(--line);
+  border-radius:9px;padding:8px 10px;background:#fbfcfe;min-height:44px;
+}
+.tag-input-box input{border:none;background:none;flex:1;min-width:110px;height:26px;font-size:13.5px}
+.tag-chip{display:inline-flex;align-items:center;gap:6px;background:var(--brand-soft);color:var(--brand-d);
+  border-radius:6px;padding:3px 9px;font-size:12.5px;font-weight:600}
+.tag-chip button{color:#93b4fd;font-size:14px;line-height:1}
+.tag-chip button:hover{color:var(--danger)}
+.tag-sug{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.form-foot{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding-top:18px;border-top:1px solid var(--line-soft);margin-top:6px;flex-wrap:wrap}
+.md-editor{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
+.md-tools{display:flex;gap:2px;padding:7px 9px;background:#f7f9fc;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.md-tools button{padding:4px 9px;border-radius:6px;color:var(--text-2);font-size:12.5px;font-weight:600}
+.md-tools button:hover{background:#e8eef7;color:var(--text)}
+.md-tools .sp{width:1px;background:var(--line);margin:2px 4px}
+.md-editor textarea{
+  width:100%;min-height:300px;border:none;padding:14px;line-height:1.8;resize:vertical;
+  font-family:ui-monospace,Consolas,Monaco,monospace;font-size:13.5px;background:#fff;
+}
+.md-pv{padding:16px;border-top:1px dashed var(--line);background:#fbfcfe}
+.md-pv-t{font-size:11.5px;color:var(--text-3);font-weight:700;margin-bottom:8px;letter-spacing:.5px}
+
+/* ══ 我的文章 ══ */
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:16px}
+.tabs-inline{display:flex;gap:4px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:4px}
+.tabs-inline button{padding:6px 14px;border-radius:7px;font-size:13px;color:var(--text-2);font-weight:500}
+.tabs-inline button.on{background:var(--brand);color:#fff;font-weight:600}
+.tabs-inline button .cnt{opacity:.7;margin-left:4px;font-size:11.5px}
+.my-row{display:flex;align-items:center;gap:14px;padding:15px 18px;border-bottom:1px solid var(--line-soft)}
+.my-row:last-child{border-bottom:none}
+.my-row .mi{flex:1;min-width:0}
+.my-row .mt{font-weight:600;font-size:14.5px;margin-bottom:5px}
+.my-row .mm{display:flex;align-items:center;gap:12px;font-size:12.5px;color:var(--text-3);flex-wrap:wrap}
+.reason-box{background:var(--danger-soft);color:#991b1b;border-radius:7px;padding:6px 10px;font-size:12.5px;margin-top:8px}
+
+/* ══ 后台 ══ */
+#admin{display:flex;min-height:calc(100vh - 33px);background:var(--bg-soft)}
+.aside{width:206px;flex:0 0 auto;background:#fff;border-right:1px solid var(--line);padding:14px 10px}
+.aside-logo{display:flex;align-items:center;gap:9px;padding:6px 10px 16px;font-weight:800;font-size:15px}
+.aside-g{font-size:11px;color:var(--text-3);font-weight:700;padding:12px 10px 6px;letter-spacing:.6px}
+.aside a{display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:8px;color:var(--text-2);
+  font-size:13.5px;font-weight:500;margin-bottom:2px;transition:.15s;cursor:pointer}
+.aside a:hover{background:var(--bg-soft);color:var(--text)}
+.aside a.on{background:var(--brand-soft);color:var(--brand-d);font-weight:700}
+.admin-main{flex:1;min-width:0;padding:20px 24px;overflow-x:auto}
+.admin-hd{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-bottom:18px;flex-wrap:wrap}
+.admin-hd h2{font-size:19px;font-weight:800}
+.admin-hd p{font-size:12.5px;color:var(--text-3);margin-top:3px}
+.stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:18px}
+.stat-card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:15px 17px}
+.stat-card .sv{font-size:23px;font-weight:800;line-height:1.25}
+.stat-card .sl{font-size:12px;color:var(--text-3);margin-top:2px}
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+.filters .inp{width:auto;height:36px;font-size:13px;min-width:130px}
+.filters select.inp{padding-right:6px}
+table.tb{width:100%;border-collapse:collapse;background:#fff;font-size:13px}
+.tb th{
+  text-align:left;padding:11px 12px;background:#f7f9fc;color:var(--text-2);font-weight:700;
+  font-size:12.5px;border-bottom:1px solid var(--line);white-space:nowrap;
+}
+.tb td{padding:12px;border-bottom:1px solid var(--line-soft);vertical-align:middle}
+.tb tr:last-child td{border-bottom:none}
+.tb tbody tr:hover{background:#fbfcfe}
+.tb .t-title{font-weight:600;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ops{display:flex;gap:5px;flex-wrap:wrap}
+.link-op{color:var(--brand);font-weight:600;font-size:12.5px;padding:2px 6px;border-radius:5px;white-space:nowrap}
+.link-op:hover{background:var(--brand-soft)}
+.link-op.dg{color:var(--danger)}
+.link-op.dg:hover{background:var(--danger-soft)}
+.link-op.warn{color:#b45309}
+.link-op.warn:hover{background:var(--warn-soft)}
+.link-op.ok{color:#15803d}
+.link-op.ok:hover{background:var(--ok-soft)}
+.link-op.off{color:var(--text-3);cursor:default}
+.link-op.off:hover{background:none}
+.repeat-mark{display:inline-flex;align-items:center;gap:3px;background:#fff7e6;color:#b45309;
+  border-radius:5px;padding:1px 6px;font-size:11px;font-weight:700;margin-left:5px}
+.cell-c{text-align:center}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:10px 14px;align-items:center;font-size:13.5px}
+.kv .k{color:var(--text-2);font-weight:600}
+
+/* 抽屉 / 弹窗 / toast */
+.mask{position:fixed;inset:0;background:rgba(15,23,42,.42);z-index:200;opacity:0;pointer-events:none;transition:.2s}
+.mask.show{opacity:1;pointer-events:auto}
+.drawer{
+  position:fixed;top:0;right:0;bottom:0;width:520px;max-width:92vw;background:#fff;z-index:201;
+  transform:translateX(102%);transition:transform .24s cubic-bezier(.4,0,.2,1);display:flex;flex-direction:column;
+}
+.drawer.show{transform:none}
+.drawer-hd{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
+.drawer-hd h3{font-size:15.5px;font-weight:800}
+.drawer-bd{flex:1;overflow-y:auto;padding:6px 20px 20px}
+.modal{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-46%) scale(.97);width:440px;max-width:92vw;
+  background:#fff;border-radius:14px;z-index:201;opacity:0;pointer-events:none;transition:.18s;
+  box-shadow:var(--shadow-l);overflow:hidden;
+}
+.modal.show{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+.modal-hd{padding:16px 20px;border-bottom:1px solid var(--line-soft);font-weight:800;font-size:15px}
+.modal-bd{padding:18px 20px}
+.modal-ft{padding:13px 20px;border-top:1px solid var(--line-soft);display:flex;justify-content:flex-end;gap:10px;background:#fbfcfe}
+#toast{
+  position:fixed;bottom:26px;left:50%;transform:translate(-50%,14px);background:#111827;color:#fff;
+  padding:11px 20px;border-radius:10px;font-size:13.5px;font-weight:600;z-index:300;opacity:0;
+  pointer-events:none;transition:.22s;box-shadow:var(--shadow-l);max-width:80vw;text-align:center;
+}
+#toast.show{opacity:1;transform:translate(-50%,0)}
+#toast.t-ok{background:#15803d}
+#toast.t-warn{background:#b45309}
+#toast.t-err{background:#b91c1c}
+
+.pv-note{font-size:12px;color:var(--text-3);font-weight:400}
+.proto-only{
+  display:inline-block;background:#fff7e6;color:#b45309;border-radius:5px;padding:1px 7px;
+  font-size:11px;font-weight:700;margin-left:6px;
+}
+@media (max-width:900px){
+  .forum-grid,.detail-grid{grid-template-columns:1fr}
+  .side-col{position:static}
+  .banner-r,.banner-art{display:none}
+  .banner-l{padding-bottom:66px}
+  .banner-bar{flex-wrap:wrap}
+  .banner-bar input{max-width:none;flex:1 1 100%}
+  .nav-links{display:none}
+  #site-nav .nav-in{gap:12px}
+  .post-card{padding:14px}
+  .thumb{width:76px;height:76px}
+  .wrap,.focus-wrap,.form-wrap{padding:14px}
+  .aside{width:60px;padding:10px 6px}
+  .aside a span,.aside-logo span,.aside-g{display:none}
+  .aside a{justify-content:center;padding:11px 0}
+  .admin-main{padding:14px}
+}
+</style>
+</head>
+<body>
+
+<!-- ══════════ 原型工具条（演示控件，不属于产品功能） ══════════ -->
+<div id="proto-bar">
+  <span class="pb-title">社区原型 · 第一阶段 MVP</span>
+  <span class="pb-sep"></span>
+  <span class="pb-dim">身份</span>
+  <div class="pb-group">
+    <button id="u-anon" onclick="setUser('anon')">游客</button>
+    <button id="u-rain" onclick="setUser('rain')">Rain.sh（用户）</button>
+    <button id="u-admin" onclick="setUser('admin')">xqly-admin（管理员）</button>
+  </div>
+  <span class="pb-sep"></span>
+  <span class="pb-dim">主站</span>
+  <div class="pb-group">
+    <button id="n-home" onclick="go('home')">社区首页</button>
+    <button onclick="go('my')">我的文章</button>
+    <button onclick="go('post',1)">文章详情</button>
+    <button onclick="go('create')">发布文章</button>
+    <button onclick="go('edit',1)">编辑文章</button>
+  </div>
+  <span class="pb-sep"></span>
+  <span class="pb-dim">后台</span>
+  <div class="pb-group">
+    <button id="n-aa" onclick="go('admin-articles')">文章管理</button>
+    <button onclick="go('admin-categories')">板块</button>
+    <button onclick="go('admin-tags')">标签</button>
+    <button onclick="go('admin-config')">社区配置</button>
+    <button onclick="go('admin-users')">用户管理</button>
+  </div>
+  <span class="pb-hint">此条为原型演示控件，非产品功能 · <a href="javascript:resetData()" style="color:#93b4fd">重置数据</a></span>
+</div>
+
+<!-- ══════════ 视图容器 ══════════ -->
+<div id="view"></div>
+
+<div class="mask" id="mask" onclick="closeOverlay()"></div>
+<aside class="drawer" id="drawer"></aside>
+<div class="modal" id="modal"></div>
+<div id="toast"></div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════
+   1. 常量与数据（mock）
+   ════════════════════════════════════════════════════════════════ */
+
+const CATS = [
+  {code:'home',      name:'首页',     color:'#3b82f6', isSystem:1, sortOrder:0, isHidden:0},
+  {code:'recommend', name:'推荐',     color:'#f59e0b', isSystem:1, sortOrder:1, isHidden:0},
+  {code:'chat',      name:'闲聊灌水', color:'#22c55e', isSystem:0, sortOrder:2, isHidden:0},
+  {code:'guide',     name:'攻略教程', color:'#6366f1', isSystem:0, sortOrder:3, isHidden:0},
+  {code:'help',      name:'求助问答', color:'#ef4444', isSystem:0, sortOrder:4, isHidden:0},
+  {code:'resource',  name:'资源分享', color:'#14b8a6', isSystem:0, sortOrder:5, isHidden:0},
+  {code:'news',      name:'新闻活动', color:'#ec4899', isSystem:0, sortOrder:6, isHidden:0},
+  {code:'suggest',   name:'功能建议', color:'#8b5cf6', isSystem:0, sortOrder:7, isHidden:0}
+];
+
+const USERS = {
+  anon : {id:0, name:'游客',        role:'guest', avatar:'?',  av:'av-gray'},
+  rain : {id:2, name:'Rain.sh',     role:'user',  avatar:'R',  av:''},
+  admin: {id:1, name:'xqly-admin',  role:'admin', avatar:'A',  av:'av-admin'}
+};
+const USER_LIST = [
+  {id:1, username:'xqly-admin', nickname:'xqly-admin', role:'admin', status:1, muteUntil:'', posts:3,  likes:120},
+  {id:2, username:'rain@qq.com', nickname:'Rain.sh',   role:'user',  status:1, muteUntil:'', posts:5,  likes:186},
+  {id:3, username:'steve@163.com', nickname:'Steve_233',role:'user', status:1, muteUntil:'', posts:2,  likes:41},
+  {id:4, username:'alex@qq.com', nickname:'Alex的红石屋',role:'user', status:0, muteUntil:'', posts:1,  likes:12},
+  {id:5, username:'bob@qq.com',  nickname:'Bob_Builder',role:'user', status:1, muteUntil:'', posts:0,  likes:0}
+];
+
+let CONFIG = {
+  bannerTitle:'星穹旅驿站',
+  bannerSubtitle:'分享建筑、红石与开服心得，向大佬提问，一起把服务器玩出花。',
+  bannerImage:'',
+  defaultSort:'latest',
+  searchPlaceholder:'搜索帖子、标签或作者…',
+  /* 以下为第二阶段预留键：第一阶段只入库、不提供 UI 开关（PRD §0.3-E） */
+  rewardEnabled:'0', rewardPresets:'1,5,10', rewardCommission:'0'
+};
+
+let TAGS = [];
+let ARTICLES = [];
+let COMMENTS = [];
+let LIKES = new Set();
+let FAVS  = new Set();
+let COMMENT_LIKES = new Set();   /* key = userId:commentId（PRD §4.5.3） */
+let nextTagId = 0, nextArticleId = 0, nextCommentId = 0;
+
+function resetData(){
+  TAGS = [
+    {id:(nextTagId=1), name:'教程',   useCount:0, isHot:1, source:'system'},
+    {id:(nextTagId=2), name:'红石',   useCount:0, isHot:1, source:'system'},
+    {id:(nextTagId=3), name:'基岩版', useCount:0, isHot:0, source:'system'},
+    {id:(nextTagId=4), name:'建筑',   useCount:0, isHot:1, source:'user'},
+    {id:(nextTagId=5), name:'更新',   useCount:0, isHot:1, source:'system'},
+    {id:(nextTagId=6), name:'钓鱼',   useCount:0, isHot:0, source:'user'},
+    {id:(nextTagId=7), name:'整合包', useCount:0, isHot:0, source:'user'}
+  ];
+  nextTagId = 8;
+  nextArticleId = 1;
+  nextCommentId = 1;   /* 评论 id 必须从 1 起：parent_id=0 是"顶层评论"的哨兵值，id 若为 0 会与语义撞车 */
+  COMMENTS = [];
+  LIKES = new Set(); FAVS = new Set();
+
+  /* 注意：id 必须由调用处显式给出，默认值里不要再自增，否则每次创建会跳号 */
+  const mk = o => Object.assign({
+    summary:'', cover:'', status:1, isTop:0, isFeatured:0,
+    viewCount:0, likeCount:0, favoriteCount:0, commentCount:0,
+    publishTime:'', createTime:'', updateTime:'', reviewNote:'', removeBy:'', resubmitCount:0
+  }, o);
+
+  ARTICLES = [
+    mk({
+      id:nextArticleId++, cat:'guide', authorId:2, isFeatured:1, cover:'g1',
+      title:'新手向：从零搭建你的第一座红石自动农场',
+      tags:['教程','红石'],
+      summary:'不需要任何红石基础，跟着这篇走你也能做出一台自动农场。',
+      content:
+`# 从零开始的自动农场
+
+很多新人以为红石很吓人，其实自动农场用到的只有三样东西：**观察者**、**活塞**、**漏斗矿车**。
+
+## 材料清单
+
+- 观察者 x 2
+- 粘性活塞 x 2
+- 红石粉 x 8
+- 漏斗 x 4
+- 箱子 x 2
+
+## 搭建步骤
+
+1. 先挖出一个 9x1 的沟槽，深度两格；
+2. 沟槽两端各放一个粘性活塞，注意朝向 \`推\` 的方向要一致；
+3. 活塞后方接上观察者，观察者的脸朝着活塞背面。
+
+> 提示：如果活塞不动，先检查观察者的朝向。90% 的失败都是朝向问题。
+
+完成后测试一下：
+
+\`\`\`text
+[服务器] Rain.sh 获得成就：自动化的开始
+\`\`\`
+
+有任何报错欢迎在下面评论，我会尽量回复。`,
+      viewCount:328, likeCount:42, favoriteCount:15, commentCount:2,
+      publishTime:'2026-09-14T10:22:00', createTime:'2026-09-14T10:05:00', updateTime:'2026-09-14T10:22:00'
+    }),
+    mk({
+      id:nextArticleId++, cat:'news', authorId:1, isTop:1, cover:'g2',
+      title:'服务器 1.21.1 更新公告：新增三个主城传送点',
+      tags:['更新'],
+      summary:'本次更新新增主城传送石碑，并对基岩版兼容层做了调整。',
+      content:
+`# 版本更新说明
+
+本次维护已于今日凌晨完成，服务器版本保持 **1.21.1**（Java / 基岩互通）。
+
+## 新增内容
+
+- 主城新增三座传送石碑：**东港**、**雪原营地**、**下界中枢**
+- 商店区扩建 12 个摊位
+- 基岩版玩家现在可以使用 \`/tpa\` 指令
+
+## 修复
+
+- 修复部分玩家进入下界时掉落虚空的问题
+- 修复领地保护在内陆水域失效的问题
+
+> 如遇问题请在游戏内联系在线管理员，或在社区发帖。`,
+      viewCount:1204, likeCount:88, favoriteCount:47, commentCount:1,
+      publishTime:'2026-09-20T09:00:00', createTime:'2026-09-20T08:40:00', updateTime:'2026-09-20T09:00:00'
+    }),
+    mk({
+      id:nextArticleId++, cat:'help', authorId:3,
+      title:'【求助】基岩版进服后一直卡在加载界面',
+      tags:['基岩版'],
+      summary:'手机版能进，但加载到 60% 就不动了，重装也没用。',
+      content:
+`手机上能连上服务器，读条到 60% 左右就卡住了，重装客户端也不行。
+
+试过的方法：
+- 切换 WiFi / 移动数据 —— 无效
+- 重装游戏 —— 无效
+- 换一个存档进服 —— 同样卡住
+
+用的是 Android 14，游戏版本 1.21.1。有没有大佬遇到过？`,
+      viewCount:96, likeCount:3, favoriteCount:1, commentCount:1,
+      publishTime:'2026-09-22T20:11:00', createTime:'2026-09-22T20:11:00', updateTime:'2026-09-22T20:11:00'
+    }),
+    mk({
+      id:nextArticleId++, cat:'chat', authorId:3,
+      title:'闲聊：你们在服务器里干过最离谱的事是什么',
+      tags:['建筑'],
+      summary:'我先说，我曾经把整座山的树都砍了拿去烧玻璃。',
+      content:
+`昨天晚上清点了自己的箱子，发现攒了 14 箱圆石，基本都是挖矿顺手挖的。
+
+你们呢？说说在服务器里干过最离谱的事。`,
+      viewCount:511, likeCount:67, favoriteCount:3, commentCount:0,
+      publishTime:'2026-09-23T22:40:00', createTime:'2026-09-23T22:40:00', updateTime:'2026-09-23T22:40:00'
+    }),
+    mk({
+      id:nextArticleId++, cat:'resource', authorId:2, cover:'g3',
+      title:'整合包推荐：轻量生存向，只加 20 个模组',
+      tags:['整合包'],
+      summary:'给不想折腾又想有点新鲜感的玩家，20 个模组，开箱即用。',
+      content:
+`# 轻量生存整合包
+
+这个包我只保留了 20 个模组，核心是**不破坏原版节奏**。
+
+## 包含内容
+
+- JEI（配方查询）
+- 小地图
+- 苹果皮
+- 背包整理
+- 少量装饰方块
+
+## 不包含
+
+- 任何科技树
+- 任何战斗模组
+
+> 想加的自己加，但请注意服务器只允许客户端模组。`,
+      viewCount:203, likeCount:19, favoriteCount:11, commentCount:0,
+      publishTime:'2026-09-24T14:05:00', createTime:'2026-09-24T13:50:00', updateTime:'2026-09-24T14:05:00'
+    }),
+    /* ── 作者 Rain.sh 的四种非公开状态，用于演示审核 / 编辑准入 ── */
+    mk({
+      id:nextArticleId++, cat:'suggest', authorId:2, status:0,
+      title:'关于增加钓鱼玩法的建议',
+      tags:['钓鱼'],
+      summary:'希望能给钓鱼加一点稀有掉落，提高一下无聊时的可玩性。',
+      content:
+`钓鱼现在只能钓到鱼和少量杂物，感觉有点浪费。
+
+建议：
+
+1. 加入极低概率的**附魔书**；
+2. 在特定天气下提高稀有物概率；
+3. 增加一个钓鱼排行榜。
+
+不知道技术实现难度大不大，如果可行的话希望能排上期。`,
+      createTime:'2026-09-26T11:20:00', updateTime:'2026-09-26T11:20:00'
+    }),
+    mk({
+      id:nextArticleId++, cat:'chat', authorId:2, status:2, cover:'g4',
+      title:'建筑分享：我的中世纪城堡完工了',
+      tags:['建筑'],
+      summary:'肝了三个周末，主体已经完工，剩下内部装修。',
+      content:
+`肝了三个周末，主体已经完工。
+
+大概用了 4 万块石头砖，塔楼高度 42 格。
+
+剩下内部装修和庭院绿化，完工会再发一帖。`,
+      reviewNote:'封面与正文不符，请补充实际游戏内截图后再提交',
+      createTime:'2026-09-25T19:02:00', updateTime:'2026-09-25T21:30:00'
+    }),
+    mk({
+      id:nextArticleId++, cat:'chat', authorId:2, status:3, removeBy:'admin',
+      title:'（已下架的样例）服务器卡顿的真实原因分析',
+      tags:['聊天'],
+      summary:'这条帖子被管理员下架，用于演示"作者不能编辑重提"的情形。',
+      content:
+`（这是一条被管理员下架的样例帖，仅用于演示状态与权限。）
+
+结论：卡顿与插件无关，是某位玩家的超大型刷怪塔导致的实体堆积。`,
+      reviewNote:'内容涉及未证实的指责，先下架处理',
+      publishTime:'2026-09-21T16:00:00', createTime:'2026-09-21T15:30:00', updateTime:'2026-09-26T10:00:00'
+    }),
+    mk({
+      id:nextArticleId++, cat:'chat', authorId:2, status:3, removeBy:'author',
+      title:'（作者自己删掉的样例）周三晚上的小活动记录',
+      tags:['聊天'],
+      summary:'作者自己删除的帖子，仍可编辑重提。',
+      content:
+`（这是一条作者自己删除的样例帖，用于演示"作者仍可编辑重提"的情形。）
+
+记录了上周三晚上那场捉迷藏活动，本来想配图，结果截图丢了。`,
+      publishTime:'2026-09-18T21:00:00', createTime:'2026-09-18T20:40:00', updateTime:'2026-09-19T09:12:00'
+    })
+  ];
+
+  /* 评论：两级楼中楼 —— parentId=0 顶层评论；parentId 非 0 表示挂在某条顶层评论下（PRD §4.4 / §8-D15）
+     replyToUserId 仅用于显示「回复 @某人」；回复的回复仍挂同一顶层评论，不产生第三级 */
+  COMMENTS = [
+    {id:nextCommentId++, articleId:1, parentId:0, authorId:3, likeCount:1, replyToUserId:0,
+     content:'观察者朝向那一段太有用了，我就是卡在这里半小时。', createTime:'2026-09-14T12:30:00', status:1},
+    {id:nextCommentId++, articleId:1, parentId:0, authorId:1, likeCount:0, replyToUserId:0,
+     content:'补充一点：活塞推的方向要看紫色同色标记，别只看箭头。', createTime:'2026-09-14T14:02:00', status:1},
+    {id:nextCommentId++, articleId:1, parentId:2, authorId:2, likeCount:2, replyToUserId:1,
+     content:'原来是这样，我一直盯着箭头看，难怪老推反。', createTime:'2026-09-14T15:10:00', status:1},
+    {id:nextCommentId++, articleId:1, parentId:2, authorId:3, likeCount:0, replyToUserId:2,
+     content:'同踩坑，收藏了这篇，回头重做一遍。', createTime:'2026-09-14T16:40:00', status:1},
+    {id:nextCommentId++, articleId:2, parentId:0, authorId:2, likeCount:1, replyToUserId:0,
+     content:'下界中枢终于有了，之前挖半天路。', createTime:'2026-09-20T10:15:00', status:1},
+    {id:nextCommentId++, articleId:2, parentId:5, authorId:1, likeCount:0, replyToUserId:2,
+     content:'下次更新会把传送石碑的坐标也写进 Wiki。', createTime:'2026-09-20T11:30:00', status:1},
+    {id:nextCommentId++, articleId:3, parentId:0, authorId:1, likeCount:0, replyToUserId:0,
+     content:'大概率是资源包问题，先清一下 \'resource_packs\' 目录再试。', createTime:'2026-09-22T21:00:00', status:1}
+  ];
+  COMMENT_LIKES = new Set();   /* key = userId:commentId（PRD §4.5.3） */
+  recountTagUse();
+  recountCommentCount();
+}
+
+/* 文章 comment_count = 顶层评论数 + 回复数（PRD §4.4 口径；真实实现用原子增减，原型用重算保证一致） */
+function recountCommentCount(){
+  ARTICLES.forEach(a => {
+    a.commentCount = COMMENTS.filter(c => c.articleId === a.id && c.status === 1).length;
+  });
+}
+
+/* 标签 use_count = 被 status=1 文章引用数（PRD §8-D8 单一转移点） */
+function recountTagUse(){
+  TAGS.forEach(t => t.useCount = 0);
+  ARTICLES.forEach(a => {
+    if(a.status !== 1) return;
+    (a.tags||[]).forEach(n => { const t = TAGS.find(x => x.name === n); if(t) t.useCount++; });
+  });
+}
+
+/* 首次加载 */
+resetData();
+
+/* ════════════════════════════════════════════════════════════════
+   2. 状态
+   ════════════════════════════════════════════════════════════════ */
+
+let state = {
+  view:'home',
+  user:'rain',          /* anon | rain | admin */
+  articleId:null,
+  editId:null,
+  category:'home',
+  sort:CONFIG.defaultSort,
+  q:'',
+  tag:'',
+  page:1,
+  myFilter:'all',
+  /* 回复框状态：同时只允许展开一个（PRD §5.4.3）；afterId 决定它在谁的正下方渲染 */
+  replyTo:null,   /* { parentId, replyToUserId, replyToName, afterId } | null */
+  draftTime:12,   /* 生成演示用时间戳的递增分钟数 */
+  adminFilter:{status:'all', q:''},
+  draft:{cat:'', title:'', cover:'', content:'', tags:[]},
+  editTags:[],
+  editCat:''
+};
+const PAGE_SIZE = 5;
+
+/* ════════════════════════════════════════════════════════════════
+   3. 工具
+   ════════════════════════════════════════════════════════════════ */
+
+const $ = id => document.getElementById(id);
+function esc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function catOf(code){ return CATS.find(c => c.code === code) || CATS[0]; }
+function userOf(id){
+  const u = USER_LIST.find(x => x.id === id);
+  return u ? {id:u.id, name:u.nickname, avatar:(u.nickname||'?')[0].toUpperCase(),
+              av:u.role === 'admin' ? 'av-admin' : ''} : {id:0,name:'未知',avatar:'?',av:'av-gray'};
+}
+function me(){ return USERS[state.user]; }
+function isLogged(){ return state.user !== 'anon'; }
+function isAdmin(){ return state.user === 'admin'; }
+
+function avatarHTML(u, size){
+  return `<div class="avatar av-${size} ${u.av||''}">${esc(u.avatar)}</div>`;
+}
+function badgeHTML(id){
+  const u = userOf(id);
+  if(u.id === 1) return '<span class="badge b-role">管理员</span>';
+  return '';
+}
+/* 像素风封面（内联 SVG，不依赖任何外部资源） */
+function pixCover(seed){
+  let r = seed * 9301 + 49297, rects = '';
+  const rnd = () => ((r = (r * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  const pal = [['#60a5fa','#3b82f6'],['#34d399','#10b981'],['#fbbf24','#f59e0b'],
+               ['#a78bfa','#8b5cf6'],['#f472b6','#ec4899'],['#22d3ee','#06b6d4']][seed % 6];
+  for(let y=0;y<10;y++) for(let x=0;x<10;x++){
+    const v = rnd();
+    if(v > .46) rects += `<rect x="${x*6.4}" y="${y*6.4}" width="6.4" height="6.4" fill="${v>.74?pal[0]:pal[1]}"/>`;
+  }
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#e8eef7"/>${rects}</svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+function coverSeed(code){
+  const i = CATS.findIndex(c => c.code === code);
+  return i < 0 ? 0 : i;
+}
+/* Banner 右侧像素插画（占位素材，PRD 标注"待提供"） */
+function bannerArtSVG(){
+  const S = 6, cells = [];
+  const put = (x,y,w,h,c) => cells.push(`<rect x="${x*S}" y="${y*S}" width="${w*S}" height="${h*S}" fill="${c}"/>`);
+  /* 天空由容器渐变承担，这里画地面 + 城堡 + 树 + 人物 */
+  put(0,20,50,4,'#1e40af'); put(0,22,50,4,'#1d4ed8');
+  /* 城堡主体 */
+  put(24,9,10,11,'#64748b'); put(24,7,3,3,'#94a3b8'); put(31,7,3,3,'#94a3b8');
+  put(27,4,4,4,'#94a3b8'); put(28,3,2,1,'#cbd5e1');
+  put(21,13,4,8,'#475569'); put(33,13,4,8,'#475569');
+  put(28,14,2,3,'#facc15');  /* 门 */
+  /* 树 */
+  put(8,15,2,6,'#78350f'); put(5,12,5,4,'#15803d'); put(41,14,2,7,'#78350f'); put(38,11,5,4,'#16a34a');
+  /* 人物（史蒂夫配色） */
+  put(15,17,2,2,'#4b5563'); put(15,19,2,3,'#0ea5e9'); put(15,22,1,2,'#1e3a8a'); put(16,22,1,2,'#1e3a8a');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${50*S} ${26*S}" preserveAspectRatio="none">${cells.join('')}</svg>`;
+  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+function relTime(iso){
+  if(!iso) return '';
+  const d = new Date(iso.replace(' ','T')), now = new Date('2026-09-27T19:00:00');
+  const m = Math.floor((now - d) / 60000);
+  if(m < 1) return '刚刚';
+  if(m < 60) return m + ' 分钟前';
+  if(m < 60*24) return Math.floor(m/60) + ' 小时前';
+  if(m < 60*24*7) return Math.floor(m/60/24) + ' 天前';
+  return iso.slice(5,10).replace('-','-');
+}
+function shortTime(iso){ return iso ? iso.slice(5,10) : '—'; }
+
+/* 极简但安全的 Markdown 渲染（先转义再替换，禁止 raw HTML） */
+function renderMD(src){
+  let s = esc(src || '');
+  const blocks = [];
+  s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, (m, lang, code) => {
+    blocks.push({lang:lang || 'text', code:code.replace(/\n$/,'')});
+    return '\u0000B' + (blocks.length - 1) + '\u0000';
+  });
+  s = s.replace(/^### (.*)$/gm, '<h3>$1</h3>')
+       .replace(/^## (.*)$/gm,  '<h2>$1</h2>')
+       .replace(/^# (.*)$/gm,   '<h1>$1</h1>');
+  s = s.replace(/^&gt; (.*)$/gm, '<blockquote>$1</blockquote>');
+  s = s.replace(/(?:^- .*(?:\n|$))+/gm, m =>
+        '<ul>' + m.trim().split('\n').map(l => '<li>' + l.replace(/^- /,'') + '</li>').join('') + '</ul>');
+  s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<img alt="$1" src="$2">')
+       .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+       .replace(/`([^`]+)`/g, '<code>$1</code>');
+  s = s.split(/\n{2,}/).map(p =>
+        /^\s*(<(h\d|ul|ol|blockquote|img|div|pre)|\u0000B)/.test(p) ? p
+        : '<p>' + p.replace(/\n/g,'<br>') + '</p>').join('');
+  s = s.replace(/\u0000B(\d+)\u0000/g, (m, i) =>
+        '<div class="code-block"><div class="code-bar"><span>' + blocks[i].lang + '</span>' +
+        '<button onclick="toast(\'代码已复制（原型演示）\',\'ok\')">复制</button></div>' +
+        '<pre><code>' + blocks[i].code + '</code></pre></div>');
+  return s;
+}
+function plainSummary(a){
+  if(a.summary) return a.summary;
+  return (a.content || '').replace(/[#>*`\-!\[\]()]/g,'').replace(/\s+/g,' ').trim().slice(0,100);
+}
+function statusMeta(a){
+  if(a.status === 1) return {label:'已发布', cls:'b-pub'};
+  if(a.status === 0) return {label:'待审核', cls:'b-wait'};
+  if(a.status === 2) return {label:'已驳回', cls:'b-rej'};
+  return {label:'已下架', cls:'b-off'};
+}
+let toastTimer = null;
+function toast(msg, type){
+  const el = $('toast');
+  el.textContent = msg;
+  el.className = 'toast show' + (type ? ' t-' + type : '');
+  el.style.opacity = 1; el.style.transform = 'translate(-50%,0)';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = 'toast'; el.style.opacity = 0; }, 2300);
+}
+function requireLogin(what){
+  if(isLogged()) return true;
+  toast('请先登录后再' + what, 'warn');
+  return false;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   4. 路由 / 渲染入口
+   ════════════════════════════════════════════════════════════════ */
+
+const VIEW_TITLE = {
+  home:'社区首页', post:'文章详情', create:'发布文章', edit:'编辑文章', my:'我的文章',
+  'admin-articles':'文章管理', 'admin-categories':'板块管理', 'admin-tags':'标签管理',
+  'admin-config':'社区配置', 'admin-users':'用户管理'
+};
+
+function go(view, param){
+  state.view = view;
+  if(view !== 'post') state.replyTo = null;   /* 回复框只在详情页存在，切页即收起 */
+  if(view === 'post'){ state.articleId = param; const a = getArticle(param); if(a) a.viewCount++; }
+  if(view === 'edit'){ state.editId = param; }
+  closeOverlay();
+  render();
+  window.scrollTo({top:0});
+}
+function setUser(who){ state.user = who; render(); }
+function isAdminView(){ return state.view.indexOf('admin-') === 0; }
+function getArticle(id){ return ARTICLES.find(a => a.id === Number(id)); }
+
+function render(){
+  /* 工具条高亮 */
+  $('u-anon').className  = state.user === 'anon'  ? 'on' : '';
+  $('u-rain').className  = state.user === 'rain'  ? 'on' : '';
+  $('u-admin').className = state.user === 'admin' ? 'on' : '';
+  $('n-home').className  = state.view === 'home'  ? 'on' : '';
+  $('n-aa').className    = state.view === 'admin-articles' ? 'on' : '';
+
+  let html = '';
+  if(isAdminView()){
+    if(!isAdmin()){
+      html = `<div class="wrap"><div class="empty" style="max-width:520px;margin:60px auto">
+        <div class="em-t">需要管理员权限</div>
+        <div>后台页面仅管理员可访问（非管理员返回 403）。</div>
+        <div style="margin-top:16px"><button class="btn btn-pri" onclick="setUser('admin')">切换为管理员身份</button></div>
+      </div></div>`;
+    }else{
+      html = renderAdminShell();
+    }
+  }else{
+    html = renderSiteShell();
+  }
+  $('view').innerHTML = html;
+}
+
+function renderSiteShell(){
+  const v = state.view;
+  /* 详情页 / 发布页 / 编辑页：按 PRD 不挂全局导航（极简返回） */
+  const bare = (v === 'post' || v === 'create' || v === 'edit');
+  let body = '';
+  if(v === 'home')   body = renderHome();
+  if(v === 'post')   body = renderPost();
+  if(v === 'create') body = renderCreate();
+  if(v === 'edit')   body = renderEdit();
+  if(v === 'my')     body = renderMy();
+  return (bare ? '' : renderNav()) + body;
+}
+
+/* ── 顶部导航 ── */
+function renderNav(){
+  const u = me();
+  const userArea = isLogged()
+    ? `<button class="icon-btn" onclick="toast('站内信功能开发中','warn')" title="站内信">
+         <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+       </button>
+       <div class="nav-user" onclick="toast('用户菜单（原型未展开）')">
+         ${avatarHTML(u,28)}<span class="nm">${esc(u.name)}</span>
+       </div>`
+    : `<button class="btn btn-sm" onclick="toast('跳转登录页（原型未展开）')">登录</button>
+       <button class="btn btn-pri btn-sm" onclick="toast('跳转注册页（原型未展开）')">注册</button>`;
+  return `
+  <nav id="site-nav"><div class="nav-in">
+    <div class="logo" onclick="go('home')" style="cursor:pointer">
+      <div class="logo-mark">星</div><span>星穹旅驿</span>
+    </div>
+    <div class="nav-links">
+      <a href="javascript:go('home')">首页</a>
+      <a href="javascript:toast('公告页（原型未展开）')">公告</a>
+      <a href="javascript:go('home')" class="active">社区</a>
+      <a href="javascript:toast('Wiki（原型未展开）')">Wiki</a>
+    </div>
+    <div class="nav-right">${userArea}</div>
+  </div></nav>`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   5. 社区首页
+   ════════════════════════════════════════════════════════════════ */
+
+function listArticles(){
+  let arr = ARTICLES.filter(a => a.status === 1);
+  const c = state.category;
+  if(c === 'recommend')      arr = arr.filter(a => a.isTop || a.isFeatured);
+  else if(c !== 'home')      arr = arr.filter(a => a.cat === c);
+  if(state.tag)              arr = arr.filter(a => (a.tags||[]).includes(state.tag));
+  if(state.q){
+    const q = state.q.toLowerCase();
+    arr = arr.filter(a => (a.title + ' ' + plainSummary(a)).toLowerCase().includes(q));
+  }
+  arr.sort((x,y) => {
+    if(x.isTop !== y.isTop) return y.isTop - x.isTop;           /* 置顶恒在最前 */
+    if(state.sort === 'views')    return y.viewCount - x.viewCount;
+    if(state.sort === 'comments') return y.commentCount - x.commentCount;
+    return (y.publishTime || y.createTime).localeCompare(x.publishTime || x.createTime);
+  });
+  return arr;
+}
+
+function renderHome(){
+  const list = listArticles();
+  const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+  if(state.page > totalPages) state.page = totalPages;
+  const pageList = list.slice((state.page-1)*PAGE_SIZE, state.page*PAGE_SIZE);
+  return `
+  <div class="wrap"><div class="forum-grid">
+    <div>
+      ${bannerHTML()}
+      ${catTabsHTML()}
+      <div class="post-list">${pageList.length ? pageList.map(postCardHTML).join('') : emptyListHTML()}</div>
+      ${pagerHTML(totalPages, list.length)}
+    </div>
+    <aside class="side-col">
+      ${userCardHTML()}
+      ${statsCardHTML()}
+      ${hotTagsHTML()}
+    </aside>
+  </div></div>`;
+}
+
+function bannerHTML(){
+  const art = CONFIG.bannerImage
+    ? `<img class="banner-art" src="${esc(CONFIG.bannerImage)}" alt="">`
+    : `<div class="banner-art" style="background:url('${bannerArtSVG()}') center bottom / cover no-repeat"></div>`;
+  return `
+  <div class="banner">
+    <div class="banner-l">
+      <h1>${esc(CONFIG.bannerTitle)}<span> 社区</span></h1>
+      <p>${esc(CONFIG.bannerSubtitle)}</p>
+    </div>
+    <div class="banner-r">${art}</div>
+    <div class="banner-bar">
+      <select onchange="setSort(this.value)">
+        <option value="latest"   ${state.sort==='latest'?'selected':''}>按发布时间</option>
+        <option value="views"    ${state.sort==='views'?'selected':''}>按访问量</option>
+        <option value="comments" ${state.sort==='comments'?'selected':''}>按回复数</option>
+      </select>
+      <input placeholder="${esc(CONFIG.searchPlaceholder)}" value="${esc(state.q)}"
+             onkeydown="if(event.key==='Enter')setQuery(this.value)">
+      <button class="btn btn-pri" onclick="startCreate()">发布文章</button>
+    </div>
+  </div>`;
+}
+
+function catTabsHTML(){
+  const cats = CATS.filter(c => c.isHidden === 0).sort((a,b) => a.sortOrder - b.sortOrder);
+  return `<div class="cat-tabs">` + cats.map(c => `
+    <button class="cat-tab ${state.category===c.code?'on':''}" onclick="setCategory('${c.code}')">
+      <span class="dot" style="background:${c.color}"></span>${esc(c.name)}
+    </button>`).join('') + `</div>`;
+}
+
+function postCardHTML(a){
+  const c = catOf(a.cat);
+  const author = userOf(a.authorId);
+  const tags = (a.tags||[]).slice(0,3).map(t => `<span class="tag tag-hash"># ${esc(t)}</span>`).join('');
+  const cover = a.cover
+    ? `<div class="thumb"><img src="${pixCover(coverSeed(a.cat) + a.id)}" alt="封面"></div>`
+    : `<div class="thumb"><div class="thumb-empty">暂无配图</div></div>`;
+  return `
+  <article class="post-card" onclick="go('post',${a.id})">
+    <div class="post-main">
+      <div class="post-tags">
+        ${a.isTop ? '<span class="tag tag-top">置顶</span>' : ''}
+        ${a.isFeatured ? '<span class="tag tag-featured">精华</span>' : ''}
+        <span class="tag tag-cat"><span class="dot" style="background:${c.color};margin-right:5px"></span>${esc(c.name)}</span>
+        ${tags}
+      </div>
+      <h3 class="post-title">${esc(a.title)}</h3>
+      <div class="post-sum">${esc(plainSummary(a))}</div>
+      <div class="post-foot">
+        <div class="post-author">
+          ${avatarHTML(author,28)}
+          <span class="nm">${esc(author.name)}</span>
+          ${badgeHTML(a.authorId)}
+          <span class="muted">· ${relTime(a.publishTime || a.createTime)}</span>
+        </div>
+        <div class="post-stats">
+          <span class="st">${icon('eye')}${a.viewCount}</span>
+          <span class="st">${icon('heart')}${a.likeCount}</span>
+          <span class="st">${icon('cmt')}${a.commentCount}</span>
+        </div>
+      </div>
+    </div>
+    ${cover}
+  </article>`;
+}
+function emptyListHTML(){
+  return `<div class="empty">
+    <div class="em-t">这里还没有帖子</div>
+    <div>换个板块看看，或者发布第一篇。</div>
+    <div style="margin-top:16px"><button class="btn btn-pri" onclick="startCreate()">发布第一篇</button></div>
+  </div>`;
+}
+function pagerHTML(totalPages, total){
+  if(total === 0) return '';
+  let btns = '';
+  for(let i=1;i<=totalPages;i++){
+    if(totalPages > 7 && i > 3 && i < totalPages - 1 && Math.abs(i - state.page) > 1) {
+      if(i === 4) btns += '<span class="muted" style="padding:0 4px">…</span>';
+      continue;
+    }
+    btns += `<button class="${i===state.page?'on':''}" onclick="setPage(${i})">${i}</button>`;
+  }
+  return `<div class="pager">
+    <button ${state.page<=1?'disabled':''} onclick="setPage(${state.page-1})">‹</button>
+    ${btns}
+    <button ${state.page>=totalPages?'disabled':''} onclick="setPage(${state.page+1})">›</button>
+    <span class="muted" style="margin-left:8px">共 ${total} 篇</span>
+  </div>`;
+}
+
+function userCardHTML(){
+  if(!isLogged()){
+    return `<div class="card card-pad" style="text-align:center">
+      <div class="muted" style="font-size:13px;margin-bottom:12px">登录后可以发帖、评论、点赞</div>
+      <div style="display:grid;gap:9px">
+        <button class="btn btn-pri" onclick="toast('跳转登录页（原型未展开）')">登录</button>
+        <button class="btn" onclick="toast('跳转注册页（原型未展开）')">注册新账号</button>
+      </div>
+    </div>`;
+  }
+  const u = me();
+  const mine = ARTICLES.filter(a => a.authorId === u.id);
+  const myLikes = mine.reduce((s,a) => s + a.likeCount, 0);
+  return `
+  <div class="card card-pad">
+    <div style="display:flex;align-items:center;gap:12px">
+      ${avatarHTML(u,40)}
+      <div style="min-width:0">
+        <div style="font-weight:700;font-size:15px;display:flex;align-items:center;gap:7px">
+          ${esc(u.name)}${u.role==='admin'?'<span class="badge b-role">管理员</span>':''}
+        </div>
+        <div class="muted" style="font-size:12px">发帖 ${mine.length} · 获赞 ${myLikes}</div>
+      </div>
+    </div>
+    <div class="sep"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:9px">
+      <button class="btn btn-sm" onclick="go('my')">我的文章</button>
+      <button class="btn btn-sm" onclick="toast('头衔管理功能开发中','warn')">头衔管理</button>
+    </div>
+  </div>`;
+}
+
+function statsCardHTML(){
+  const published = ARTICLES.filter(a => a.status === 1);
+  const totalView = published.reduce((s,a) => s + a.viewCount, 0);
+  const usedTags = new Set();
+  published.forEach(a => (a.tags||[]).forEach(t => usedTags.add(t)));
+  return `
+  <div class="card">
+    <div class="card-hd" style="border-bottom:none;padding-bottom:4px">社区统计</div>
+    <div class="card-pad" style="padding-top:8px">
+      <div class="stat3">
+        <div><div class="s-v">${published.length}</div><div class="s-l">文章数</div></div>
+        <div><div class="s-v">${totalView.toLocaleString()}</div><div class="s-l">浏览数</div></div>
+        <div><div class="s-v">${usedTags.size}</div><div class="s-l">标签数</div></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function hotTagsHTML(){
+  const arr = TAGS.slice().sort((a,b) => (b.isHot - a.isHot) || (b.useCount - a.useCount)).slice(0,10);
+  return `
+  <div class="card">
+    <div class="card-hd" style="border-bottom:none;padding-bottom:4px">热门标签</div>
+    <div class="card-pad" style="padding-top:8px">
+      <div class="tag-cloud">
+        ${arr.map(t => `<span class="tag tag-hash ${state.tag===t.name?'on':''}" onclick="setTag('${esc(t.name)}')">
+          # ${esc(t.name)} <b style="font-weight:600;opacity:.72">${t.useCount}</b></span>`).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* 图标 */
+function icon(n){
+  const s = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">';
+  if(n === 'eye')  return s + '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+  if(n === 'heart')return s + '<path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>';
+  if(n === 'cmt')  return s + '<path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>';
+  if(n === 'star') return s + '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+  if(n === 'share')return s + '<circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>';
+  if(n === 'edit') return s + '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+  return '';
+}
+
+/* ════════════════════════════════════════════════════════════════
+   6. 文章详情页
+   ════════════════════════════════════════════════════════════════ */
+
+function renderPost(){
+  const a = getArticle(state.articleId);
+  if(!a) return notFoundHTML('帖子不存在或已被删除');
+  const isAuthor = isLogged() && me().id === a.authorId;
+  /* 非公开状态：仅作者与管理员可见，其余按 404（PRD §5.4.2） */
+  if(a.status !== 1 && !isAuthor && !isAdmin()) return notFoundHTML('帖子不存在或已被删除');
+
+  let banner = '';
+  if(a.status === 0 && (isAuthor || isAdmin()))
+    banner = `<div class="status-banner sb-wait">该帖正在审核中，仅你与管理员可见。</div>`;
+  if(a.status === 2 && (isAuthor || isAdmin()))
+    banner = `<div class="status-banner sb-rej">该帖未通过审核：${esc(a.reviewNote || '（未填写理由）')}</div>`;
+  if(a.status === 3 && (isAuthor || isAdmin()))
+    banner = `<div class="status-banner sb-off">该帖已下架${a.removeBy === 'admin' ? '（管理员下架）' : '（作者删除）'}${a.reviewNote ? '：' + esc(a.reviewNote) : ''}</div>`;
+
+  const liked = LIKES.has(state.user + ':' + a.id);
+  const faved = FAVS.has(state.user + ':' + a.id);
+  const c = catOf(a.cat);
+  const author = userOf(a.authorId);
+  /* 顶层评论按时间倒序（最新在前）；同一顶层下的回复按时间正序（PRD §4.4） */
+  const tops = COMMENTS.filter(x => x.articleId === a.id && x.status === 1 && !x.parentId)
+                       .sort((x,y) => y.createTime.localeCompare(x.createTime));
+
+  return `
+  <div class="focus-wrap">
+    <a class="back-link" href="javascript:go('home')">← 返回社区</a>
+    ${banner}
+    <div class="detail-grid">
+      <div>
+        <!-- 帖子详情卡片 -->
+        <div class="card" style="padding:22px">
+          <span class="tag tag-cat"><span class="dot" style="background:${c.color};margin-right:5px"></span>${esc(c.name)}</span>
+          <h1 class="art-title">${esc(a.title)}</h1>
+          <div class="art-meta">
+            <div class="row" style="gap:10px">
+              ${avatarHTML(author,40)}
+              <div>
+                <div style="font-weight:700;display:flex;align-items:center;gap:7px">${esc(author.name)}${badgeHTML(a.authorId)}</div>
+                <div class="muted" style="font-size:12.5px">发布于 ${shortTime(a.publishTime || a.createTime)}${a.resubmitCount ? ' · 第 ' + (a.resubmitCount+1) + ' 次提交' : ''}</div>
+              </div>
+              ${(isAuthor && canEditArticle(a)) ? `<button class="btn btn-sm" style="margin-left:12px" onclick="go('edit',${a.id})">${icon('edit')} 编辑</button>` : ''}
+            </div>
+            <div class="art-meta-r">
+              <div class="m"><b>${a.viewCount}</b><span>浏览</span></div>
+              <div class="m"><b>${a.likeCount}</b><span>点赞</span></div>
+              <div class="m"><b>${a.commentCount}</b><span>评论</span></div>
+            </div>
+          </div>
+          <div class="md" style="margin-top:20px">${renderMD(a.content)}</div>
+          <div class="act-bar">
+            <button class="act ${liked?'on':''}" onclick="toggleLike(${a.id})">${icon('heart')} ${liked?'已赞':'赞'} ${a.likeCount}</button>
+            <button class="act ${faved?'on-fav':''}" onclick="toggleFav(${a.id})">${faved?'★ 已收藏':'☆ 收藏'}</button>
+            <button class="act" onclick="share(${a.id})">${icon('share')} 分享</button>
+          </div>
+        </div>
+
+        <!-- 评论区卡片 -->
+        <div class="card" style="padding:22px;margin-top:18px">
+          <div style="font-weight:800;font-size:16px">评论 ${a.commentCount}</div>
+          <div class="muted" style="font-size:12.5px;margin-bottom:2px">
+            顶层评论 ${tops.length} 条 · 含回复共 ${a.commentCount} 条
+          </div>
+          <div class="cmt-input">
+            ${avatarHTML(isLogged() ? me() : USERS.anon, 32)}
+            <div style="flex:1">
+              <textarea id="cmt-box" placeholder="${isLogged() ? '友善地发表你的看法...' : '登录后参与讨论'}"
+                ${isLogged() ? '' : 'disabled style="background:#f1f5f9;cursor:not-allowed"'}></textarea>
+              <div class="spread" style="margin-top:8px">
+                <span class="cmt-hint">理性发言，文明交流</span>
+                <button class="btn btn-pri btn-sm" onclick="submitComment(${a.id})">发表评论</button>
+              </div>
+            </div>
+          </div>
+          ${tops.length
+            ? `<div class="cmt-list">${tops.map(t => cmtTopHTML(t, a.id)).join('')}</div>`
+            : `<div class="empty" style="padding:32px 20px;margin-top:10px">还没有评论，来抢沙发吧~</div>`}
+        </div>
+      </div>
+
+      <!-- 侧边栏 -->
+      <aside class="side-col">
+        <div class="card">
+          <div class="card-hd">作者</div>
+          <div class="card-pad">
+            <div class="author-card-top">
+              ${avatarHTML(author,56)}
+              <div class="nm">${esc(author.name)}</div>
+              <div style="margin-top:5px">${badgeHTML(a.authorId) || '<span class="muted" style="font-size:12px">普通用户</span>'}</div>
+            </div>
+            <div class="sep"></div>
+            <div class="stat3">
+              <div><div class="s-v">${ARTICLES.filter(x => x.authorId===a.authorId && x.status===1).length}</div><div class="s-l">发帖</div></div>
+              <div><div class="s-v">${ARTICLES.filter(x => x.authorId===a.authorId).reduce((s,x)=>s+x.likeCount,0)}</div><div class="s-l">获赞</div></div>
+              <div><div class="s-v">0</div><div class="s-l">粉丝</div></div>
+            </div>
+            <div class="author-card-acts">
+              <button class="btn btn-pri btn-sm" onclick="toast('关注功能后续开发（第二阶段）','warn')">+ 关注</button>
+              <button class="btn btn-ok btn-sm" onclick="toast('打赏功能后续开发（第二阶段）','warn')">打赏作者</button>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hd">作者其他帖子</div>
+          <div class="card-pad" style="padding-top:6px">
+            ${authorOtherHTML(a)}
+          </div>
+        </div>
+      </aside>
+    </div>
+  </div>`;
+}
+function authorOtherHTML(a){
+  const arr = ARTICLES.filter(x => x.authorId === a.authorId && x.status === 1 && x.id !== a.id).slice(0,5);
+  if(!arr.length) return `<div class="muted" style="font-size:13px;padding:10px 0">暂无其他帖子</div>`;
+  return arr.map(x => `<div class="mini-post" onclick="go('post',${x.id})" style="cursor:pointer">
+    <span class="t">${esc(x.title)}</span>
+    <span class="muted" style="flex:0 0 auto">${x.viewCount}</span>
+  </div>`).join('');
+}
+/* ── 评论区渲染（两级楼中楼，PRD §5.4.3 / §8-D15） ── */
+
+/* 某条顶层评论下的回复（时间正序） */
+function repliesOf(parentId){
+  return COMMENTS.filter(x => x.parentId === parentId && x.status === 1)
+                 .sort((x,y) => x.createTime.localeCompare(y.createTime));
+}
+/* 评论操作行：赞 + 回复 */
+function cmtActsHTML(c){
+  const liked = COMMENT_LIKES.has(state.user + ':' + c.id);
+  return `<div class="cmt-acts">
+    <button class="cmt-act ${liked ? 'on' : ''}" onclick="toggleCommentLike(${c.id})">
+      ${icon('heart')} ${liked ? '已赞' : '赞'} ${c.likeCount}
+    </button>
+    <button class="cmt-act" onclick="openReply(${c.id})">回复</button>
+  </div>`;
+}
+/* 内联回复框：同时只允许展开一个（PRD §5.4.3） */
+function cmtFormHTML(parentId, replyToUserId, replyToName, targetText, nested){
+  const excerpt = targetText.length > 26 ? targetText.slice(0, 26) + '…' : targetText;
+  return `<div class="cmt-form${nested ? ' nested' : ''}">
+    ${avatarHTML(me(), 28)}
+    <div style="flex:1;min-width:0">
+      <div class="cmt-form-tip">
+        <span>回复 <b>@${esc(replyToName)}</b> <span class="muted">· ${esc(excerpt)}</span></span>
+        <button class="link-op" onclick="cancelReply()">取消</button>
+      </div>
+      <textarea id="reply-box" placeholder="回复 @${esc(replyToName)}…"></textarea>
+      <div class="spread" style="margin-top:8px">
+        <span class="cmt-hint">理性发言，文明交流</span>
+        <button class="btn btn-pri btn-sm" onclick="submitReply(${parentId}, ${replyToUserId})">发表回复</button>
+      </div>
+    </div>
+  </div>`;
+}
+function cmtTopHTML(c, articleId){
+  const u = userOf(c.authorId);
+  const reps = repliesOf(c.id);
+  const box = (state.replyTo && state.replyTo.afterId === c.id)
+    ? cmtFormHTML(c.id, c.authorId, u.name, c.content, false) : '';
+  return `<div class="cmt">
+    ${avatarHTML(u, 32)}
+    <div class="cmt-body">
+      <div class="cmt-head">
+        <span class="nm">${esc(u.name)}</span>${badgeHTML(c.authorId)}
+        <span>· ${relTime(c.createTime)}</span>
+      </div>
+      <div class="cmt-text">${esc(c.content)}</div>
+      ${cmtActsHTML(c)}
+      ${box}
+      ${reps.length ? `<div class="reply-list">${reps.map(r => cmtReplyHTML(r, c, articleId)).join('')}</div>` : ''}
+    </div>
+  </div>`;
+}
+function cmtReplyHTML(r, top, articleId){
+  const u = userOf(r.authorId);
+  /* 只有在"回复某条回复"时才显示 @；直接回复楼主不显示（PRD §5.4.3） */
+  const at = (r.replyToUserId && r.replyToUserId !== top.authorId)
+    ? `<span class="reply-to">回复 @${esc(userOf(r.replyToUserId).name)}</span> ` : '';
+  const box = (state.replyTo && state.replyTo.afterId === r.id)
+    ? cmtFormHTML(top.id, r.authorId, u.name, r.content, true) : '';
+  return `<div class="cmt reply">
+    ${avatarHTML(u, 28)}
+    <div class="cmt-body">
+      <div class="cmt-head">
+        <span class="nm">${esc(u.name)}</span>${badgeHTML(r.authorId)}
+        <span>· ${relTime(r.createTime)}</span>
+      </div>
+      <div class="cmt-text">${at}${esc(r.content)}</div>
+      ${cmtActsHTML(r)}
+      ${box}
+    </div>
+  </div>`;
+}
+function notFoundHTML(msg){
+  return `<div class="focus-wrap">
+    <a class="back-link" href="javascript:go('home')">← 返回社区</a>
+    <div class="empty"><div class="em-t">${esc(msg)}</div>
+      <div>该内容可能已被删除，或者你没有查看权限。</div>
+      <div style="margin-top:16px"><button class="btn" onclick="go('home')">回到社区首页</button></div>
+    </div></div>`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   7. 发布 / 编辑文章页
+   ════════════════════════════════════════════════════════════════ */
+
+/* 准入范围：0/1/2 任意；3 仅 remove_by='author'（PRD §4.3） */
+function canEditArticle(a){
+  if(!a) return false;
+  if(a.status === 3) return a.removeBy === 'author';
+  return a.status === 0 || a.status === 1 || a.status === 2;
+}
+
+function startCreate(){
+  if(!requireLogin('发布文章')) return;
+  state.draft = {cat:'', title:'', cover:'', content:'', tags:[]};
+  go('create');
+}
+
+function catPickHTML(cur){
+  return `<div class="cat-pick">` + CATS.filter(c => !c.isSystem).map(c => `
+    <button class="cp ${cur===c.code?'on':''}" onclick="pickCat('${c.code}')">
+      <span class="dot" style="background:${c.color}"></span>${esc(c.name)}
+    </button>`).join('') + `</div>`;
+}
+function tagEditorHTML(tags){
+  return `
+  <div class="tag-input-box">
+    ${tags.map((t,i) => `<span class="tag-chip">${esc(t)}<button onclick="rmTag(${i})">×</button></span>`).join('')}
+    ${tags.length >= 5
+      ? '<span class="muted" style="font-size:12.5px">已达 5 个上限，删除一个可继续添加</span>'
+      : `<input id="tag-inp" placeholder="输入标签后回车（最多 5 个）" maxlength="20"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();addTag(this.value);this.value=''}">`}
+  </div>
+  <div class="tag-sug">
+    <span class="muted" style="font-size:12px;padding-top:3px">已有标签：</span>
+    ${TAGS.slice(0,8).map(t => `<span class="tag tag-hash" style="cursor:pointer" onclick="addTag('${esc(t.name)}')"># ${esc(t.name)}</span>`).join('')}
+  </div>`;
+}
+function mdEditorHTML(value, id){
+  return `
+  <div class="md-editor">
+    <div class="md-tools">
+      <button onclick="mdWrap('${id}','**','**')">粗体</button>
+      <button onclick="mdWrap('${id}','*','*')">斜体</button>
+      <button onclick="mdWrap('${id}','# ','')">标题</button>
+      <button onclick="mdWrap('${id}','> ','')">引用</button>
+      <button onclick="mdWrap('${id}','- ','')">列表</button>
+      <button onclick="mdWrap('${id}','\`\`\`\\n','\\n\`\`\`')">代码块</button>
+      <span class="sp"></span>
+      <button onclick="togglePv('${id}')">预览 / 编辑</button>
+      <span class="muted" style="margin-left:auto;font-size:12px;padding-right:4px">Markdown（第一阶段仅支持此格式）</span>
+    </div>
+    <textarea id="${id}" placeholder="在这里写正文，支持 Markdown…" oninput="syncMD('${id}')">${esc(value)}</textarea>
+    <div class="md-pv" id="${id}-pv" style="display:none">
+      <div class="md-pv-t">预览效果</div>
+      <div class="md" id="${id}-pv-body"></div>
+    </div>
+  </div>`;
+}
+
+function renderCreate(){
+  if(!isLogged()) return notFoundHTML('请先登录');
+  const d = state.draft;
+  const ok = d.cat && d.title.trim().length >= 2 && d.content.trim().length >= 10;
+  return `
+  <div class="form-wrap">
+    <a class="back-link" href="javascript:go('home')">← 返回社区</a>
+    <div class="card card-pad" style="padding:24px">
+      <h2 style="font-size:19px;font-weight:800;margin-bottom:6px">发布文章</h2>
+      <div class="muted" style="font-size:13px;margin-bottom:22px">
+        提交后进入待审核，管理员通过后才会公开显示。
+      </div>
+
+      <div class="field">
+        <label>选择板块<span class="req">*</span></label>
+        ${catPickHTML(d.cat)}
+      </div>
+
+      <div class="field">
+        <label>标题<span class="req">*</span><span class="tip">2–100 字</span></label>
+        <input class="inp" maxlength="100" value="${esc(d.title)}" placeholder="一句话说清你要分享什么"
+               oninput="state.draft.title=this.value;updateSubmit()">
+      </div>
+
+      <div class="field">
+        <label>封面<span class="tip">选填 · png/jpg/gif/webp · ≤5MB</span></label>
+        ${d.cover
+          ? `<div class="cover-box cover-prev">
+               <div class="thumb"><img src="${pixCover(coverSeed(d.cat||'home') + 3)}" alt=""></div>
+               <div style="flex:1">
+                 <div style="font-weight:600">cover-20260927-001.png</div>
+                 <div class="muted" style="font-size:12.5px">上传成功，将作为列表缩略图</div>
+               </div>
+               <button class="btn btn-sm btn-danger" onclick="state.draft.cover='';render()">移除</button>
+             </div>`
+          : `<div class="cover-box" onclick="state.draft.cover='yes';render();toast('已模拟上传封面','ok')" style="cursor:pointer">
+               <div style="font-weight:600;color:var(--text-2)">点击上传封面</div>
+               <div class="muted" style="font-size:12.5px;margin-top:3px">不传则自动取正文第一幅图，都没有则不显示缩略图</div>
+             </div>`}
+      </div>
+
+      <div class="field">
+        <label>正文<span class="req">*</span><span class="tip">支持 Markdown</span></label>
+        ${mdEditorHTML(d.content, 'create-md')}
+      </div>
+
+      <div class="field">
+        <label>标签<span class="tip">选填 · 最多 5 个 · 回车即新建</span></label>
+        ${tagEditorHTML(d.tags)}
+      </div>
+
+      <div class="form-foot">
+        <button class="btn" onclick="go('home')">取消</button>
+        <button class="btn btn-pri btn-lg" id="submit-btn" ${ok?'':'disabled'} onclick="submitCreate()">提交审核</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderEdit(){
+  if(!isLogged()) return notFoundHTML('请先登录');
+  const a = getArticle(state.editId);
+  /* 权限与准入：非作者一律 404；管理员下架的帖不允许作者编辑（400） */
+  if(!a || (me().id !== a.authorId && !isAdmin())) return notFoundHTML('帖子不存在或已被删除');
+  if(a.status === 3 && a.removeBy === 'admin'){
+    return `<div class="form-wrap">
+      <a class="back-link" href="javascript:go('my')">← 返回我的文章</a>
+      <div class="card card-pad" style="border-color:#fca5a5">
+        <div style="font-weight:800;font-size:16px;color:#b91c1c;margin-bottom:8px">该帖已被管理员下架</div>
+        <div class="muted2" style="font-size:13.5px;margin-bottom:16px">
+          后端返回 <code>400</code>：该帖已被管理员下架，请联系管理员处理。作者不能用"编辑重提"绕过管理员的下架决定。
+        </div>
+        <div class="status-banner sb-off" style="margin-bottom:0">下架原因：${esc(a.reviewNote || '（未填写）')}</div>
+      </div>
+    </div>`;
+  }
+  if(!canEditArticle(a)) return notFoundHTML('该帖当前状态不可编辑');
+
+  /* 顶部提示条按原状态给不同文案（PRD §5.3.3） */
+  let tip = '';
+  if(a.status === 0) tip = `<div class="status-banner sb-wait">该帖正在审核中。保存后将重新提交审核。</div>`;
+  if(a.status === 1) tip = `<div class="status-banner sb-wait">该帖已发布。保存后将<b>重新进入审核，通过前会暂时从社区隐藏</b>；期间的浏览 / 点赞 / 收藏 / 评论都会保留。</div>`;
+  if(a.status === 2) tip = `<div class="status-banner sb-rej">该帖未通过审核：<b>${esc(a.reviewNote || '（未填写理由）')}</b>。修改后可重新提交，保存后原驳回理由将被清除。</div>`;
+  if(a.status === 3) tip = `<div class="status-banner sb-off">该帖已被你删除（作者自删）。保存后将重新提交审核。</div>`;
+
+  return `
+  <div class="form-wrap">
+    <a class="back-link" href="javascript:go('my')">← 返回我的文章</a>
+    ${tip}
+    <div class="card card-pad" style="padding:24px">
+      <h2 style="font-size:19px;font-weight:800;margin-bottom:6px">编辑文章 <span class="pv-note">#${a.id}</span></h2>
+      <div class="muted" style="font-size:13px;margin-bottom:22px">
+        保存后状态一律变为<b>待审核</b>，需管理员重新审核通过才重新公开。
+      </div>
+
+      <div class="field">
+        <label>选择板块<span class="req">*</span></label>
+        ${catPickHTML(state.editCat)}
+      </div>
+      <div class="field">
+        <label>标题<span class="req">*</span></label>
+        <input class="inp" maxlength="100" value="${esc(state.editTitle ?? a.title)}"
+               oninput="state.editTitle=this.value;updateSubmit('edit')">
+      </div>
+      <div class="field">
+        <label>封面<span class="tip">选填</span></label>
+        ${state.editCover === ''
+          ? `<div class="cover-box" onclick="state.editCover='yes';render()" style="cursor:pointer;text-align:center">
+               <div style="font-weight:600;color:var(--text-2)">点击上传封面</div>
+             </div>`
+          : `<div class="cover-box cover-prev">
+               <div class="thumb"><img src="${pixCover(coverSeed(state.editCat) + 3)}" alt=""></div>
+               <div style="flex:1"><div style="font-weight:600">cover-20260927-002.png</div>
+                 <div class="muted" style="font-size:12.5px">当前封面</div></div>
+               <button class="btn btn-sm btn-danger" onclick="state.editCover='';render()">移除</button>
+             </div>`}
+      </div>
+      <div class="field">
+        <label>正文<span class="req">*</span></label>
+        ${mdEditorHTML(state.editContent ?? a.content, 'edit-md')}
+      </div>
+      <div class="field">
+        <label>标签<span class="tip">最多 5 个</span></label>
+        ${tagEditorHTML(state.editTags)}
+      </div>
+
+      <div class="form-foot">
+        <button class="btn" onclick="go('my')">取消</button>
+        <button class="btn btn-pri btn-lg" id="edit-submit" onclick="submitEdit(${a.id})">保存并重新提交审核</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   8. 我的文章
+   ════════════════════════════════════════════════════════════════ */
+
+function renderMy(){
+  if(!isLogged()) return notFoundHTML('请先登录');
+  const mine = ARTICLES.filter(a => a.authorId === me().id)
+                        .sort((x,y) => y.updateTime.localeCompare(x.updateTime));
+  const f = state.myFilter;
+  const list = f === 'all' ? mine : mine.filter(a => String(a.status) === f);
+  const names = {all:'全部', 0:'待审核', 1:'已发布', 2:'已驳回', 3:'已下架'};
+  const cnt = k => k === 'all' ? mine.length : mine.filter(a => String(a.status) === k).length;
+
+  return `<div class="wrap">
+    ${isAdmin() ? `<div class="status-banner sb-wait">当前身份为管理员，此处展示的是你自己的文章。</div>` : ''}
+    <div class="spread" style="margin-bottom:16px;flex-wrap:wrap;gap:12px">
+      <div>
+        <h2 style="font-size:20px;font-weight:800">我的文章</h2>
+        <div class="muted" style="font-size:13px;margin-top:3px">共 ${mine.length} 篇 · 含待审核与已驳回</div>
+      </div>
+      <button class="btn btn-pri" onclick="startCreate()">发布新文章</button>
+    </div>
+
+    <div class="toolbar">
+      <div class="tabs-inline">
+        ${['all','0','1','2','3'].map(k => `<button class="${f===k?'on':''}" onclick="setMyFilter('${k}')">
+          ${names[k]}<span class="cnt">${cnt(k)}</span></button>`).join('')}
+      </div>
+    </div>
+
+    <div class="card">
+      ${list.length ? list.map(myRowHTML).join('') : `<div class="empty" style="border:none;background:none">该状态下暂无文章</div>`}
+    </div>
+  </div>`;
+}
+function myRowHTML(a){
+  const st = statusMeta(a);
+  const c = catOf(a.cat);
+  const canEdit = canEditArticle(a);
+  const blocked = a.status === 3 && a.removeBy === 'admin';
+  return `<div class="my-row">
+    <div class="mi">
+      <div class="mt">
+        <span class="badge ${st.cls}" style="margin-right:7px">${st.label}</span>
+        <span onclick="go('post',${a.id})" style="cursor:pointer">${esc(a.title)}</span>
+        ${a.resubmitCount ? `<span class="repeat-mark">第 ${a.resubmitCount+1} 次提交</span>` : ''}
+      </div>
+      <div class="mm">
+        <span><span class="dot" style="background:${c.color};margin-right:5px"></span>${esc(c.name)}</span>
+        <span>${icon('eye')} ${a.viewCount}</span>
+        <span>${icon('heart')} ${a.likeCount}</span>
+        <span>${icon('cmt')} ${a.commentCount}</span>
+        <span>最近提交 ${shortTime(a.updateTime)}</span>
+        <span>创建 ${shortTime(a.createTime)}</span>
+      </div>
+      ${a.status === 2 && a.reviewNote ? `<div class="reason-box">驳回理由：${esc(a.reviewNote)}</div>` : ''}
+      ${blocked && a.reviewNote ? `<div class="reason-box" style="background:#eef2f7;color:#475569">管理员下架：${esc(a.reviewNote)}</div>` : ''}
+    </div>
+    <div class="ops" style="flex:0 0 auto">
+      <button class="link-op" onclick="go('post',${a.id})">查看</button>
+      ${canEdit
+        ? `<button class="link-op" onclick="startEdit(${a.id})">编辑</button>`
+        : `<span class="link-op off" title="管理员下架的文章不能编辑重提">编辑</span>`}
+      ${a.status === 3
+        ? ''
+        : `<button class="link-op dg" onclick="askDelete(${a.id})">删除</button>`}
+    </div>
+  </div>`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   9. 后台
+   ════════════════════════════════════════════════════════════════ */
+
+const ADMIN_MENU = [
+  {g:'内容管理'},
+  {v:'admin-articles',   n:'文章管理'},
+  {v:'admin-categories', n:'板块管理'},
+  {v:'admin-tags',       n:'标签管理'},
+  {v:'admin-config',     n:'社区配置'},
+  {g:'用户与权限'},
+  {v:'admin-users',      n:'用户管理'}
+];
+function renderAdminShell(){
+  const items = ADMIN_MENU.map(m => m.g
+    ? `<div class="aside-g">${m.g}</div>`
+    : `<a class="${state.view===m.v?'on':''}" onclick="go('${m.v}')"><span>${m.n}</span></a>`).join('');
+  let body = '';
+  if(state.view === 'admin-articles')   body = renderAdminArticles();
+  if(state.view === 'admin-categories') body = renderAdminCategories();
+  if(state.view === 'admin-tags')       body = renderAdminTags();
+  if(state.view === 'admin-config')     body = renderAdminConfig();
+  if(state.view === 'admin-users')      body = renderAdminUsers();
+  return `
+  <div id="admin">
+    <div class="aside">
+      <div class="aside-logo"><div class="logo-mark">星</div><span>后台管理</span></div>
+      ${items}
+      <div class="aside-g">返回</div>
+      <a onclick="go('home')"><span>前台社区首页</span></a>
+    </div>
+    <div class="admin-main">${body}</div>
+  </div>`;
+}
+
+/* ── 文章管理 ── */
+function renderAdminArticles(){
+  const f = state.adminFilter;
+  let arr = ARTICLES.slice().sort((x,y) => y.updateTime.localeCompare(x.updateTime));
+  if(f.status !== 'all') arr = arr.filter(a => String(a.status) === f.status);
+  if(f.q){
+    const q = f.q.toLowerCase();
+    arr = arr.filter(a => (a.title + userOf(a.authorId).name).toLowerCase().includes(q));
+  }
+  const c = k => k === 'all' ? ARTICLES.length : ARTICLES.filter(a => String(a.status) === k).length;
+  return `
+  <div class="admin-hd">
+    <div><h2>文章管理</h2><p>审核投稿、置顶加精、下架与删除；重提的老帖会标注提交次数</p></div>
+  </div>
+  <div class="stat-cards">
+    <div class="stat-card"><div class="sv" style="color:#b45309">${c('0')}</div><div class="sl">待审核</div></div>
+    <div class="stat-card"><div class="sv" style="color:#15803d">${c('1')}</div><div class="sl">已发布</div></div>
+    <div class="stat-card"><div class="sv" style="color:#b91c1c">${c('2')}</div><div class="sl">已驳回</div></div>
+    <div class="stat-card"><div class="sv" style="color:#64748b">${c('3')}</div><div class="sl">已下架</div></div>
+  </div>
+  <div class="filters">
+    <select class="inp" onchange="setAdminStatus(this.value)">
+      <option value="all" ${f.status==='all'?'selected':''}>全部状态</option>
+      <option value="0"   ${f.status==='0'?'selected':''}>待审核</option>
+      <option value="1"   ${f.status==='1'?'selected':''}>已发布</option>
+      <option value="2"   ${f.status==='2'?'selected':''}>已驳回</option>
+      <option value="3"   ${f.status==='3'?'selected':''}>已下架</option>
+    </select>
+    <input class="inp" placeholder="标题 / 作者关键词" value="${esc(f.q)}"
+           onkeydown="if(event.key==='Enter')setAdminQ(this.value)">
+    <button class="btn btn-sm" onclick="setAdminQ('')">重置</button>
+    <span class="muted" style="font-size:12.5px;margin-left:auto">共 ${arr.length} 条</span>
+  </div>
+  <div class="card" style="overflow-x:auto">
+    <table class="tb">
+      <thead><tr>
+        <th style="width:44px">ID</th><th>标题</th><th>板块</th><th>作者</th><th>状态</th>
+        <th class="cell-c">置顶</th><th class="cell-c">精华</th>
+        <th>浏览 / 赞 / 评论</th><th>提交次数</th><th>最近提交</th><th style="width:230px">操作</th>
+      </tr></thead>
+      <tbody>${arr.map(adminRowHTML).join('') || `<tr><td colspan="11" style="padding:40px;text-align:center" class="muted">没有符合条件的文章</td></tr>`}</tbody>
+    </table>
+  </div>`;
+}
+function adminRowHTML(a){
+  const st = statusMeta(a);
+  const c = catOf(a.cat);
+  const au = userOf(a.authorId);
+  return `<tr>
+    <td class="muted">${a.id}</td>
+    <td>
+      <div class="t-title" title="${esc(a.title)}">${esc(a.title)}</div>
+      ${a.tags && a.tags.length ? `<div style="margin-top:4px">${a.tags.map(t=>`<span class="tag tag-hash" style="margin-right:4px"># ${esc(t)}</span>`).join('')}</div>` : ''}
+    </td>
+    <td><span class="dot" style="background:${c.color};margin-right:5px"></span>${esc(c.name)}</td>
+    <td>${esc(au.name)}</td>
+    <td><span class="badge ${st.cls}">${st.label}</span></td>
+    <td class="cell-c"><button class="link-op ${a.isTop?'warn':'off'}" onclick="adminTop(${a.id})">${a.isTop?'★ 已置顶':'置顶'}</button></td>
+    <td class="cell-c"><button class="link-op ${a.isFeatured?'warn':'off'}" onclick="adminFeature(${a.id})">${a.isFeatured?'★ 精华':'加精'}</button></td>
+    <td class="muted">${a.viewCount} / ${a.likeCount} / <button class="link-op" onclick="openComments(${a.id})">${a.commentCount}</button></td>
+    <td>${a.resubmitCount ? `<span class="repeat-mark">重提 ${a.resubmitCount} 次</span>` : '<span class="muted">首次投稿</span>'}</td>
+    <td class="muted">${shortTime(a.updateTime)}</td>
+    <td>
+      <div class="ops">
+        ${a.status === 0 ? `
+          <button class="link-op ok" onclick="adminReview(${a.id},1)">通过</button>
+          <button class="link-op dg" onclick="askReject(${a.id})">驳回</button>` : ''}
+        ${a.status === 1 ? `
+          <button class="link-op warn" onclick="askOffline(${a.id})">下架</button>` : ''}
+        ${a.status === 2 ? `
+          <button class="link-op ok" onclick="adminReview(${a.id},1)">通过</button>
+          <button class="link-op warn" onclick="askOffline(${a.id})">下架</button>` : ''}
+        ${a.status === 3 ? `
+          <button class="link-op ok" onclick="adminRestore(${a.id})">恢复上架</button>` : ''}
+        <button class="link-op" onclick="go('post',${a.id})">预览</button>
+        <button class="link-op dg" onclick="askHardDelete(${a.id})">删除</button>
+      </div>
+    </td>
+  </tr>`;
+}
+
+/* ── 板块管理 ── */
+function renderAdminCategories(){
+  const cats = CATS.slice().sort((a,b) => a.sortOrder - b.sortOrder);
+  return `
+  <div class="admin-hd">
+    <div><h2>板块管理</h2><p>维护板块名称、颜色与排序；「首页 / 推荐」为系统板块，不可删除或改名</p></div>
+    <button class="btn btn-pri btn-sm" onclick="toast('新增板块（原型演示：新增一个自定义板块）','')">新增板块</button>
+  </div>
+  <div class="card" style="overflow-x:auto">
+    <table class="tb">
+      <thead><tr><th style="width:60px">ID</th><th>名称</th><th>code</th><th>颜色</th><th class="cell-c">排序</th>
+      <th class="cell-c">类型</th><th class="cell-c">文章数</th><th class="cell-c">显示</th><th style="width:190px">操作</th></tr></thead>
+      <tbody>${cats.map(c => {
+        const n = ARTICLES.filter(a => a.cat === c.code && a.status === 1).length;
+        return `<tr>
+          <td class="muted">${c.sortOrder + 1}</td>
+          <td style="font-weight:600">${esc(c.name)}</td>
+          <td class="muted" style="font-family:ui-monospace,monospace">${esc(c.code)}</td>
+          <td><span class="dot" style="background:${c.color}"></span> <span class="muted" style="font-family:ui-monospace,monospace">${c.color}</span></td>
+          <td class="cell-c muted">${c.sortOrder}</td>
+          <td class="cell-c">${c.isSystem ? '<span class="badge b-role">系统板块</span>' : '<span class="muted">普通</span>'}</td>
+          <td class="cell-c">${n}</td>
+          <td class="cell-c">${c.isHidden ? '<span class="badge b-off">已隐藏</span>' : '<span class="badge b-pub">显示中</span>'}</td>
+          <td>
+            <div class="ops">
+              ${c.isSystem
+                ? '<span class="link-op off" title="系统板块不可改名">改名</span>'
+                : `<button class="link-op" onclick="toast('改名（原型未展开）')">改名</button>`}
+              <button class="link-op" onclick="toggleCatHide('${c.code}')">${c.isHidden?'取消隐藏':'隐藏'}</button>
+              ${c.isSystem
+                ? '<span class="link-op off" title="系统板块不可删除">删除</span>'
+                : (n > 0
+                    ? `<span class="link-op off" title="该板块下还有 ${n} 篇文章">删除</span>`
+                    : `<button class="link-op dg" onclick="delCat('${c.code}')">删除</button>`)}
+            </div>
+          </td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table>
+  </div>`;
+}
+
+/* ── 标签管理 ── */
+function renderAdminTags(){
+  const tags = TAGS.slice().sort((a,b) => b.useCount - a.useCount);
+  return `
+  <div class="admin-hd">
+    <div><h2>标签管理</h2><p>用户发帖时回车新建的标签来源标记为「用户」，可作为定期清理入口</p></div>
+    <button class="btn btn-pri btn-sm" onclick="toast('新增标签（原型未展开）')">新增标签</button>
+  </div>
+  <div class="card" style="overflow-x:auto">
+    <table class="tb">
+      <thead><tr><th style="width:60px">ID</th><th>标签</th><th class="cell-c">使用数</th><th class="cell-c">来源</th>
+      <th class="cell-c">热门</th><th style="width:230px">操作</th></tr></thead>
+      <tbody>${tags.map(t => `<tr>
+        <td class="muted">${t.id}</td>
+        <td><span class="tag tag-hash"># ${esc(t.name)}</span></td>
+        <td class="cell-c">${t.useCount}</td>
+        <td class="cell-c">${t.source === 'user'
+          ? '<span class="badge b-wait">用户新建</span>'
+          : '<span class="muted">后台创建</span>'}</td>
+        <td class="cell-c"><button class="link-op ${t.isHot?'warn':'off'}" onclick="toggleTagHot(${t.id})">${t.isHot?'★ 置热':'置热'}</button></td>
+        <td>
+          <div class="ops">
+            <button class="link-op" onclick="toast('重命名（原型未展开）')">重命名</button>
+            <button class="link-op" onclick="askMerge(${t.id})">合并</button>
+            <button class="link-op dg" onclick="delTag(${t.id})">删除</button>
+          </div>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>
+  <div class="muted" style="font-size:12.5px;margin-top:12px">
+    说明：标签合并会把源标签的引用全部迁移到目标标签后删除源标签；标签使用数仅统计<b>已发布</b>文章（PRD §8-D8）。
+  </div>`;
+}
+
+/* ── 社区配置 ── */
+function renderAdminConfig(){
+  const published = ARTICLES.filter(a => a.status === 1);
+  const totalView = published.reduce((s,a) => s + a.viewCount, 0);
+  const usedTags = new Set(); published.forEach(a => (a.tags||[]).forEach(t => usedTags.add(t)));
+  return `
+  <div class="admin-hd">
+    <div><h2>社区配置</h2><p>配置首页 Banner 与排序默认项；下方统计为实时聚合，无需手工维护</p></div>
+  </div>
+  <div class="stat-cards">
+    <div class="stat-card"><div class="sv">${published.length}</div><div class="sl">文章数（已发布）</div></div>
+    <div class="stat-card"><div class="sv">${totalView.toLocaleString()}</div><div class="sl">浏览数（合计）</div></div>
+    <div class="stat-card"><div class="sv">${usedTags.size}</div><div class="sl">标签数（被引用）</div></div>
+    <div class="stat-card"><div class="sv">${TAGS.length}</div><div class="sl">标签库总数</div></div>
+  </div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start">
+    <div class="card card-pad" style="padding:22px">
+      <div style="font-weight:800;font-size:15px;margin-bottom:18px">Banner 配置</div>
+      <div class="field">
+        <label>主标题<span class="tip">首页 Banner 大标题</span></label>
+        <input class="inp" id="cfg-title" value="${esc(CONFIG.bannerTitle)}">
+      </div>
+      <div class="field">
+        <label>副标题<span class="tip">≤100 字</span></label>
+        <textarea class="inp" id="cfg-sub">${esc(CONFIG.bannerSubtitle)}</textarea>
+      </div>
+      <div class="field">
+        <label>右侧插画<span class="tip">素材待提供；留空则使用内置像素占位图</span></label>
+        <div class="cover-box" style="text-align:center">
+          <div style="font-weight:600;color:var(--text-2)">点击上传插画</div>
+          <div class="muted" style="font-size:12.5px;margin-top:3px">建议 600×400 以上，png/jpg/webp</div>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div style="font-weight:800;font-size:15px;margin:6px 0 18px">交互配置</div>
+      <div class="field">
+        <label>排序默认项</label>
+        <select class="inp" id="cfg-sort">
+          <option value="latest"   ${CONFIG.defaultSort==='latest'?'selected':''}>按发布时间</option>
+          <option value="views"    ${CONFIG.defaultSort==='views'?'selected':''}>按访问量</option>
+          <option value="comments" ${CONFIG.defaultSort==='comments'?'selected':''}>按回复数</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>搜索框占位文案</label>
+        <input class="inp" id="cfg-ph" value="${esc(CONFIG.searchPlaceholder)}">
+      </div>
+      <div class="form-foot">
+        <span class="muted" style="font-size:12.5px">保存后首页即时生效（后端不缓存）</span>
+        <button class="btn btn-pri" onclick="saveConfig()">保存配置</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <div class="card card-pad">
+        <div style="font-weight:800;font-size:14px;margin-bottom:12px">打赏与站内信
+          <span class="proto-only">第二阶段生效</span></div>
+        <div class="muted" style="font-size:12.5px;line-height:1.9">
+          第一阶段<b>仅预留配置键</b>，不提供开关 UI（PRD §0.3-E）。<br>
+          页面上的「打赏作者」「+ 关注」「站内信」按钮只做 UI 占位，点击提示后续开发。
+        </div>
+        <div class="sep"></div>
+        <div class="kv" style="font-size:12.5px">
+          <span class="k">rewardEnabled</span><span class="muted" style="font-family:ui-monospace,monospace">${esc(CONFIG.rewardEnabled)}</span>
+          <span class="k">rewardPresets</span><span class="muted" style="font-family:ui-monospace,monospace">${esc(CONFIG.rewardPresets)}</span>
+          <span class="k">rewardCommission</span><span class="muted" style="font-family:ui-monospace,monospace">${esc(CONFIG.rewardCommission)}</span>
+        </div>
+      </div>
+      <div class="card card-pad">
+        <div style="font-weight:800;font-size:14px;margin-bottom:10px">Banner 预览</div>
+        <div style="border-radius:10px;padding:16px;background:linear-gradient(115deg,#1e3a8a,#2563eb 42%,#4f46e5);color:#fff">
+          <div style="font-weight:800;font-size:17px">${esc(CONFIG.bannerTitle)}<span style="color:#bfdbfe;font-size:14px;font-weight:600"> 社区</span></div>
+          <div style="font-size:12.5px;color:#c7d8f7;margin-top:6px;line-height:1.7">${esc(CONFIG.bannerSubtitle)}</div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ── 用户管理 ── */
+function renderAdminUsers(){
+  return `
+  <div class="admin-hd">
+    <div><h2>用户管理</h2><p>禁言 = 可登录但不能发帖/评论；与「禁用」（无法登录）是两回事</p></div>
+  </div>
+  <div class="card" style="overflow-x:auto">
+    <table class="tb">
+      <thead><tr><th style="width:50px">ID</th><th>账号</th><th>昵称</th><th>角色</th><th>状态</th>
+      <th>禁言至</th><th class="cell-c">发帖</th><th class="cell-c">获赞</th><th style="width:230px">操作</th></tr></thead>
+      <tbody>${USER_LIST.map(u => `<tr>
+        <td class="muted">${u.id}</td>
+        <td style="font-family:ui-monospace,monospace;font-size:12.5px">${esc(u.username)}</td>
+        <td style="font-weight:600">${esc(u.nickname)}</td>
+        <td>${u.role === 'admin' ? '<span class="badge b-role">admin</span>' : '<span class="muted">user</span>'}</td>
+        <td>${u.status === 1 ? '<span class="badge b-pub">正常</span>' : '<span class="badge b-off">已禁用</span>'}</td>
+        <td>${u.muteUntil ? `<span class="badge b-wait">${esc(u.muteUntil)}</span>` : '<span class="muted">—</span>'}</td>
+        <td class="cell-c">${ARTICLES.filter(a => a.authorId === u.id).length}</td>
+        <td class="cell-c">${ARTICLES.filter(a => a.authorId === u.id).reduce((s,a)=>s+a.likeCount,0)}</td>
+        <td>
+          <div class="ops">
+            ${u.muteUntil
+              ? `<button class="link-op ok" onclick="setMute(${u.id},'')">解禁</button>`
+              : `<button class="link-op warn" onclick="askMute(${u.id})">禁言</button>`}
+            <button class="link-op" onclick="showUserStats(${u.id})">论坛数据</button>
+            <button class="link-op" onclick="toast('重置密码（原型未展开）')">重置密码</button>
+            <button class="link-op dg" onclick="toast('封禁账号（原型未展开）')">${u.status === 1 ? '封禁' : '解封'}</button>
+          </div>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>
+  <div class="muted" style="font-size:12.5px;margin-top:12px">
+    提示：把身份切换为 Rain.sh 后尝试发帖/评论，可看到被禁言时的 403 提示（<b>原型演示：禁言状态下会拦截提交</b>）。
+  </div>`;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   10. 交互动作
+   ════════════════════════════════════════════════════════════════ */
+
+function setSort(v){ state.sort = v; state.page = 1; render(); }
+function setQuery(v){ state.q = v; state.page = 1; render(); }
+function setCategory(c){ state.category = c; state.tag = ''; state.page = 1; render(); }
+function setTag(t){ state.tag = (state.tag === t ? '' : t); state.category = 'home'; state.page = 1; render(); }
+function setPage(p){ state.page = p; render(); }
+function setMyFilter(k){ state.myFilter = k; render(); }
+function setAdminStatus(v){ state.adminFilter.status = v; render(); }
+function setAdminQ(v){ state.adminFilter.q = v; render(); }
+
+/* 点赞 / 收藏（PRD §0.3-C：第一阶段最小可用，幂等切换） */
+function toggleLike(id){
+  if(!requireLogin('点赞')) return;
+  const a = getArticle(id), key = state.user + ':' + id;
+  if(LIKES.has(key)){ LIKES.delete(key); a.likeCount = Math.max(0, a.likeCount - 1); }
+  else { LIKES.add(key); a.likeCount++; }
+  render();
+  toast(LIKES.has(key) ? '已点赞' : '已取消点赞');
+}
+function toggleFav(id){
+  if(!requireLogin('收藏')) return;
+  const a = getArticle(id), key = state.user + ':' + id;
+  if(FAVS.has(key)){ FAVS.delete(key); a.favoriteCount = Math.max(0, a.favoriteCount - 1); }
+  else { FAVS.add(key); a.favoriteCount++; }
+  render();
+  toast(FAVS.has(key) ? '已收藏' : '已取消收藏');
+}
+function share(id){
+  /* 原型里不做真实剪贴板写入，仅演示交互反馈 */
+  const t = '链接已复制：' + location.href.split('#')[0] + '#/forum/post/' + id;
+  toast(t);
+}
+
+/* 演示用递增时间戳（保证排序稳定；真实实现由后端生成） */
+function nextDemoTime(){
+  state.draftTime = state.draftTime + 1;
+  const m = 20 + Math.floor(state.draftTime / 60), s = state.draftTime % 60;
+  return '2026-09-27T' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + ':00';
+}
+function submitComment(articleId){
+  if(!requireLogin('发表评论')) return;
+  const box = $('cmt-box');
+  if(!box) return;
+  const txt = (box.value || '').trim();
+  if(!txt){ toast('评论内容不能为空', 'warn'); return; }
+  if(txt.length > 500){ toast('评论不能超过 500 字', 'warn'); return; }
+  COMMENTS.push({id:nextCommentId++, articleId, parentId:0, authorId:me().id, likeCount:0,
+                 replyToUserId:0, content:txt, createTime:nextDemoTime(), status:1});
+  recountCommentCount();
+  render();
+  toast('评论已发表', 'ok');
+}
+
+/* ── 评论点赞（PRD §4.5.3：顶层评论与回复通用，幂等切换） ── */
+function toggleCommentLike(cid){
+  if(!requireLogin('点赞')) return;
+  const c = COMMENTS.find(x => x.id === cid);
+  if(!c) return;
+  const key = state.user + ':' + cid;
+  if(COMMENT_LIKES.has(key)){ COMMENT_LIKES.delete(key); c.likeCount = Math.max(0, c.likeCount - 1); }
+  else { COMMENT_LIKES.add(key); c.likeCount++; }
+  render();
+  toast(COMMENT_LIKES.has(key) ? '已点赞' : '已取消点赞');
+}
+
+/* ── 回复：只在一条评论的"正下方"展开，且同时只允许一个（PRD §5.4.3） ── */
+function openReply(commentId){
+  if(!requireLogin('回复')) return;
+  const c = COMMENTS.find(x => x.id === commentId);
+  if(!c) return;
+  /* 顶层评论 → parentId 即自身；回复 → parentId 取其所属顶层评论，不产生第三级（§8-D15） */
+  state.replyTo = {
+    parentId: c.parentId || c.id,
+    replyToUserId: c.authorId,
+    replyToName: userOf(c.authorId).name,
+    afterId: commentId
+  };
+  render();
+  const box = $('reply-box');
+  if(box && box.focus) box.focus();
+}
+function cancelReply(){ state.replyTo = null; render(); }
+function submitReply(parentId, replyToUserId){
+  if(!requireLogin('发表回复')) return;
+  const box = $('reply-box');
+  if(!box) return;
+  const txt = (box.value || '').trim();
+  if(!txt){ toast('回复内容不能为空', 'warn'); return; }
+  if(txt.length > 500){ toast('回复不能超过 500 字', 'warn'); return; }
+  const parent = COMMENTS.find(x => x.id === parentId);
+  if(!parent) return;
+  COMMENTS.push({id:nextCommentId++, articleId:parent.articleId, parentId, authorId:me().id,
+                 likeCount:0, replyToUserId, content:txt, createTime:nextDemoTime(), status:1});
+  state.replyTo = null;
+  recountCommentCount();
+  render();
+  toast('回复已发表', 'ok');
+}
+
+/* ── 表单辅助 ── */
+function pickCat(code){
+  if(state.view === 'edit') state.editCat = code;
+  else state.draft.cat = code;
+  render();
+}
+function addTag(name){
+  const v = (name || '').trim();
+  if(!v) return;
+  const arr = state.view === 'edit' ? state.editTags : state.draft.tags;
+  if(arr.length >= 5){ toast('最多只能添加 5 个标签', 'warn'); return; }
+  if(arr.includes(v)){ toast('该标签已添加', 'warn'); return; }
+  if(v.length > 20){ toast('单个标签不超过 20 字', 'warn'); return; }
+  arr.push(v);
+  render();
+}
+function rmTag(i){
+  const arr = state.view === 'edit' ? state.editTags : state.draft.tags;
+  arr.splice(i,1); render();
+}
+function mdWrap(id, pre, post){
+  const el = $(id); if(!el) return;
+  const s = el.selectionStart, e = el.selectionEnd;
+  el.value = el.value.slice(0,s) + pre + el.value.slice(s,e) + post + el.value.slice(e);
+  el.focus(); el.selectionStart = el.selectionEnd = e + pre.length + post.length;
+  syncMD(id);
+}
+function syncMD(id){
+  const el = $(id); if(!el) return;
+  if(state.view === 'edit') state.editContent = el.value;
+  else state.draft.content = el.value;
+  const pv = $(id + '-pv-body');
+  if(pv) pv.innerHTML = renderMD(el.value);
+  updateSubmit();
+}
+function togglePv(id){
+  const pv = $(id + '-pv'), ta = $(id), box = pv.parentElement;
+  const on = pv.style.display === 'none';
+  syncMD(id);
+  pv.style.display = on ? 'block' : 'none';
+  ta.style.display = on ? 'none' : 'block';
+}
+function updateSubmit(mode){
+  if(mode === 'edit') return;
+  const d = state.draft;
+  const btn = $('submit-btn'); if(!btn) return;
+  btn.disabled = !(d.cat && d.title.trim().length >= 2 && d.content.trim().length >= 10);
+}
+
+/* ── 发布 ── */
+function submitCreate(){
+  if(!requireLogin('发布文章')) return;
+  const d = state.draft;
+  if(!d.cat){ toast('请选择板块', 'warn'); return; }
+  if(d.title.trim().length < 2){ toast('标题至少 2 个字', 'warn'); return; }
+  if(d.content.trim().length < 10){ toast('正文至少 10 个字', 'warn'); return; }
+  const now = '2026-09-27T19:11:00';
+  d.tags.forEach(t => { if(!TAGS.find(x => x.name === t)) TAGS.push({id:nextTagId++, name:t, useCount:0, isHot:0, source:'user'}); });
+  const a = {
+    id:nextArticleId++, cat:d.cat, authorId:me().id, title:d.title.trim(),
+    tags:d.tags.slice(), cover:d.cover ? 'g1' : '', content:d.content,
+    summary:'', status:0, isTop:0, isFeatured:0, viewCount:0, likeCount:0,
+    favoriteCount:0, commentCount:0, publishTime:'', createTime:now, updateTime:now,
+    reviewNote:'', removeBy:'', resubmitCount:0
+  };
+  ARTICLES.push(a);
+  state.draft = {cat:'', title:'', cover:'', content:'', tags:[]};
+  go('my');
+  toast('已提交，等待审核', 'ok');
+}
+
+/* ── 编辑 ── */
+function startEdit(id){
+  const a = getArticle(id);
+  if(!a){ toast('帖子不存在', 'err'); return; }
+  if(!canEditArticle(a)){
+    toast('该帖已被管理员下架，请联系管理员处理', 'err');
+    return;
+  }
+  state.editId = id;
+  state.editCat = a.cat;
+  state.editTitle = a.title;
+  state.editContent = a.content;
+  state.editCover = a.cover || '';
+  state.editTags = (a.tags || []).slice();
+  go('edit', id);
+}
+function submitEdit(id){
+  const a = getArticle(id);
+  if(!a) return;
+  const title = (state.editTitle ?? a.title).trim();
+  const content = (state.editContent ?? a.content);
+  if(title.length < 2){ toast('标题至少 2 个字', 'warn'); return; }
+  if(content.trim().length < 10){ toast('正文至少 10 个字', 'warn'); return; }
+
+  const wasPublished = a.status === 1;
+  /* 编辑重提：状态回待审核，清空 review_note / publish_time / remove_by，resubmit_count+1（PRD §4.3） */
+  a.cat = state.editCat || a.cat;
+  a.title = title;
+  a.content = content;
+  a.cover = state.editCover ? 'g1' : '';
+  a.tags = state.editTags.slice();
+  a.status = 0;
+  a.reviewNote = '';
+  a.publishTime = '';
+  a.removeBy = '';
+  a.resubmitCount = (a.resubmitCount || 0) + 1;
+  a.updateTime = '2026-09-27T19:12:00';
+
+  /* 新标签自动入库 */
+  a.tags.forEach(t => { if(!TAGS.find(x => x.name === t)) TAGS.push({id:nextTagId++, name:t, useCount:0, isHot:0, source:'user'}); });
+  recountTagUse();   /* 离开 status=1 → 标签使用数 -1（单一转移点规则） */
+
+  go('my');
+  toast(wasPublished
+    ? '已重新提交；通过审核前该帖暂时不在社区显示'
+    : '已重新提交，等待审核', 'ok');
+}
+
+/* ── 删除（作者自删 → status=3, remove_by='author'） ── */
+function askDelete(id){
+  const a = getArticle(id); if(!a) return;
+  openModal('删除这篇帖子？', '删除后该帖会从社区移除（软删除，数据保留）。如果之后想恢复，可以在「我的文章」重新编辑提交。', '确认删除', () => {
+    a.status = 3; a.removeBy = 'author'; a.updateTime = '2026-09-27T19:13:00';
+    recountTagUse();
+    closeOverlay(); render();
+    toast('已删除', 'ok');
+  }, true);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   11. 后台动作
+   ════════════════════════════════════════════════════════════════ */
+
+function adminReview(id, status){
+  const a = getArticle(id); if(!a) return;
+  a.status = status;
+  if(status === 1){
+    a.publishTime = '2026-09-27T19:15:00';   /* 通过时重写 publish_time（PRD §6.1.2） */
+    a.reviewNote = '';
+    a.removeBy = '';
+  }
+  a.updateTime = '2026-09-27T19:15:00';
+  recountTagUse();
+  render();
+  toast(status === 1 ? '已通过，文章已发布' : '已处理', 'ok');
+}
+function askReject(id){
+  openModal('驳回这篇投稿？', '驳回后作者会在「我的文章」看到你填写的理由，并可修改后重新提交。', '确认驳回',
+    v => {
+      const a = getArticle(id);
+      a.status = 2; a.reviewNote = v; a.updateTime = '2026-09-27T19:16:00';
+      closeOverlay(); render(); toast('已驳回', 'ok');
+    }, {danger:true, needInput:true, ph:'驳回理由（必填，1–200 字）'});
+}
+function askOffline(id){
+  openModal('下架这篇帖子？', '下架后该帖从社区移除，作者将<b>不能</b>通过编辑重提来恢复（须由管理员恢复上架）。', '确认下架',
+    v => {
+      const a = getArticle(id);
+      a.status = 3; a.removeBy = 'admin'; a.reviewNote = v || a.reviewNote;
+      a.updateTime = '2026-09-27T19:17:00';
+      recountTagUse(); closeOverlay(); render(); toast('已下架', 'ok');
+    }, {danger:true, needInput:false});
+}
+function adminRestore(id){
+  const a = getArticle(id); if(!a) return;
+  a.status = 1; a.removeBy = ''; a.publishTime = '2026-09-27T19:18:00';
+  a.reviewNote = ''; a.updateTime = '2026-09-27T19:18:00';
+  recountTagUse(); render(); toast('已恢复上架', 'ok');
+}
+function askHardDelete(id){
+  const a = getArticle(id); if(!a) return;
+  const n = COMMENTS.filter(c => c.articleId === id).length;
+  openModal('永久删除这篇帖子？',
+    `此操作<b>不可恢复</b>，且会级联删除该帖的 ${n} 条评论、全部点赞与收藏记录。`, '永久删除',
+    () => {
+      ARTICLES = ARTICLES.filter(x => x.id !== id);
+      COMMENTS = COMMENTS.filter(c => c.articleId !== id);
+      recountTagUse(); closeOverlay(); render(); toast('已永久删除', 'ok');
+    }, {danger:true, needInput:false});
+}
+function adminTop(id){ const a = getArticle(id); a.isTop = a.isTop ? 0 : 1; render(); toast(a.isTop ? '已置顶' : '已取消置顶'); }
+function adminFeature(id){ const a = getArticle(id); a.isFeatured = a.isFeatured ? 0 : 1; render(); toast(a.isFeatured ? '已加精' : '已取消精华'); }
+
+/* ── 评论抽屉（PRD §6.1.5：两级结构、删除连带、只删不参与） ── */
+function cmtDrawerRowHTML(c, isReply){
+  const u = userOf(c.authorId);
+  const repCount = isReply ? 0 : COMMENTS.filter(x => x.parentId === c.id && x.status === 1).length;
+  return `<div class="cmt${isReply ? ' reply' : ''}">
+    <div class="avatar ${isReply ? 'av-28' : 'av-32'} ${u.av || ''}">${esc(u.avatar)}</div>
+    <div class="cmt-body">
+      <div class="cmt-head">
+        <span class="nm">${esc(u.name)}</span>
+        <span>· ${relTime(c.createTime)}</span>
+        ${isReply ? '<span class="badge b-off">回复</span>' : ''}
+        ${c.status === 2 ? '<span class="badge b-off">已删除</span>' : ''}
+      </div>
+      <div class="cmt-text">${isReply && c.replyToUserId
+        ? `<span class="reply-to">回复 @${esc(userOf(c.replyToUserId).name)}</span> ` : ''}${esc(c.content)}</div>
+      <div class="cmt-acts">
+        <span class="muted" style="font-size:12.5px">赞 ${c.likeCount}</span>
+        ${c.status === 2 ? '' : `<button class="link-op dg" onclick="askDelComment(${c.id})">
+          ${repCount ? '删除（含 ' + repCount + ' 条回复）' : '删除'}</button>`}
+      </div>
+    </div>
+  </div>`;
+}
+function openComments(articleId){
+  const a = getArticle(articleId); if(!a) return;
+  const tops = COMMENTS.filter(c => c.articleId === articleId && !c.parentId)
+                       .sort((x,y) => y.createTime.localeCompare(x.createTime));
+  const body = tops.length ? tops.map(t => {
+    const reps = COMMENTS.filter(x => x.parentId === t.id)
+                         .sort((x,y) => x.createTime.localeCompare(y.createTime));
+    return cmtDrawerRowHTML(t, false) + reps.map(r => cmtDrawerRowHTML(r, true)).join('');
+  }).join('') : '<div class="empty" style="margin-top:20px">该帖暂无评论</div>';
+  $('drawer').innerHTML = `
+    <div class="drawer-hd">
+      <div>
+        <h3>评论管理</h3>
+        <div class="muted" style="font-size:12.5px;margin-top:2px">
+          ${esc(a.title)} · 顶层 ${tops.length} 条 / 含回复共 ${a.commentCount} 条
+        </div>
+      </div>
+      <button class="btn btn-sm" onclick="closeOverlay()">关闭</button>
+    </div>
+    <div class="drawer-bd">${body}</div>`;
+  $('drawer').className = 'drawer show';
+  $('mask').className = 'mask show';
+}
+function askDelComment(cid){
+  const c = COMMENTS.find(x => x.id === cid); if(!c || c.status === 2) return;
+  const reps = COMMENTS.filter(x => x.parentId === cid && x.status === 1);
+  const tip = reps.length
+    ? `这是<b>顶层评论</b>，删除后其下 <b>${reps.length} 条回复</b>会一并删除，文章评论数减去 <b>${1 + reps.length}</b>。`
+    : (c.parentId ? '删除这条<b>回复</b>后，文章评论数减去 1。' : '删除后文章评论数减去 1。');
+  openModal('删除这条评论？', tip + '<br>评论点赞记录会同步清理，不留孤儿数据。', '确认删除',
+    () => { delComment(cid); }, {danger:true, needInput:false});
+}
+function delComment(cid){
+  const c = COMMENTS.find(x => x.id === cid); if(!c || c.status === 2) return;
+  /* 顶层评论 → 其下回复一并软删（PRD §6.1.5）；两种情况都清理评论点赞行（§4.5.3） */
+  const all = [c].concat(COMMENTS.filter(x => x.parentId === cid));
+  all.forEach(x => {
+    x.status = 2;
+    Array.from(COMMENT_LIKES).forEach(k => {
+      if(k.split(':')[1] === String(x.id)) COMMENT_LIKES.delete(k);
+    });
+  });
+  recountCommentCount();
+  openComments(c.articleId);   /* 刷新抽屉 */
+  toast(all.length > 1
+    ? `已删除顶层评论及其 ${all.length - 1} 条回复，评论数已同步`
+    : '评论已删除，评论数已同步', 'ok');
+}
+
+/* ── 板块 / 标签 ── */
+function toggleCatHide(code){
+  const c = catOf(code);
+  c.isHidden = c.isHidden ? 0 : 1;
+  if(state.category === code && c.isHidden) state.category = 'home';
+  render();
+  toast(c.isHidden ? '已隐藏，标签栏不再显示' : '已恢复显示');
+}
+function delCat(code){
+  const i = CATS.findIndex(c => c.code === code);
+  if(i < 0) return;
+  if(CATS[i].isSystem){ toast('系统板块不可删除', 'err'); return; }
+  if(ARTICLES.some(a => a.cat === code)){ toast('该板块下仍有文章，无法删除', 'err'); return; }
+  CATS.splice(i,1); render(); toast('板块已删除', 'ok');
+}
+function toggleTagHot(id){
+  const t = TAGS.find(x => x.id === id); t.isHot = t.isHot ? 0 : 1;
+  render(); toast(t.isHot ? '已置为热门标签' : '已取消置热');
+}
+function askMerge(id){
+  const src = TAGS.find(x => x.id === id);
+  const others = TAGS.filter(t => t.id !== id);
+  openModal('合并标签「' + src.name + '」', '源标签的引用会全部迁移到目标标签，然后源标签被删除。', '确认合并',
+    () => {
+      /* 原型演示：合并到使用数最高的其他标签 */
+      const target = others.slice().sort((a,b) => b.useCount - a.useCount)[0];
+      if(!target){ toast('没有可合并的目标标签', 'err'); return; }
+      ARTICLES.forEach(a => {
+        if(a.tags && a.tags.includes(src.name))
+          a.tags = Array.from(new Set(a.tags.map(t => t === src.name ? target.name : t)));
+      });
+      TAGS = TAGS.filter(t => t.id !== id);
+      recountTagUse(); closeOverlay(); render();
+      toast(`已合并到「${target.name}」`, 'ok');
+    }, {needInput:false});
+}
+function delTag(id){
+  const t = TAGS.find(x => x.id === id); if(!t) return;
+  ARTICLES.forEach(a => {
+    if(a.tags && a.tags.includes(t.name)) a.tags = a.tags.filter(x => x !== t.name);
+  });
+  TAGS = TAGS.filter(x => x.id !== id);
+  recountTagUse(); render(); toast('标签已删除', 'ok');
+}
+
+/* ── 配置 ── */
+function saveConfig(){
+  CONFIG.bannerTitle = ($('cfg-title').value || '').trim() || CONFIG.bannerTitle;
+  CONFIG.bannerSubtitle = ($('cfg-sub').value || '').trim();
+  CONFIG.defaultSort = $('cfg-sort').value;
+  CONFIG.searchPlaceholder = ($('cfg-ph').value || '').trim();
+  state.sort = CONFIG.defaultSort;
+  render();
+  toast('配置已保存，首页即时生效', 'ok');
+}
+
+/* ── 用户管理 ── */
+function askMute(id){
+  const u = USER_LIST.find(x => x.id === id);
+  openModal('禁言「' + u.nickname + '」', '禁言期间该用户仍可登录浏览，但<b>不能发帖、评论或上传图片</b>。留空表示永久禁言。', '确认禁言',
+    v => {
+      const days = parseInt(v, 10);
+      const until = (isNaN(days) || days <= 0) ? '永久' : days + ' 天后';
+      u.muteUntil = until;
+      closeOverlay(); render();
+      toast('已禁言：' + u.nickname, 'ok');
+    }, {danger:true, needInput:true, ph:'禁言天数，例如 3、7、30；留空 = 永久'});
+}
+function setMute(id, val){
+  const u = USER_LIST.find(x => x.id === id);
+  u.muteUntil = val;
+  render();
+  toast('已解除禁言：' + u.nickname, 'ok');
+}
+function showUserStats(id){
+  const u = USER_LIST.find(x => x.id === id);
+  const mine = ARTICLES.filter(a => a.authorId === id);
+  const pub = mine.filter(a => a.status === 1);
+  const likes = mine.reduce((s,a) => s + a.likeCount, 0);
+  const recent = mine.slice(0,5);
+  openModal('「' + u.nickname + '」论坛数据',
+    `<div class="kv" style="grid-template-columns:96px 1fr">
+       <span class="k">发帖数</span><span>${pub.length} 篇（全部 ${mine.length} 篇）</span>
+       <span class="k">获赞数</span><span>${likes}</span>
+       <span class="k">粉丝数</span><span>0 <span class="muted">（关注体系第二阶段上线）</span></span>
+     </div>
+     <div class="sep"></div>
+     <div style="font-weight:700;font-size:13px;margin-bottom:8px">最近发帖</div>
+     ${recent.length ? recent.map(a => {
+       const st = statusMeta(a);
+       return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:13px">
+         <span class="badge ${st.cls}">${st.label}</span>
+         <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(a.title)}</span></div>`;
+     }).join('') : '<div class="muted" style="font-size:13px">暂无发帖</div>'}`,
+    '知道了', () => closeOverlay(), {needInput:false});
+}
+
+/* ════════════════════════════════════════════════════════════════
+   12. 弹窗 / 遮罩
+   ════════════════════════════════════════════════════════════════ */
+
+let modalCb = null;
+function openModal(title, descHTML, okLabel, cb, opts){
+  opts = opts || {};
+  modalCb = cb;
+  $('modal').innerHTML = `
+    <div class="modal-hd">${esc(title)}</div>
+    <div class="modal-bd">
+      <div class="muted2" style="font-size:13.5px;line-height:1.75;${opts.needInput === false ? '' : 'margin-bottom:14px'}">${descHTML}</div>
+      ${opts.needInput ? `<textarea class="inp" id="modal-ta" style="min-height:78px" placeholder="${esc(opts.ph || '')}"></textarea>` : ''}
+    </div>
+    <div class="modal-ft">
+      <button class="btn" onclick="closeOverlay()">取消</button>
+      <button class="btn ${opts.danger ? 'btn-danger' : 'btn-pri'}" onclick="modalOk()">${esc(okLabel)}</button>
+    </div>`;
+  $('modal').className = 'modal show';
+  $('mask').className = 'mask show';
+}
+function modalOk(){
+  const ta = $('modal-ta');
+  const v = ta ? ta.value.trim() : '';
+  if(ta && !v){ toast('请填写内容', 'warn'); return; }
+  if(modalCb) modalCb(v);
+}
+function closeOverlay(){
+  $('mask').className = 'mask';
+  $('modal').className = 'modal';
+  $('drawer').className = 'drawer';
+  modalCb = null;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   13. 启动
+   ════════════════════════════════════════════════════════════════ */
+
+render();
+</script>
+</body>
+</html>
+
