@@ -1,8 +1,11 @@
-// 公告内容渲染工具：后端只返回原始内容（rawContent）+ 内容格式（contentType），
+// 内容渲染工具：后端只返回原始内容（rawContent）+ 内容格式（contentType），
 // Markdown → HTML 的渲染在前端完成；结果进 v-html 前一律过 DOMPurify 消毒
 // （marked 官方声明不做安全过滤，DOMPurify 是标配组合）。
 // 代码块经 highlight.js 高亮；围栏代码块（fenced）额外包一层 header：
 // 左上语言标签 + 右上复制按钮（按钮无模板事件，靠使用方在容器上做事件委托）。
+//
+// ⚠️ 全站唯一的 Markdown 渲染入口（AGENTS.md 红线）。公告详情、社区论坛正文、
+// md-editor-v3 预览都走这里，**不要另写一套渲染管线**。
 import { marked } from "marked";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/common";
@@ -47,12 +50,48 @@ marked.use({
   },
 });
 
-export function renderAnnouncementContent(content, contentType) {
-  const raw = content || "";
-  const html = contentType === "markdown" ? marked.parse(raw) : raw;
+/**
+ * 纯 HTML → DOMPurify 消毒后的 HTML（**不**解析 Markdown）。
+ *
+ * 用途：md-editor-v3 的分屏预览会先生成 HTML，再把结果交给 `sanitize` prop。
+ * 论坛发帖页把本函数传给它（见 views/forum/PostEditor.vue），于是
+ * **预览用的消毒器仍是本文件这一份**，与详情页正文渲染同源——既拿到
+ * md-editor-v3 的左编辑 / 右预览分屏（与后台公告编辑器同款体验），
+ * 又不违背「全站只有一个渲染入口、一套 sanitize 策略」的规约。
+ *
+ * @param {string} html - md-editor-v3 已生成的 HTML（别当 Markdown 再解析一次）
+ * @returns {string} 消毒后的 HTML
+ */
+export function sanitizeHtml(html) {
+  return DOMPurify.sanitize(html || "");
+}
+
+/**
+ * 纯 Markdown → 已消毒 HTML（全站统一渲染入口，PRD §5.3.1）。
+ *
+ * 社区论坛正文只有 Markdown 一种格式（contentType 固定 'markdown'，
+ * 富文本是第三阶段的事），因此直接走这个函数，不做格式分支。
+ *
+ * @param {string} content - Markdown 源码
+ * @returns {string} DOMPurify 消毒后的 HTML，可直接进 v-html
+ */
+export function renderMarkdownContent(content) {
   // DOMPurify 默认白名单包含 class / style / data-*，div/button/span/pre/code 均在默认
   // 标签白名单内，hljs 输出的 <span class="hljs-keyword"> 等不会被剥掉，无需额外配置
-  return DOMPurify.sanitize(html);
+  return DOMPurify.sanitize(marked.parse(content || ""));
+}
+
+/**
+ * 公告正文渲染（按 contentType 分支）。
+ *
+ * @deprecated 保留此导出名仅为兼容既有调用方（公告详情页 / 后台预览）；
+ *   新代码请直接用 renderMarkdownContent(content) 或本函数——
+ *   contentType='html' 的存量富文本仍需按原样渲染（后端入库时已过 nh3）。
+ */
+export function renderAnnouncementContent(content, contentType) {
+  const raw = content || "";
+  if (contentType === "markdown") return renderMarkdownContent(raw);
+  return DOMPurify.sanitize(raw);
 }
 
 /**

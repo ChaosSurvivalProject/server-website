@@ -153,6 +153,9 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
         "message": "登录成功",
         "data": {
             "token": token,
+            # 下发 id 与 /auth/me 保持一致：前端登录后立刻就能判断
+            # "这条帖子是不是我的"，不必等下一次 /auth/me 往返
+            "id": user.id,
             "username": user.username,
             "nickname": user.nickname,
             "role": user.role,
@@ -163,11 +166,16 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
 # ── 当前用户 ─────────────────────────────────────────────────────
 @router.get("/me")
 async def me(user: User = Depends(get_current_user)):
-    """获取当前登录用户信息（前端刷新页面时校验 token、恢复会话）。"""
+    """获取当前登录用户信息（前端刷新页面时校验 token、恢复会话）。
+
+    下发 id 是为了让前端能判断"这条帖子/这个评论是不是我的"——此前只能靠
+    昵称比对，而昵称可修改，比对会错（论坛详情页的「编辑」入口依赖它）。
+    """
     return {
         "code": 0,
         "message": "success",
         "data": {
+            "id": user.id,
             "username": user.username,
             "nickname": user.nickname,
             "email": user.email,

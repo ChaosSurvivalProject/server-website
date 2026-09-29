@@ -26,7 +26,7 @@ from ..database import (
     ROLE_USER,
 )
 from .deps import require_admin
-from .schemas import UserCreateRequest, UserUpdateRequest, UserStatusRequest
+from .schemas import UserCreateRequest, UserUpdateRequest, UserStatusRequest, UserMuteRequest
 from .security import hash_password, is_valid_password
 
 router = APIRouter(prefix="/auth/admin/users", tags=["auth-admin-users"])
@@ -47,6 +47,7 @@ def _dump_user(obj: User) -> dict:
         "email": obj.email,
         "role": obj.role,
         "status": obj.status,
+        "muteUntil": obj.mute_until or "",
         "createTime": obj.create_time,
     }
 
@@ -264,6 +265,45 @@ async def admin_set_user_status(
         USER_STATUS_DISABLED: "已禁用",
         USER_STATUS_DELETED: "已删除（软删除，可恢复）",
     }[req.status]
+    return {"code": 0, "message": msg, "data": _dump_user(user)}
+
+
+# ── 禁言 / 解禁（论坛模块，PRD §6.5.1） ──────────────────────────
+@router.put("/{user_id}/mute")
+async def admin_set_user_mute(
+    user_id: int,
+    req: UserMuteRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """禁言 / 解禁。
+
+    muteUntil 为空串 = 解禁（写 None）。非空时必须是 `YYYY-MM-DDTHH:MM:SS`
+    （北京时间，与全站时间列同口径），写入 users.mute_until。
+
+    禁言**只影响论坛的写操作**（发帖 / 评论 / 上传），登录与浏览不受影响；
+    命中时 app/forum.py 的 `_ensure_not_muted` 返回 403 + "账号已被禁言，至 <时间>"。
+    禁言与 status 三态正交，互不影响。
+    """
+    user = await _get_user_by_id(db, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+
+    value = (req.muteUntil or "").strip()
+    if value:
+        try:
+            datetime.strptime(value, "%Y-%m-%dT%H:%M:%S")
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="禁言到期时间格式应为 YYYY-MM-DDTHH:MM:SS"
+            )
+        user.mute_until = value
+    else:
+        user.mute_until = None
+
+    await db.commit()
+    await db.refresh(user)
+    msg = "已禁言" if value else "已解除禁言"
     return {"code": 0, "message": msg, "data": _dump_user(user)}
 
 

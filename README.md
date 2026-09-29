@@ -279,6 +279,70 @@ python3 staff_expire.py             # 全表到期回写，输出刷新行数
 python3 staff_expire.py --dry-run   # 只统计，不写库
 ```
 
+### 社区（论坛）
+
+社区论坛第一阶段（MVP）：匿名可浏览 → 登录可发帖/点赞/收藏/评论（**两级楼中楼**）→ 管理员审核与运营。实施唯一依据 `docs/论坛/论坛模块第一阶段PRD.md`（v1.4）+ 交互原型 `docs/论坛/prototype/index.html`；落点 `backend/app/forum.py`。**「先审后发」**：新帖 `status=0 待审核`，管理员通过后才公开。
+
+**公开接口（匿名可调）**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/forum/categories` | 板块列表（过滤 `isHidden`，含 2 个系统板块，带已发布文章数） |
+| GET | `/api/forum/tags/hot` | 热门标签（`isHot` 优先 + `useCount` 倒序；参数 `limit`） |
+| GET | `/api/forum/stats` | 社区统计 `{articleCount, viewCount, tagCount}`（`status=1` 实时聚合） |
+| GET | `/api/forum/config` | 前台配置（Banner 三项 + `defaultSort` + `searchPlaceholder`；打赏预留键不下发） |
+| GET | `/api/forum/articles` | 文章列表（参数 `page`,`pageSize`,`category`,`sort`,`q`,`tag`；`category=home`=全部 / `recommend`=置顶∪加精按浏览量；`sort=latest\|views\|comments`；**置顶帖在任意排序档中都恒排最前**） |
+| GET | `/api/forum/articles/{id}` | 详情（未公开文章对非作者非管理员按 404 处理；**不计数浏览量**） |
+| GET | `/api/forum/articles/{id}/comments` | 评论列表（`page`,`pageSize`；**只对顶层评论分页**，每条内嵌 `replies`；已登录附每条 `liked`） |
+| GET | `/api/forum/articles/{id}/author-posts` | 作者其他已发布文章（最多 5 条） |
+| POST | `/api/forum/articles/{id}/view` | 浏览量 +1（需登录；原子自增，重复刷新重复计为已接受行为） |
+| GET | `/api/forum/users/{userId}/stats` | 某人的公开论坛三项数据（作者卡用；不下发任何私有字段） |
+
+**登录用户接口**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | `/api/forum/articles` | 发布文章（`status=0`；body `{categoryId,title,content,coverUrl?,tags[]}`；受禁言拦截） |
+| GET | `/api/forum/articles/{id}/edit` | 编辑回填（**仅作者本人**；越权/不存在一律 404；`remove_by='admin'` 的已下架帖 400） |
+| PUT | `/api/forum/articles/{id}` | 作者编辑重提（**仅作者本人**；`status` 一律回 0、清空 `reviewNote`/`publishTime`/`removeBy`、`resubmitCount+1`，**浏览/点赞/收藏/评论全部保留**） |
+| DELETE | `/api/forum/articles/{id}` | 作者自删（软删：`status=3` + `removeBy='author'`，数据保留可恢复） |
+| GET | `/api/forum/my/articles` | 我的文章（各状态 + `reviewNote`/`removeBy`/`resubmitCount`） |
+| GET | `/api/forum/my/stats` | 侧边栏用户卡 `{postCount, likeCount, followerCount}`（`followerCount` 恒 0） |
+| POST | `/api/forum/articles/{id}/like` | 文章点赞切换（幂等）→ `{liked, likeCount}` |
+| POST | `/api/forum/articles/{id}/favorite` | 文章收藏切换（幂等）→ `{favorited, favoriteCount}` |
+| POST | `/api/forum/articles/{id}/comments` | 发表评论 / 发表回复（body `{content, parentId?, replyToUserId?}`；`parentId` **只指向顶层评论**，指向回复返 400） |
+| POST | `/api/forum/comments/{id}/like` | 评论点赞切换（顶层与回复通用） |
+| POST | `/api/forum/upload/image` | 图片上传（登录用户；落盘 `uploads/forum/YYYYMM/`，URL 仍是 `/api/announcement/uploads/forum/...`） |
+
+**管理员接口（`require_admin`）**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/forum/admin/articles` | 检索分页（`keyword`,`author`,`categoryId`,`tagId`,`status`） |
+| GET | `/api/forum/admin/articles/{id}` | 文章全量详情（正文源码 + 标签名 + 审核备注） |
+| PUT | `/api/forum/admin/articles/{id}/review` | 审核（`{status: 1\|2, reviewNote?}`；驳回理由必填；通过时重写 `publishTime`） |
+| POST | `/api/forum/admin/articles/{id}/top` `/feature` | 置顶 / 加精切换（幂等） |
+| POST | `/api/forum/admin/articles/{id}/offline` | 下架（`{reason?}`；写 `remove_by='admin'`，作者此后**不能**编辑重提） |
+| POST | `/api/forum/admin/articles/{id}/restore` | 恢复上架（`remove_by=''`，`publish_time` 重写，**不重新审核**） |
+| PUT | `/api/forum/admin/articles/{id}` | 改板块/标签/封面/标题（**状态不变**，不重新审核；**正文只读**） |
+| DELETE | `/api/forum/admin/articles/{id}` | 硬删除（级联评论/点赞/收藏/标签关联） |
+| GET | `/api/forum/admin/articles/{id}/comments` | 评论抽屉（含已删除标记） |
+| DELETE | `/api/forum/admin/comments/{id}` | 删评论（软删；删顶层连带其全部回复并清 `comment_likes`） |
+| GET/POST/PUT/DELETE | `/api/forum/admin/categories[/{id}]` | 板块管理（系统板块不可删/改名/隐藏；有已发布文章的板块删除 400） |
+| GET/POST/PUT/DELETE | `/api/forum/admin/tags[/{id}]` | 标签管理（重命名 / 置热 / 删除） |
+| POST | `/api/forum/admin/tags/{id}/merge` | 标签合并（`{targetTagId}`；引用全部迁移、删源、重算 `use_count`） |
+| GET/PUT | `/api/forum/admin/config` | 社区配置读写（白名单键；打赏 `reward*` 为预留键，第一阶段无 UI） |
+| GET | `/api/forum/admin/covers` | 封面图库（只读列表；冗余清理归第三阶段） |
+| GET | `/api/forum/admin/user-stats/{userId}` | 用户论坛数据（发帖/获赞/粉丝 + 最近 5 篇） |
+| PUT | `/api/auth/admin/users/{id}/mute` | 禁言/解禁（body `{muteUntil}`，空串=解禁；与 `status` 三态**正交**） |
+
+- **状态机**（`forum_articles.status`）：`0 待审核 → 1 已发布 / 2 已驳回`；`1 → 3 已下架`；`3 → 1 恢复`；任意可编辑态经**作者编辑保存 → 0**（`resubmit_count+1`）。已驳回的文章必须由作者重提回 0 才能再审。
+- **`remove_by` 决定作者能否编辑重提**：`''` 未移除 / `'author'` 作者自删（可重提）/ `'admin'` 管理员下架（**不可重提**，返 400，否则等于绕过下架）。
+- **标签 `use_count` = 被 `status=1` 文章引用的数量**，只挂在状态转移这一个点上；浏览/点赞/收藏/评论计数一律原子 SQL 自增。
+- **`comment_count` = 顶层评论数 + 回复数**（回复也算评论）；评论纯文本存储，不接受 Markdown/HTML。
+- **禁言语义**：能登录浏览，但**不能发帖/评论/上传**（点赞收藏不受影响）；命中返回 403 + `detail="账号已被禁言，至 <时间>"`。
+- 端到端回归脚本：`cd backend && python3 forum_smoke_test.py`（临时库 + `TestClient`，176 项断言）。
+
 ### 其他
 
 | 方法 | 路径 | 说明 |
@@ -300,11 +364,26 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 
 - 默认路径：`backend/data/announcements.db`（启动时自动建表）
 - 可通过环境变量 `ANNOUNCEMENT_DB` 自定义
+- **连接池用 `NullPool`（每请求一条连接），不要改回 `StaticPool`**：单连接会让并发请求共享同一个事务，导致社区论坛的原子计数（点赞/评论/标签 `use_count`）与关系表对不上。连接级 PRAGMA（`busy_timeout` / `synchronous`）挂在 engine 的 `connect` 事件上，`journal_mode=WAL` 在 `init_db()` 设一次。详见 AGENTS.md「社区（论坛）模块规约」。
 
 公告正文支持两种格式（`contentType` 字段区分，存量数据自动归为 `html`）：
 
 - `html`：富文本编辑器（wangEditor）产出的 HTML，入库前由后端 `nh3` 白名单消毒（仅放行常用标签 + `style` 内联样式）。
 - `markdown`：Markdown 源码，原样入库（nh3 会破坏 Markdown 语法），由前端渲染——主站用 `marked` + `DOMPurify` 消毒后展示，后台编辑器为 md-editor-v3（双编辑器共存，按格式自动切换）。
+
+社区（论坛）模块的 9 张表由 `Base.metadata.create_all` 自动建（无补列迁移），**唯一需要迁移的存量表是 `users` 补 `mute_until` 列**（`migrate_user_mute_column()`，幂等，失败只记 warning）：
+
+| 表 | 用途 |
+|----|------|
+| `forum_categories` | 板块（2 个系统板块 `home`/`recommend` 不可删改名隐藏） |
+| `forum_tags` | 标签（`use_count` = 被已发布文章引用数） |
+| `forum_articles` | 文章（`status` 0待审核/1已发布/2已驳回/3已下架；`remove_by` + `resubmit_count`） |
+| `forum_comments` | 评论（`parent_id` 只指向顶层评论；两级楼中楼） |
+| `forum_article_likes` / `forum_article_favorites` / `forum_comment_likes` | 点赞与收藏关系（`(x, user_id)` 联合唯一，切换语义） |
+| `forum_article_tags` | 文章—标签关联（不用逗号串，否则合并/重命名/删除会写坏数据） |
+| `forum_config` | 社区键值配置（Banner / 排序 / 搜索文案 + 打赏预留键） |
+
+首次启动自动写入**8 个预置板块**与 8 个配置键默认值（`forum.ensure_seeded()`，幂等：按 `code`/`key` 判存，不会覆盖管理员改过的值）。
 
 ### 图片上传
 
@@ -312,6 +391,7 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 
 - 可通过环境变量 `ANNOUNCEMENT_UPLOAD_DIR` 自定义（Docker 部署已在 docker-compose.yml 中指向挂载卷 `/app/data/uploads`）
 - 生产 Nginx 将 `/api` 反代到 FastAPI，该子路径无需额外配置；`/announcement/uploads/` 旧路径保留兼容反代
+- **社区图片复用同一挂载点**（因此**零 nginx 改动**）：论坛上传落盘到 `uploads/forum/YYYYMM/`，对外 URL 为 `/api/announcement/uploads/forum/YYYYMM/<uuid>.<ext>`。校验与落盘逻辑抽在 `backend/app/uploads.py`，公告与论坛共用一份口径（白名单 png/jpg/jpeg/gif/webp + `image/*` + ≤5MB + 随机文件名）
 
 ### 种子数据
 
@@ -341,8 +421,17 @@ docker compose up -d --build
 | `/faction-beta` | FactionBetaApply | 阵营对战玩法内测资格申请（需登录后填写，展示审核状态） |
 | `/staff/:code` | StaffVerify | 工作人员名片验证页（扫码直达；四态横幅 + 防伪提示，正文不显示完整身份码） |
 | `/team` | TeamOverview | 管理组总览（公开的现任名录 + 官方入口 + 安全提示） |
+| `/forum` | forum/CommunityHome | 社区首页（双栏 7:3；Banner + 板块标签 + 排序/搜索 + 帖子列表 + 右侧三卡；筛选态全部走 `route.query`） |
+| `/forum/post/:id` | forum/PostDetail | 文章详情（顶部「← 返回社区」+ 全局导航栏；Markdown 渲染 + 点赞/收藏/分享 + 两级评论区 + 作者卡） |
+| `/forum/new` | forum/PostEditor | 发布文章（与编辑页复用同一组件；md-editor-v3 分屏编辑器；本地草稿防丢失） |
+| `/forum/edit/:id` | forum/PostEditor | 编辑文章（`mode=edit`；**仅作者本人**，保存后回待审核重走审核） |
+| `/forum/my` | forum/MyPosts | 我的文章（各状态 + 驳回理由 + 编辑重提 + 自删） |
 | `/login` | AuthView（登录） | 登录页（用户名/邮箱 + 密码） |
 | `/register` | AuthView（注册） | 注册页（邮箱 + 密码 + 确认密码 + 滑块拼图人机验证） |
+
+### Markdown 渲染（`src/utils/markdown.js`）
+
+全站**唯一**的 Markdown 渲染入口（marked + DOMPurify + highlight.js）。代码块底色统一浅色 `#f6f8fa`（基准 = 公告详情），主站与后台的规则分别在 `frontend/src/assets/styles/markdown.css` 与 `admin-frontend/src/assets/styles/markdown.css`，**改代码块观感只改这两个文件**：公告正文与社区文章正文都走它。导出 `renderMarkdownContent(content)`（纯 Markdown，社区用）与 `renderAnnouncementContent(content, contentType)`（按格式分支，公告详情页用），另有 `splitMarkdownBlocks(text)`（智能客服流式渲染用）。**不要另写一套渲染管线**。
 
 ### 关键组件
 
@@ -351,11 +440,13 @@ docker compose up -d --build
 - `OnlineCounter` — 服务器在线状态（轮询 `/monitor/server-info/{id}`）
 - `Leaderboard` / `TrendChart` — 排行榜与趋势图（ECharts）
 - `ContentCard` / `ImageCarousel` / `SectionNav` / `CopyButton` / `BackToTop` / `Modal` — 展示与交互组件
+- `components/forum/` — 社区组件（props 驱动，后续阶段只扩 props 不改结构）：`PostCard`（帖子卡片）/ `CategoryTabs`（板块标签栏）/ `CommunityBanner`（Banner + 排序/搜索）/ `SidebarUserCard` + `SidebarStats` + `SidebarHotTags`（右侧三卡）/ `CommentSection`（两级评论区，自取数据）/ `AuthorCard`（作者卡）/ `Pager`（翻页）/ `UserBadge`（徽章）/ `ConfirmDialog`（二次确认）/ `ForumToast`（占位功能轻提示）
+- `utils/forumFormat.js`（相对时间 / 北京时间解析 / HTML 转义）、`utils/forumBadges.js`（徽章与状态常量表）、`utils/forumToast.js`（轻提示单例 + 未登录跳转）
 
 ### API 层（`src/api/`）
 
 - `axiosInstance.js` — axios 实例，baseURL 来自环境变量 `VITE_BASE_API_URL`（经 `mc-config.js` 统一读取）；响应拦截器统一解包 `{code, message, data}`，失败时弹出错误提示；请求拦截器自动携带 JWT，401 时清除登录态并跳转 `/login`
-- `api.js` — 接口封装：`authAPI` / `announcementAPI` / `factionBetaAPI` / `staffAPI`（验证页与总览页的公开只读接口，silent 模式） / `serverMonitorAPI` / `serverConfigAPI` / `chatAPI`（`chatAPI.streamChat` 因 SSE 流式改用 `fetch` + `ReadableStream`，其余走 axios）
+- `api.js` — 接口封装：`authAPI` / `announcementAPI` / `factionBetaAPI` / `forumAPI`（社区）/ `staffAPI`（验证页与总览页的公开只读接口，silent 模式） / `serverMonitorAPI` / `serverConfigAPI` / `chatAPI`（`chatAPI.streamChat` 因 SSE 流式改用 `fetch` + `ReadableStream`，其余走 axios）
 - `errorHandler.js` — 统一错误弹窗工具
 
 ### 环境配置（`frontend/.env*` 文件）
@@ -404,10 +495,16 @@ docker compose up -d --build
 | `/server/edit` | 服务器编辑 | 新建或编辑服务器（名称、地址、端口、是否主服务器） |
 | `/faction-beta/list` | 阵营内测申请 | 申请列表（状态过滤、详情弹窗、通过/拒绝、删除） |
 | `/kb/list` | 知识库 | 统计条（文档/切片/索引版本/维度状态）+ 文档列表（来源过滤、切片预览抽屉、重建索引、删除；wiki 来源只读由 `kb_sync.py` 维护）+ 粘贴新增 |
-| `/user/list` | 用户管理 | 用户列表（新增/编辑/启用/禁用/软删除/恢复、状态过滤；编辑模式密码留空=不修改） |
+| `/user/list` | 用户管理 | 用户列表（新增/编辑/启用/禁用/软删除/恢复、状态过滤、**禁言/解禁**、**论坛数据**；编辑模式密码留空=不修改） |
 | `/staff/list` | 工作人员名片 | 台账列表（状态过滤/关键词搜索、新增/编辑、撤销（选原因）/恢复/续期/重生成码、二维码下载、CSV 导出、顶部统计条、即将到期行高亮） |
 | `/staff/card` | 名片制作 | 统一名片模板出图页（选人 + 横/竖版切换；PNG/JPG 走本地 `html2canvas`，PDF 走浏览器打印；二维码纯白底 200px、头像像素渲染、正面含名片版本与防伪提示） |
+| `/forum/article/list` | 文章管理 | 五维检索（标题/作者/板块/标签/状态）+ 通过/驳回/置顶/加精/下架/恢复/硬删 + 改属性抽屉（**状态不变**）+ 正文预览抽屉（**只读**）+ 评论抽屉（可删单条，删顶层连带其回复）+ 封面图库（只读 + 复制 URL） |
+| `/forum/category/list` | 板块管理 | 板块增删改查（名称/颜色/排序/隐藏；**系统板块不可删、不可改名、不可隐藏**；有已发布文章的板块删除被拦） |
+| `/forum/tag/list` | 标签管理 | 标签库（来源筛选，默认「用户自动创建」= 清理入口）+ 重命名 + 置热 + 合并 + 删除 |
+| `/forum/config` | 社区配置 | Banner 三字段（含插画上传）+ 排序默认项 + 搜索占位文案 + 三项只读统计（与首页统计卡同接口）+ 打赏预留键只读展示 |
 | `/access-denied` `/server-error` | 403 / 500 | 全屏错误页 |
+
+用户管理页（`/user/list`）额外承载社区两项能力：**禁言/解禁**（时长预设 1/3/7/30 天或永久；与「禁用」正交——禁用是不能登录，禁言是能登录但不能发帖评论）与**论坛数据**弹窗（发帖/获赞/粉丝 + 最近 5 篇）。
 
 浏览器 URL 带部署前缀与 hash：开发 `http://localhost:3005/#/announcement/list`，生产 `http://<host>/admin/#/announcement/list`。
 

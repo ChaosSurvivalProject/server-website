@@ -21,6 +21,9 @@ import "element-plus/dist/index.css";
 // 导入字体图标
 import "./assets/iconfont/iconfont.js";
 import "./assets/iconfont/iconfont.css";
+// Markdown 代码块统一浅色（本地 github 高亮主题 + 显式浅色底），
+// 避免 md-editor-v3 默认的 atomOneDark 深色主题、以及它对 unpkg CDN 的依赖
+import "./assets/styles/markdown.css";
 
 const app = createApp(App);
 

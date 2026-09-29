@@ -247,6 +247,7 @@ export default {
         })
         .then((data) => {
           setAuth(data.token, {
+            id: data.id,
             username: data.username,
             nickname: data.nickname,
             role: data.role

@@ -1,0 +1,593 @@
+/* ══════════════════════════════════════════════════════════════════
+   社区（论坛）模块共享样式与设计令牌
+   ══════════════════════════════════════════════════════════════════
+   视觉基调见 docs/论坛/论坛模块第一阶段PRD.md §5 与交互原型
+   docs/论坛/prototype/index.html 的 :root 变量表。
+
+   为什么是全局文件而不是 scoped：
+   论坛的 8 个公共组件要共用同一套变量（--fx-brand / --fx-card / --fx-line…），
+   若写在某个组件的 <style scoped> 里，其他组件继承不到，复制粘贴必然漂移。
+   这里只放「令牌 + 通用原子类」，组件私有样式仍各自 scoped。
+
+   命名一律 fx- 前缀：全站 App.vue 里有全局 .btn（像素风 3px 黑边框），
+   论坛用现代圆角卡片，若不加前缀会互相串味。
+   ══════════════════════════════════════════════════════════════════ */
+
+.forum-root {
+  /* 底色 / 卡片 / 描边 */
+  --fx-bg: #eef2f7;
+  --fx-bg-soft: #f7f9fc;
+  --fx-card: #ffffff;
+  --fx-line: #e3e8ef;
+  --fx-line-soft: #eef1f6;
+
+  /* 文字三级 */
+  --fx-text: #1f2937;
+  --fx-text-2: #5b6676;
+  --fx-text-3: #93a0b1;
+
+  /* 主色与语义色 */
+  --fx-brand: #4caf50;
+  --fx-brand-d: #388e3c;
+  --fx-brand-soft: #e8f5e9;
+  --fx-warn: #f59e0b;
+  --fx-warn-soft: #fff7e6;
+  --fx-danger: #ef4444;
+  --fx-danger-soft: #feecec;
+  --fx-ok: #22c55e;
+  --fx-ok-soft: #eafaf0;
+  --fx-purple: #8b5cf6;
+
+  /* 圆角 / 阴影 */
+  --fx-radius: 12px;
+  --fx-radius-s: 8px;
+  --fx-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 14px rgba(16, 24, 40, 0.05);
+  --fx-shadow-l: 0 8px 28px rgba(16, 24, 40, 0.12);
+
+  /* 字号族：论坛正文比首页正文略小，贴合"信息密集型列表页" */
+  --fx-font: "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --fx-mono: ui-monospace, "Cascadia Mono", Consolas, Monaco, monospace;
+}
+
+/* 论坛整体页面底：浅色 + 复用首页背景图（PRD §5「复用已有背景图」）。
+   背景图 URL 与 style.css 的 body 保持一致（项目既有背景，无外链新图）。 */
+.forum-page {
+  min-height: 70vh;
+  padding: 20px;
+  font-family: var(--fx-font);
+  color: var(--fx-text);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  /* 底色 + 极淡的斜向纹理，避免大面积纯灰显得死板 */
+  background-color: var(--fx-bg);
+  background-image: linear-gradient(180deg, rgba(238, 242, 247, 0.92), rgba(238, 242, 247, 0.98));
+}
+
+/* ── 通用容器 ── */
+.fx-wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.fx-wrap-narrow {
+  max-width: 1080px;
+  margin: 0 auto;
+}
+.fx-wrap-form {
+  max-width: 880px;
+  margin: 0 auto;
+}
+
+/* ── 卡片 ── */
+.fx-card {
+  background: var(--fx-card);
+  border: 1px solid var(--fx-line);
+  border-radius: var(--fx-radius);
+  box-shadow: var(--fx-shadow);
+}
+.fx-card-pad {
+  padding: 18px;
+}
+.fx-card-hd {
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--fx-line-soft);
+  font-weight: 700;
+  font-size: 14.5px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* ── 按钮（刻意不叫 .btn：全站有像素风全局 .btn，见文件头注释） ── */
+.fx-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 9px;
+  font-family: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  border: 1px solid var(--fx-line);
+  background: #fff;
+  color: var(--fx-text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+.fx-btn:hover:not(:disabled) {
+  border-color: #c7d2e0;
+  color: var(--fx-text);
+}
+.fx-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.fx-btn-primary {
+  background: var(--fx-brand);
+  border-color: var(--fx-brand);
+  color: #fff;
+}
+.fx-btn-primary:hover:not(:disabled) {
+  background: var(--fx-brand-d);
+  border-color: var(--fx-brand-d);
+  color: #fff;
+}
+/* 打赏按钮用金色而不是 --fx-ok：品牌已改为绿色，再用相近的绿两者会分不清，
+   且"金币/打赏"的语义本就贴近金色 */
+.fx-btn-ok {
+  background: #f59e0b;
+  border-color: #f59e0b;
+  color: #fff;
+}
+.fx-btn-ok:hover:not(:disabled) {
+  filter: brightness(0.94);
+  color: #fff;
+}
+.fx-btn-danger {
+  background: #fff;
+  border-color: #f7c6c6;
+  color: var(--fx-danger);
+}
+.fx-btn-danger:hover:not(:disabled) {
+  background: var(--fx-danger-soft);
+  border-color: var(--fx-danger);
+}
+.fx-btn-sm {
+  padding: 4px 11px;
+  font-size: 12.5px;
+  border-radius: 7px;
+}
+.fx-btn-lg {
+  padding: 11px 26px;
+  font-size: 15px;
+}
+
+/* ── 输入控件 ── */
+.fx-input {
+  width: 100%;
+  height: 42px;
+  border: 1px solid var(--fx-line);
+  border-radius: 9px;
+  padding: 0 13px;
+  background: var(--fx-bg-soft);
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--fx-text);
+  transition: 0.15s;
+}
+.fx-input:focus {
+  outline: none;
+  border-color: #a5d6a7;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.09);
+}
+textarea.fx-input {
+  height: auto;
+  padding: 11px 13px;
+  line-height: 1.75;
+  resize: vertical;
+  min-height: 96px;
+}
+select.fx-input {
+  cursor: pointer;
+}
+
+/* ── 标签药丸 ── */
+.fx-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 9px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.7;
+  white-space: nowrap;
+}
+.fx-tag-top {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+.fx-tag-featured {
+  background: #fef3c7;
+  color: #b45309;
+}
+.fx-tag-cat {
+  background: var(--fx-bg-soft);
+  color: var(--fx-text-2);
+  border: 1px solid var(--fx-line);
+}
+.fx-tag-hash {
+  background: var(--fx-bg-soft);
+  color: var(--fx-text-2);
+  border: 1px solid var(--fx-line);
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.fx-tag-hash:hover {
+  border-color: var(--fx-brand);
+  color: var(--fx-brand-d);
+}
+.fx-tag-hash.on {
+  background: var(--fx-brand-soft);
+  border-color: #a5d6a7;
+  color: var(--fx-brand-d);
+  font-weight: 600;
+}
+
+/* 彩色小圆点（板块色） */
+.fx-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: 0 0 auto;
+}
+
+/* ── 状态横幅（详情页"该帖正在审核中"等） ── */
+.fx-banner-status {
+  border-radius: var(--fx-radius);
+  padding: 13px 16px;
+  margin-bottom: 16px;
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+.fx-banner-wait {
+  background: var(--fx-warn-soft);
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+.fx-banner-reject {
+  background: var(--fx-danger-soft);
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+.fx-banner-offline {
+  background: #eef2f7;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+/* ── 空状态 ── */
+.fx-empty {
+  border: 1.5px dashed #d3dbe6;
+  border-radius: var(--fx-radius);
+  padding: 46px 20px;
+  text-align: center;
+  color: var(--fx-text-3);
+  background: rgba(255, 255, 255, 0.6);
+}
+.fx-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--fx-text-2);
+  margin-bottom: 6px;
+}
+.fx-empty-tip {
+  font-size: 12.5px;
+  margin-bottom: 14px;
+}
+
+/* ── 头像 ── */
+.fx-avatar {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  flex: 0 0 auto;
+  background: linear-gradient(135deg, #a5d6a7, #4caf50);
+  overflow: hidden;
+}
+.fx-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.fx-avatar-admin {
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+}
+.fx-avatar-guest {
+  background: linear-gradient(135deg, #cbd5e1, #94a3b8);
+}
+.fx-av-28 {
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+}
+.fx-av-32 {
+  width: 32px;
+  height: 32px;
+  font-size: 13px;
+}
+.fx-av-36 {
+  width: 36px;
+  height: 36px;
+  font-size: 14px;
+}
+.fx-av-56 {
+  width: 56px;
+  height: 56px;
+  font-size: 21px;
+}
+
+/* ── 翻页器 ── */
+.fx-pager {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+.fx-pager button {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 8px;
+  border: 1px solid var(--fx-line);
+  background: #fff;
+  color: var(--fx-text-2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.15s;
+}
+.fx-pager button:hover:not(:disabled):not(.on) {
+  border-color: #c7d2e0;
+}
+.fx-pager button.on {
+  background: var(--fx-brand);
+  border-color: var(--fx-brand);
+  color: #fff;
+}
+.fx-pager button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.fx-pager .fx-pager-ellipsis {
+  border: none;
+  background: none;
+  cursor: default;
+  min-width: 20px;
+  padding: 0;
+}
+
+/* ── 侧边栏 ── */
+.fx-side-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 90px;
+}
+.fx-stat3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  text-align: center;
+}
+.fx-stat3 .s-v {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--fx-text);
+}
+.fx-stat3 .s-l {
+  font-size: 11.5px;
+  color: var(--fx-text-3);
+  margin-top: 2px;
+}
+.fx-tag-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* ── 骨架 / 加载态 ── */
+.fx-loading-box {
+  padding: 46px 20px;
+  text-align: center;
+  color: var(--fx-text-3);
+  font-size: 13.5px;
+}
+.fx-spin {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--fx-line);
+  border-top-color: var(--fx-brand);
+  border-radius: 50%;
+  animation: fx-rotate 0.7s linear infinite;
+  vertical-align: -4px;
+  margin-right: 8px;
+}
+@keyframes fx-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ── 轻提示（占位功能统一用它，不弹 alert） ── */
+.fx-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 90px;
+  transform: translateX(-50%) translateY(10px);
+  background: #111827;
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 600;
+  z-index: 3000;
+  opacity: 0;
+  pointer-events: none;
+  transition: 0.2s;
+  box-shadow: var(--fx-shadow-l);
+  max-width: 80vw;
+  text-align: center;
+}
+.fx-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Markdown 正文渲染产物排版
+   ══════════════════════════════════════════════════════════════════
+   必须放在全局（非 scoped）：v-html 注入的节点不经过 Vue 模板编译，
+   不带 data-v 属性，scoped 选择器编译成 .fx-md h1[data-v-x] 后匹配不到。
+   （与 AnnouncementDetail.vue 的 .announcement-content 同款处理） */
+.fx-md {
+  font-size: 15px;
+  line-height: 1.85;
+  color: #2b3648;
+  word-break: break-word;
+}
+.fx-md h1,
+.fx-md h2,
+.fx-md h3 {
+  margin: 22px 0 10px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+.fx-md h1 {
+  font-size: 21px;
+}
+.fx-md h2 {
+  font-size: 18px;
+}
+.fx-md h3 {
+  font-size: 16px;
+}
+.fx-md p {
+  margin: 13px 0;
+}
+.fx-md ul,
+.fx-md ol {
+  margin: 13px 0 13px 22px;
+  padding-left: 18px;
+}
+.fx-md li {
+  margin: 5px 0;
+}
+.fx-md blockquote {
+  margin: 14px 0;
+  padding: 10px 16px;
+  border-left: 3px solid #a5d6a7;
+  background: var(--fx-brand-soft);
+  border-radius: 0 8px 8px 0;
+  color: var(--fx-text-2);
+  font-size: 14px;
+}
+.fx-md blockquote p {
+  margin: 0;
+}
+.fx-md code {
+  background: #f1f5f9;
+  border: 1px solid var(--fx-line);
+  border-radius: 5px;
+  padding: 1px 6px;
+  font-family: var(--fx-mono);
+  font-size: 13px;
+  color: #b91c1c;
+}
+/* 行内代码不该带边框（围栏代码块才有） */
+.fx-md pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: #334155;
+  font-size: 12.8px;
+  line-height: 1.65;
+}
+.fx-md img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--fx-line);
+  display: block;
+  margin: 14px 0;
+}
+.fx-md a {
+  color: var(--fx-brand-d);
+  border-bottom: 1px solid #a5d6a7;
+}
+/* 宽表格横向滚动，不撑破容器（PRD §10.5 移动端验收项） */
+.fx-md table {
+  border-collapse: collapse;
+  margin: 14px 0;
+  font-size: 14px;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+.fx-md th,
+.fx-md td {
+  border: 1px solid var(--fx-line);
+  padding: 7px 11px;
+  text-align: left;
+}
+.fx-md th {
+  background: var(--fx-bg-soft);
+  font-weight: 700;
+}
+.fx-md hr {
+  border: none;
+  border-top: 1px solid var(--fx-line);
+  margin: 20px 0;
+}
+/* markdown.js 产出的代码块包装（类名由该文件固定，勿单方面改这里） */
+.fx-md .announcement-code-block {
+  background: #fbfcfe;
+  border-color: var(--fx-line);
+}
+.fx-md .announcement-code-block pre {
+  padding: 14px;
+  overflow-x: auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   响应式（PRD §10.5：≤768px 不得出现横向滚动）
+   ══════════════════════════════════════════════════════════════════ */
+@media (max-width: 900px) {
+  .forum-page {
+    padding: 14px;
+  }
+  .fx-side-col {
+    position: static;
+  }
+  .fx-wrap-form,
+  .fx-wrap-narrow {
+    padding: 0;
+  }
+}

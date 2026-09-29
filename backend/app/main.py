@@ -32,10 +32,10 @@ Endpoints (matching the existing Vue frontend):
   GET  /staff/public/{code}        工作人员名片验证页数据（匿名，四态白名单）
   GET  /staff/public/team          管理组总览（匿名，仅有效期内公开字段）
   GET/POST/PUT/POST... /staff/admin/*  工作人员台账（分页/统计/新增/编辑/重生成码/撤销/恢复/续期/二维码/导出，需管理员）
+  GET/POST/PUT/DELETE /forum/*     社区论坛（公开 / 登录用户 / 管理员三组接口，见 app/forum.py 模块头）
 """
 import logging
 import os
-import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -48,11 +48,13 @@ from .database import BASE_DIR, init_db, get_db, Announcement, async_session_mak
 from .monitor import router as monitor_router, load_servers
 from . import kb as kb_module
 from . import staff as staff_module
+from . import forum as forum_module
 from .auth import bootstrap
 from .auth.deps import require_admin
 from .auth.router import router as auth_router
 from .auth.users_admin import router as auth_admin_users_router
 from .faction_beta import router as faction_beta_router
+from .uploads import UPLOAD_DIR, save_image
 from .schemas import (
     AnnouncementCreate,
     AnnouncementUpdate,
@@ -75,22 +77,9 @@ from .crud import (
 
 logger = logging.getLogger("uvicorn.error")
 
-# ── 富文本图片上传配置 ────────────────────────────────────────
-# 上传目录：默认 backend/data/uploads，可用环境变量覆盖（Docker 中指向挂载卷 /app/data/uploads）
-UPLOAD_DIR = Path(
-    os.environ.get("ANNOUNCEMENT_UPLOAD_DIR", str(BASE_DIR / "data" / "uploads"))
-)
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-_ALLOWED_IMAGE_TYPES = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-}
-_MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
-
+# ── 富文本图片上传配置 ────────────────────────────────────────────
+# UPLOAD_DIR 与白名单/落盘逻辑已抽到 app/uploads.py（公告与论坛共用同一份口径，
+# 见该文件头注释）；此处只保留 re-export 供下方 StaticFiles 挂载使用。
 
 app = FastAPI(
     title="服务器公告 API",
@@ -128,6 +117,9 @@ app.include_router(kb_module.router, prefix="/api")
 # 员工名片（/api/staff/public/*、/api/staff/admin/*）
 app.include_router(staff_module.router, prefix="/api")
 
+# 社区论坛（/api/forum/*；公开 + 登录用户 + 管理员三组接口均在模块内）
+app.include_router(forum_module.router, prefix="/api")
+
 app.include_router(api_router)
 
 # 静态托管富文本上传的图片。
@@ -155,6 +147,8 @@ async def on_startup():
     await load_servers()
     # 智能客服启动三查（总开关 / API Key / 维度一致性，只记日志不阻断）+ 预热向量索引
     await kb_module.startup_check()
+    # 社区论坛种子数据（预置 8 个板块 + 8 个配置键默认值，幂等，失败不阻断启动）
+    await forum_module.ensure_seeded()
     # 员工名片到期检查（定时批量路径的启动兜底之一；漏跑不影响核验正确性——
     # 判定权威是 valid_to，公开验证接口查询时懒更新会兜底回写）
     try:
@@ -273,27 +267,11 @@ async def upload_image_endpoint(
     file: UploadFile = File(...),
     _admin=Depends(require_admin),
 ):
-    """上传公告富文本图片，返回可写入正文的相对 URL（与部署域无关）。"""
-    ext = Path(file.filename or "").suffix.lower()
-    if ext not in _ALLOWED_IMAGE_TYPES:
-        raise HTTPException(
-            status_code=400, detail="仅支持 png / jpg / jpeg / gif / webp 图片"
-        )
-    if not (file.content_type or "").lower().startswith("image/"):
-        raise HTTPException(status_code=400, detail="文件类型不是图片")
+    """上传公告富文本图片，返回可写入正文的相对 URL（与部署域无关）。
 
-    data = await file.read()
-    if len(data) > _MAX_IMAGE_SIZE:
-        raise HTTPException(status_code=400, detail="图片大小不能超过 5MB")
-
-    # 按月份分目录 + 随机文件名（避免覆盖与路径穿越）
-    sub_dir = datetime.now(BEIJING_TZ).strftime("%Y%m")
-    target_dir = UPLOAD_DIR / sub_dir
-    target_dir.mkdir(parents=True, exist_ok=True)
-    name = f"{uuid.uuid4().hex}{ext}"
-    (target_dir / name).write_bytes(data)
-
-    url = f"/api/announcement/uploads/{sub_dir}/{name}"
+    校验与落盘在 app/uploads.py（论坛上传共用同一份口径）。
+    """
+    url = await save_image(file)
     return {"code": 0, "message": "success", "data": {"url": url}}
 
 
@@ -302,3 +280,17 @@ async def upload_image_endpoint(
 @api_router.get("/health", include_in_schema=False)
 async def health():
     return {"status": "ok"}
+
+
+# ── 统一把未预期的数值异常收敛成 400 ──────────────────────────────
+# SQLite 的 INTEGER 是 64 位有符号，FastAPI 的 `int` 却**没有上界**，
+# 因此 `GET /api/forum/articles/99999999999999999999999999`、`?page=1e30`
+# 这类**匿名可打**的入参会在 SQL 绑参阶段抛 OverflowError → 500，
+# 可被用来刷错误日志。逐个接口加 le 容易漏，这里统一兜底。
+@app.exception_handler(OverflowError)
+async def overflow_error_handler(request, exc: OverflowError):
+    logger.warning("请求参数数值越界: %s %s — %s", request.method, request.url.path, exc)
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "参数数值超出允许范围"},
+    )

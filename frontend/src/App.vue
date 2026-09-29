@@ -1,5 +1,6 @@
 <template>
   <div id="app">
+    <!-- 全站统一导航栏：任何路由都显示（含论坛的详情 / 发帖 / 编辑 / 我的文章） -->
     <NavBar />
     <div>
       <!-- 路由视图，用于渲染不同页面 -->
@@ -19,6 +20,11 @@
             <span class="footer-nav-title">服务器信息</span>
             <a href="/" class="footer-nav-link">首页</a>
             <a href="/announcements" class="footer-nav-link">服务器公告</a>
+          </div>
+          <div class="footer-nav-col">
+            <span class="footer-nav-title">社区</span>
+            <a href="/forum" class="footer-nav-link">进入社区</a>
+            <a href="/forum/new" class="footer-nav-link">发布文章</a>
           </div>
           <div class="footer-nav-col">
             <span class="footer-nav-title">活动信息</span>
@@ -44,6 +50,8 @@
     <BackToTop />
     <!-- 智能客服悬浮组件（VITE_CHAT_WIDGET_ENABLED 控制前端开关，后端 /kb/info enabled 为二级开关） -->
     <ChatWidget v-if="chatWidgetEnabled" />
+    <!-- 社区轻提示容器（站内信 / 关注 / 打赏等占位功能统一用它提示"功能开发中"） -->
+    <ForumToast />
   </div>
 </template>
 
@@ -51,6 +59,7 @@
 import NavBar from "./components/NavBar.vue";
 import BackToTop from "./components/BackToTop.vue";
 import ChatWidget from "./components/ChatWidget.vue";
+import ForumToast from "./components/forum/ForumToast.vue";
 import fastRunLogo from "./assets/images/download/logo-white.png";
 import { authAPI } from "./api/api.js";
 import { getToken, setAuth } from "./utils/auth.js";
@@ -62,6 +71,7 @@ export default {
     NavBar,
     BackToTop,
     ChatWidget,
+    ForumToast,
   },
   setup() {
     // Options API 下模板绑定的静态资源/配置必须经 setup 显式返回
@@ -75,6 +85,7 @@ export default {
         .getMe()
         .then((data) => {
           setAuth(getToken(), {
+            id: data.id,
             username: data.username,
             nickname: data.nickname,
             role: data.role

@@ -41,6 +41,38 @@ const routes = [
     component: () => import('../views/TeamOverview.vue')
   },
   {
+    path: '/forum',
+    name: 'Forum',
+    // 社区首页（双栏布局 + Banner + 板块标签 + 帖子列表 + 右侧三卡）
+    component: () => import('../views/forum/CommunityHome.vue')
+  },
+  {
+    path: '/forum/post/:id',
+    name: 'ForumPost',
+    // 文章详情（顶部「← 返回社区」+ 全局导航栏）
+    component: () => import('../views/forum/PostDetail.vue'),
+    props: true
+  },
+  {
+    path: '/forum/new',
+    name: 'ForumNew',
+    // 发布文章（需登录；未登录由页面内跳登录并带 redirect）
+    component: () => import('../views/forum/PostEditor.vue')
+  },
+  {
+    path: '/forum/edit/:id',
+    name: 'ForumEdit',
+    // 编辑文章：与 /forum/new 复用同一页面组件（PostEditor 按路由区分 create/edit）
+    component: () => import('../views/forum/PostEditor.vue'),
+    props: true
+  },
+  {
+    path: '/forum/my',
+    name: 'ForumMy',
+    // 我的文章（作者视角：各状态 + 驳回理由 + 编辑重提入口）
+    component: () => import('../views/forum/MyPosts.vue')
+  },
+  {
     path: '/login',
     name: 'Login',
     // 登录/注册共用 AuthView，通过 initialMode 区分

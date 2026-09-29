@@ -1,0 +1,92 @@
+/* ══════════════════════════════════════════════════════════════════
+   Markdown 代码块统一浅色（全局，main.ts 引入）
+   ══════════════════════════════════════════════════════════════════
+   为什么需要这个文件：
+
+   1. **md-editor-v3 的默认 codeTheme 是 `atomOneDark`**，而且它把代码高亮主题
+      从 **unpkg CDN** 动态注入 <link>（`https://unpkg.com/@highlightjs/cdn-assets/
+      .../atom-one-dark.min.css`）。结果就是：后台所有 Markdown 渲染区（公告编辑器
+      的分屏预览、论坛文章预览抽屉）代码块都是**深色**，与主站公告详情的浅色不一致；
+      同时这个 CDN 请求本身违反项目「不得出现外链第三方 CDN 资源」的规约
+      （PRD §10.6 / AGENTS.md「不依赖第三方平台」）。
+
+   2. md-editor-v3 的 `preview.css` 只有 5KB，**不提供任何正文排版**（pre 底色、
+      代码文字色、列表符号都没有），它指望宿主自己给。
+
+   所以这里做两件事：
+     - 本地引入 highlight.js 的 **github（浅色）** 主题，提供语法着色；
+     - 用本文件把代码块底色/文字色**显式钉死**为与主站公告详情一致的浅色
+       （#f6f8fa 底 + #e5e7eb 边框），即便外部主题被换掉也不会跑偏。
+
+   基准取主站公告详情：background #f6f8fa / border #e5e7eb / 文字 #24292e。
+
+   组件上的 `code-theme="github"` 则负责让 md-editor 请求**浅色**变体，
+   避免它默认按 atomOneDark 去取深色资源。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* 本地语法着色（浅色 github 主题，与 #f6f8fa 底色配套） */
+@import "highlight.js/styles/github.css";
+
+/* ── md-editor-v3 渲染区（公告编辑器分屏 / 论坛文章预览抽屉） ── */
+.md-editor .md-editor-preview pre,
+.md-editor .md-editor-preview pre.hljs,
+.md-editor-preview pre,
+.md-editor-preview pre.hljs {
+  background-color: #f6f8fa;
+  color: #24292e;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+/* 代码块外壳（md-editor 用 details.md-editor-code 包裹，带自己的头部） */
+.md-editor .md-editor-preview .md-editor-code,
+.md-editor-preview .md-editor-code {
+  background-color: #f6f8fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* 代码块头部（语言标签 / 复制按钮所在的一行）*/
+.md-editor .md-editor-preview .md-editor-code .md-editor-code-head,
+.md-editor-preview .md-editor-code .md-editor-code-head {
+  background-color: #eef1f6;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+/* 关键：代码文字用深色。
+   atomOneDark 主题会给 pre 写浅色前景（实测 rgb(169,183,198)），在浅底上几乎看不清；
+   这条把前景钉死，与主站公告详情一致。 */
+.md-editor .md-editor-preview pre code,
+.md-editor-preview pre code,
+.md-editor .md-editor-preview .md-editor-code code {
+  background-color: transparent;
+  color: #24292e;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+/* 行号列跟随浅色 */
+.md-editor .md-editor-preview .md-editor-code-line-numbered .md-editor-code-line-number,
+.md-editor-preview .md-editor-code-line-number {
+  color: #93a0b1;
+}
+
+/* 行内代码（非围栏）*/
+.md-editor .md-editor-preview :not(pre) > code,
+.md-editor-preview :not(pre) > code {
+  background-color: #f1f2f4;
+  color: #b91c1c;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.9em;
+}
+
+/* 折叠代码块时 md-editor 会给外层加 .md-editor-code-fold；
+   折叠状态下同样保持浅底，避免收起时闪一下深色 */
+.md-editor .md-editor-preview .md-editor-code-fold,
+.md-editor-preview .md-editor-code-fold {
+  background-color: #f6f8fa;
+  color: #24292e;
+}

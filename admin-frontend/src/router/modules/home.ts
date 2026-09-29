@@ -100,6 +100,47 @@ export default {
         icon: "ep/printer",
         showLink: true
       }
+    },
+    // ── 社区（论坛）模块（PRD §3.2） ──
+    {
+      path: "/forum/article/list",
+      name: "ForumArticleList",
+      component: () => import("@/views/forum/article/list.vue"),
+      meta: {
+        title: "文章管理",
+        icon: "ep/chat-dot-round",
+        showLink: true
+      }
+    },
+    {
+      path: "/forum/category/list",
+      name: "ForumCategoryList",
+      component: () => import("@/views/forum/category/list.vue"),
+      meta: {
+        title: "板块管理",
+        icon: "ep/folder-opened",
+        showLink: true
+      }
+    },
+    {
+      path: "/forum/tag/list",
+      name: "ForumTagList",
+      component: () => import("@/views/forum/tag/list.vue"),
+      meta: {
+        title: "标签管理",
+        icon: "ep/price-tag",
+        showLink: true
+      }
+    },
+    {
+      path: "/forum/config",
+      name: "ForumConfig",
+      component: () => import("@/views/forum/config.vue"),
+      meta: {
+        title: "社区配置",
+        icon: "ep/setting",
+        showLink: true
+      }
     }
   ]
 } satisfies RouteConfigsTable;

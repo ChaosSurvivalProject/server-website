@@ -8,8 +8,24 @@
         </router-link>
       </div>
 
-      <!-- 已登录：头像（桌面端右缘 / 移动端三横线左侧，常驻展示），点击弹出用户菜单 -->
+      <!-- 已登录：站内信按钮（头像左侧）+ 头像（桌面端右缘 / 移动端三横线左侧） -->
       <div v-if="loggedIn" class="nav-avatar-wrap">
+        <!--
+          站内信（PRD §5.1-N2）：第一阶段只做 UI 占位——点击提示"功能开发中"，
+          **不跳转、不请求接口**。独立成按钮而非塞进头像菜单，是为第二阶段
+          站内信系统预留位置（届时只需把 onClick 换成打开未读列表，
+          未读数角标也挂在这里，见 PRD §5.1-N4 第一阶段不做角标）。
+        -->
+        <button
+          type="button"
+          class="nav-bell"
+          aria-label="站内信"
+          title="站内信（开发中）"
+          @click.stop="onSiteMessage"
+        >
+          <i class="fa-regular fa-bell"></i>
+        </button>
+
         <button
           type="button"
           class="nav-avatar-btn"
@@ -105,9 +121,8 @@
         <router-link to="/announcements" class="nav-icon"
           ><i class="fa-solid fa-bullhorn"></i>服务器公告</router-link
         >
-        <!-- 论坛入口开发中：已移除原外链地址，保留不可点击的占位提示 -->
-        <span class="nav-icon nav-icon-dev" title="开发中，敬请期待"
-          ><i class="fa-solid fa-users"></i>星穹旅驿社区（开发中）</span
+        <router-link to="/forum" class="nav-icon"
+          ><i class="fa-solid fa-users"></i>社区</router-link
         >
       </div>
 
@@ -125,8 +140,8 @@
             >
           </li>
           <li>
-            <span class="nav-icon-dev" title="开发中，敬请期待"
-              ><i class="fa-solid fa-users"></i>星穹旅驿社区（开发中）</span
+            <router-link to="/forum" @click="closeMenu()"
+              ><i class="fa-solid fa-users"></i>社区</router-link
             >
           </li>
           <!-- 未登录：登录 / 注册入口 -->
@@ -153,6 +168,7 @@ import logoImg from "../assets/images/logo.png";
 import defaultAvatar from "../assets/images/avatar-default.svg";
 import McConfig from "../config/mc-config.js";
 import { authState, clearAuth } from "../utils/auth.js";
+import { showForumToast } from "../utils/forumToast.js";
 
 export default {
   name: "NavBar",
@@ -199,6 +215,10 @@ export default {
           behavior: "smooth",
         });
       }
+    },
+    /** 站内信占位：第一阶段只提示，不跳转不请求（PRD §5.1-N2） */
+    onSiteMessage() {
+      showForumToast("站内信功能开发中，敬请期待");
     },
     toggleMenu() {
       this.mobileMenuOpen = !this.mobileMenuOpen;
@@ -376,28 +396,6 @@ nav {
   background-color: rgba(0, 0, 0, 0.15);
 }
 
-/* 论坛入口开发中：不可点击的占位项（原外链地址已移除），置灰并抑制悬浮高亮 */
-.nav-icon-dev,
-.nav-icon-dev:hover {
-  cursor: not-allowed;
-  opacity: 0.7;
-  color: #ccc;
-  border-color: transparent;
-  background-color: transparent;
-}
-
-.nav-icon-dev:hover i {
-  transform: none;
-}
-
-/* 窄桌面（≤1024px，未到移动端断点）：桌面菜单收起不可用的「社区开发中」占位项，
-   保证菜单项仍不与左侧 logo 重叠（「阵营内测」已改为首页顶部横幅，不再是菜单项） */
-@media (max-width: 1024px) {
-  .nav-right .nav-icon-dev {
-    display: none;
-  }
-}
-
 /* ── 未登录：登录 / 注册（仅 PC 端，靠右展示） ── */
 .nav-auth-area {
   margin-left: auto; /* 推到导航右缘（与头像同位逻辑） */
@@ -434,6 +432,29 @@ nav {
 .nav-auth-login:hover {
   background-color: #e8f5e9;
   border-color: white;
+}
+
+/* ── 已登录：站内信按钮（头像左侧，占位待第二阶段） ── */
+.nav-bell {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: none;
+  color: white;
+  font-family: inherit;
+  font-size: 16px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition: all 0.3s ease;
+}
+.nav-bell:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  background-color: rgba(255, 255, 255, 0.12);
 }
 
 /* ── 已登录头像（常驻：桌面端右缘 / 移动端三横线左侧） ── */
@@ -604,6 +625,13 @@ nav {
   .nav-avatar-wrap + .mobile-menu-btn {
     margin-left: 6px;
   }
+
+  /* 移动端站内信按钮略收窄，给三横线留位置 */
+  .nav-bell {
+    width: 32px;
+    height: 32px;
+    font-size: 15px;
+  }
 }
 
 .mobile-nav-links a {
@@ -678,24 +706,6 @@ nav {
 .mobile-nav-links a:hover {
   background-color: rgba(255, 255, 255, 0.1);
   color: white;
-}
-
-/* 论坛入口开发中：移动端占位项与链接同款排版，但置灰且不可点击 */
-.mobile-nav-links .nav-icon-dev {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #ccc;
-  font-size: 16px;
-  padding: 15px 20px;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-.mobile-nav-links .nav-icon-dev i {
-  font-size: 15px;
-  width: 18px;
-  text-align: center;
 }
 
 /* 响应式设计 */

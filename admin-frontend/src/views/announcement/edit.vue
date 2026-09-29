@@ -1,10 +1,22 @@
 <script setup lang="ts">
 import "@wangeditor/editor/dist/css/style.css";
 import "md-editor-v3/lib/style.css";
-import { ref, reactive, shallowRef, onMounted, onBeforeUnmount, computed, watch } from "vue";
+import {
+  ref,
+  reactive,
+  shallowRef,
+  onMounted,
+  onBeforeUnmount,
+  computed,
+  watch
+} from "vue";
 import { useRouter, useRoute } from "vue-router";
 import { ElMessage } from "element-plus";
-import type { IDomEditor, IEditorConfig, IToolbarConfig } from "@wangeditor/editor";
+import type {
+  IDomEditor,
+  IEditorConfig,
+  IToolbarConfig
+} from "@wangeditor/editor";
 import { Editor, Toolbar } from "@wangeditor/editor-for-vue";
 import { MdEditor } from "md-editor-v3";
 import type { ToolbarNames } from "md-editor-v3";
@@ -64,10 +76,17 @@ const rules = {
   rawContent: [
     {
       // 富文本 HTML 剥掉标签与空白后判空，避免「只有空段落」的内容通过校验；Markdown 直接 trim 判空
-      validator: (_rule: unknown, value: string, callback: (error?: Error) => void) => {
+      validator: (
+        _rule: unknown,
+        value: string,
+        callback: (error?: Error) => void
+      ) => {
         let text = (value || "").trim();
         if (form.contentType === "html") {
-          text = text.replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").trim();
+          text = text
+            .replace(/<[^>]*>/g, "")
+            .replace(/&nbsp;/gi, " ")
+            .trim();
         }
         return text ? callback() : callback(new Error("请输入公告内容"));
       },
@@ -107,7 +126,10 @@ const editorConfig: Partial<IEditorConfig> = {
     uploadImage: {
       maxFileSize: 5 * 1024 * 1024,
       allowedFileTypes: ["image/*"],
-      customUpload(file: File, insertFn: (url: string, alt: string, href: string) => void) {
+      customUpload(
+        file: File,
+        insertFn: (url: string, alt: string, href: string) => void
+      ) {
         uploadAnnouncementImage(file)
           .then(url => {
             insertFn(url, file.name, url);
@@ -163,7 +185,9 @@ const mdToolbars: ToolbarNames[] = [
 
 const onUploadImg = async (
   files: File[],
-  callback: (urls: { url: string; alt: string; title: string }[] | string[]) => void
+  callback: (
+    urls: { url: string; alt: string; title: string }[] | string[]
+  ) => void
 ) => {
   const results: { url: string; alt: string; title: string }[] = [];
   for (const file of files) {
@@ -201,7 +225,8 @@ const loadDetail = async (id: number) => {
     const item = await getDetail(id);
     if (item) {
       // 内容回填到「已有格式」对应的缓冲，另一格式清空（切换格式不自动转换内容）
-      const loadedType = (item.contentType || "html") as AnnouncementContentType;
+      const loadedType = (item.contentType ||
+        "html") as AnnouncementContentType;
       mdBuffer.value = loadedType === "markdown" ? item.rawContent : "";
       htmlBuffer.value = loadedType === "html" ? item.rawContent : "";
       Object.assign(form, {
@@ -278,12 +303,7 @@ onMounted(() => {
         </div>
       </template>
 
-      <el-form
-        ref="formRef"
-        :model="form"
-        :rules="rules"
-        label-width="100px"
-      >
+      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
         <el-form-item label="标题" prop="title">
           <el-input
             v-model="form.title"
@@ -305,6 +325,8 @@ onMounted(() => {
         <el-form-item label="内容" prop="rawContent">
           <!-- Markdown 编辑器（md-editor-v3，自带分屏实时预览）；
                绑定 activeContent：仅当前为 markdown 格式时渲染，读写 mdBuffer -->
+          <!-- code-theme="github"：md-editor-v3 默认是 atomOneDark（深色），
+               这里要浅色，与主站公告详情 / 社区文章详情保持一致。 -->
           <MdEditor
             v-if="form.contentType === 'markdown'"
             v-model="activeContent"
@@ -312,6 +334,7 @@ onMounted(() => {
             placeholder="请输入 Markdown 公告内容…"
             :toolbars="mdToolbars"
             :on-upload-img="onUploadImg"
+            code-theme="github"
           />
           <!-- 富文本编辑器（wangEditor，存量 HTML 公告）；读写 htmlBuffer -->
           <div v-else class="rich-editor">

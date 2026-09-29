@@ -36,6 +36,8 @@ export type UserItem = {
   email: string | null;
   role: string;
   status: UserStatus;
+  /** 禁言到期时间（北京时间 ISO 字符串）；空串 = 未禁言（论坛模块，PRD §4.8） */
+  muteUntil: string;
   createTime: string;
 };
 
@@ -94,4 +96,13 @@ export const setUserStatus = (id: number, status: UserStatus) => {
 /** 管理员：软删除用户（数据保留可恢复，无法登录） */
 export const removeUser = (id: number) => {
   return http.request<UserItem>("delete", `/api/auth/admin/users/${id}`);
+};
+
+/** 管理员：禁言 / 解禁（论坛模块，PRD §6.5.1）。
+ *  muteUntil 传空串 = 解禁。非空时须为 `YYYY-MM-DDTHH:MM:SS`（北京时间）。
+ *  禁言与 status 三态**正交**：禁用 = 不能登录，禁言 = 能登录浏览但不能发帖 / 评论。 */
+export const setUserMute = (id: number, muteUntil: string) => {
+  return http.request<UserItem>("put", `/api/auth/admin/users/${id}/mute`, {
+    data: { muteUntil }
+  });
 };

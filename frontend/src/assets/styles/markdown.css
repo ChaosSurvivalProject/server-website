@@ -1,0 +1,153 @@
+/* ══════════════════════════════════════════════════════════════════
+   Markdown 渲染产物的**全局**样式
+   ══════════════════════════════════════════════════════════════════
+   为什么必须放在全局（v-html 注入的节点不经过 Vue 模板编译、不带 data-v 属性，
+   scoped 选择器编译成 `.x[data-v-yyy]` 后匹配不到）：
+
+   1. highlight.js 主题：utils/markdown.js 产出的 <span class="hljs-keyword"> 等
+      只有加载 github.css 才有颜色。此前 CSS 与 import 都写在 AnnouncementDetail.vue
+      里 → 只有公告详情页有代码高亮；社区文章详情（懒加载、从不加载
+      AnnouncementDetail）拿到的是**完全没样式**的纯文本代码块。
+   2. .announcement-code-block 包装：同样只在 AnnouncementDetail.vue 定义，
+      论坛页面的代码块因此没有顶栏（语言标签 + 复制按钮）与圆角边框。
+
+   两者都是「渲染管线（utils/markdown.js）的产物」，样式就该跟着管线走，
+   而不是跟着某个调用方走。统一在这里提供后，所有消费
+   renderMarkdownContent() 的页面都自动获得同样的渲染效果。
+
+   ⚠️ 类名带 announcement- 前缀是既有事实（markdown.js 的 renderer 里硬编码，
+   且 AnnouncementDetail.vue 的复制按钮事件委托依赖它），改名牵动面大，保持现状。
+   ══════════════════════════════════════════════════════════════════ */
+
+/* highlight.js github 主题：与代码块底色 #f6f8fa 配套 */
+@import "highlight.js/styles/github.css";
+
+/* 代码块底色统一（公告详情与社区文章详情**必须一致**，以公告为准 = #f6f8fa）。
+   ⚠️ 必须显式压住 `.hljs` 的白底：highlight.js/github.css 里有 `.hljs{background:#fff}`，
+   优先级 (0,1,0)；而公告那边靠 `.announcement-content pre{...}`（0,1,1）赢了，
+   社区这边只把底色加在**外层** .announcement-code-block 上，pre.hljs 自己仍是白的 ——
+   于是两边观感不一致（社区偏白、公告偏灰）。这里给 pre/代码块本体补上同一条规则，
+   让两处渲染结果逐像素一致。 */
+.announcement-content pre,
+.announcement-content pre.hljs,
+.fx-md pre,
+.fx-md pre.hljs {
+  background-color: #f6f8fa;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+
+/* 代码块包装：header 含语言标签（左上）与复制按钮（右上），v-html 注入节点需非 scoped 样式 */
+.announcement-code-block {
+  margin: 15px 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.announcement-code-block .announcement-code-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #f6f8fa;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 6px 12px;
+}
+
+.announcement-code-block .announcement-code-lang {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+/* icon 按钮：默认显示 copy 图标，.copied 时换对勾并播放成功动画（节点由 v-html 注入，必须非 scoped） */
+.announcement-code-block .announcement-code-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: #666;
+  background-color: rgba(0, 0, 0, 0.05);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.announcement-code-block .announcement-code-copy svg {
+  width: 14px;
+  height: 14px;
+}
+
+.announcement-code-block .announcement-code-copy:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+  color: #333;
+}
+
+.announcement-code-block .announcement-code-copy .icon-check {
+  display: none;
+}
+
+.announcement-code-block .announcement-code-copy.copied {
+  color: #4caf50;
+  background-color: rgba(76, 175, 80, 0.15);
+  animation: copy-btn-pulse 0.45s ease;
+}
+
+.announcement-code-block .announcement-code-copy.copied .icon-copy {
+  display: none;
+}
+
+.announcement-code-block .announcement-code-copy.copied .icon-check {
+  display: block;
+  animation: copy-check-pop 0.3s ease;
+}
+
+@keyframes copy-btn-pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.15);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes copy-check-pop {
+  0% {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.announcement-code-block pre {
+  margin: 0;
+  border-radius: 0;
+  border: none;
+}
+
+.announcement-code-block pre code {
+  background-color: transparent;
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* 社区侧的外层包装底色也要跟着统一（forum.css 里曾设成 #fbfcfe）——
+   与 pre 本体保持同一个 #f6f8fa，否则会出现"外浅内白"的色差。 */
+.fx-md .announcement-code-block {
+  background-color: #f6f8fa;
+  border-color: #e5e7eb;
+}

@@ -43,6 +43,20 @@ class UserStatusRequest(BaseModel):
     status: int = Field(..., description="目标状态：1=启用, 0=禁用, 2=删除（软删除）")
 
 
+class UserMuteRequest(BaseModel):
+    """PUT /auth/admin/users/{id}/mute 请求体（论坛禁言，PRD §6.5.1）。
+
+    muteUntil 传空串 = 解禁。禁言与 status 三态**正交**：
+    禁用（status=0）是"不能登录"，禁言是"能登录浏览但不能发帖/评论"。
+    """
+
+    muteUntil: str = Field(
+        default="",
+        max_length=30,
+        description="禁言到期时间（北京时间 ISO 字符串 YYYY-MM-DDTHH:MM:SS）；空串=解禁",
+    )
+
+
 class CaptchaResponseData(BaseModel):
     """GET /auth/captcha 的 data。"""
 
@@ -79,6 +93,7 @@ class LoginResponseData(BaseModel):
     """POST /auth/login 的 data。"""
 
     token: str = Field(..., description="JWT，前端以 Bearer 方式携带")
+    id: int
     username: str
     nickname: str | None = None
     role: str = Field(..., description="admin=管理员, user=普通用户")
@@ -87,6 +102,7 @@ class LoginResponseData(BaseModel):
 class MeResponseData(BaseModel):
     """GET /auth/me 的 data。"""
 
+    id: int
     username: str
     nickname: str | None = None
     email: str | None = None

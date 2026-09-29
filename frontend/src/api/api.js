@@ -43,7 +43,7 @@ export const authAPI = {
 
   /**
    * 获取当前登录用户信息（校验 token、恢复会话）
-   * @returns {Promise} - data: {username, email, role}
+   * @returns {Promise} - data: {id, username, nickname, email, role}
    */
   getMe: () => {
     return axiosInstance.get('/api/auth/me');
@@ -241,6 +241,169 @@ export const staffAPI = {
   }
 };
 
+// 社区（论坛）API —— 契约参照 backend/app/forum.py（模块只声明 prefix="/forum"，
+// /api 由 main.py 全局挂载；本项目前端不改 axios baseURL，路径里手写 /api）。
+// 管理端接口在 admin-frontend/src/api/forum.ts 同步维护。
+export const forumAPI = {
+  /* ── 公开（匿名可调） ── */
+
+  /**
+   * 板块列表（过滤 is_hidden，含系统板块，带文章数）
+   * @returns {Promise} - data: [{id, code, name, color, sortOrder, isSystem, isHidden, articleCount}]
+   */
+  getCategories: () => axiosInstance.get('/api/forum/categories'),
+
+  /**
+   * 热门标签（is_hot 优先 + use_count 倒序）
+   * @param {number} [limit=20]
+   * @returns {Promise} - data: [{id, name, useCount}]
+   */
+  getHotTags: (limit = 20) => axiosInstance.get('/api/forum/tags/hot', { params: { limit } }),
+
+  /** 社区统计 {articleCount, viewCount, tagCount}（实时聚合） */
+  getStats: () => axiosInstance.get('/api/forum/stats'),
+
+  /**
+   * 前台配置（只含 Banner 三项 + defaultSort + searchPlaceholder；打赏预留键不下发）
+   * @returns {Promise} - data: {bannerTitle, bannerSubtitle, bannerImage, defaultSort, searchPlaceholder}
+   */
+  getConfig: () => axiosInstance.get('/api/forum/config'),
+
+  /**
+   * 公开文章列表（只含已发布；置顶帖在任意排序档中都恒排最前）
+   * @param {{page?: number, pageSize?: number, category?: string, sort?: string, q?: string, tag?: string}} params
+   *   category: 缺省或 'home' = 全部；'recommend' = 置顶∪加精聚合
+   *   sort: latest | views | comments
+   * @returns {Promise} - data: {items, page, pageSize, totalPages, total, hasNext, hasPrev}
+   */
+  getArticles: (params = {}) => axiosInstance.get('/api/forum/articles', { params }),
+
+  /**
+   * 文章详情（含 Markdown 源码、作者卡、当前用户 liked/favorited 态）
+   * 注意：浏览量**不在**这里计数，前端挂载后要另调 addView。
+   * 未公开文章对非作者非管理员返回 404。
+   * @param {number} articleId
+   * @returns {Promise} - data: 列表项字段 + {content, contentType, liked, favorited, reviewNote, thumbUrl}
+   */
+  getArticle: (articleId) => axiosInstance.get(`/api/forum/articles/${articleId}`),
+
+  /**
+   * 评论列表（只对顶层评论分页，每条顶层评论内嵌 replies 数组）
+   * @param {number} articleId
+   * @param {{page?: number, pageSize?: number}} [params]
+   * @returns {Promise} - data: {items: [评论树], page, pageSize, total, ...}
+   */
+  getComments: (articleId, params = {}) =>
+    axiosInstance.get(`/api/forum/articles/${articleId}/comments`, { params }),
+
+  /** 作者其他已发布文章（最多 5 条，不含当前文章） */
+  getAuthorPosts: (articleId) =>
+    axiosInstance.get(`/api/forum/articles/${articleId}/author-posts`),
+
+  /**
+   * 浏览量 +1（需登录；重复刷新重复计数为已接受行为，去重属第二阶段）
+   * @param {number} articleId
+   */
+  addView: (articleId) => axiosInstance.post(`/api/forum/articles/${articleId}/view`),
+
+  /* ── 登录用户 ── */
+
+  /**
+   * 发布文章（先审后发，返回的 status 恒为 0 待审核）
+   * @param {{categoryId: number, title: string, content: string, coverUrl?: string, tags?: string[]}} payload
+   * @returns {Promise} - data: {id, status}
+   */
+  createArticle: (payload) => axiosInstance.post('/api/forum/articles', payload),
+
+  /**
+   * 编辑回填（**仅作者本人**；越权/不存在一律 404；管理员下架的帖子返回 400）
+   * @param {number} articleId
+   */
+  getArticleForEdit: (articleId) =>
+    axiosInstance.get(`/api/forum/articles/${articleId}/edit`),
+
+  /**
+   * 作者编辑重提（**仅作者本人**）：状态一律回到 0 待审核，须管理员重新审核。
+   * 浏览 / 点赞 / 收藏 / 评论全部保留。
+   * @param {number} articleId
+   * @param {{categoryId: number, title: string, content: string, coverUrl?: string, tags?: string[]}} payload
+   */
+  updateArticle: (articleId, payload) =>
+    axiosInstance.put(`/api/forum/articles/${articleId}`, payload),
+
+  /**
+   * 作者自删（软删：status=3 且 removeBy='author'，数据保留可恢复）
+   * @param {number} articleId
+   */
+  deleteArticle: (articleId) => axiosInstance.delete(`/api/forum/articles/${articleId}`),
+
+  /**
+   * 我的文章（各状态；含 reviewNote / removeBy / resubmitCount）
+   * @param {{page?: number, pageSize?: number, status?: number}} [params]
+   */
+  getMyArticles: (params = {}) => axiosInstance.get('/api/forum/my/articles', { params }),
+
+  /** 侧边栏用户卡 {postCount, likeCount, followerCount}（followerCount 第一阶段恒 0） */
+  getMyStats: () => axiosInstance.get('/api/forum/my/stats'),
+
+  /**
+   * 指定用户的公开论坛三项数据（详情页作者卡用；匿名可调，不下发任何私有字段）
+   * 与 getMyStats 同一后端实现，口径保证一致。
+   * @param {number} userId
+   */
+  getUserStats: (userId) => axiosInstance.get(`/api/forum/users/${userId}/stats`),
+
+  /**
+   * 文章点赞切换（幂等）
+   * @returns {Promise} - data: {liked, likeCount}
+   */
+  toggleLike: (articleId) => axiosInstance.post(`/api/forum/articles/${articleId}/like`),
+
+  /**
+   * 文章收藏切换（幂等）
+   * @returns {Promise} - data: {favorited, favoriteCount}
+   */
+  toggleFavorite: (articleId) => axiosInstance.post(`/api/forum/articles/${articleId}/favorite`),
+
+  /**
+   * 发表评论 / 发表回复
+   * @param {number} articleId
+   * @param {{content: string, parentId?: number, replyToUserId?: number}} payload
+   *   省略 parentId = 顶层评论；传 parentId = 回复（只指向顶层评论）
+   * @returns {Promise} - data: 新评论（含 author / likeCount / liked=false）
+   */
+  createComment: (articleId, payload) =>
+    axiosInstance.post(`/api/forum/articles/${articleId}/comments`, payload),
+
+  /**
+   * 评论点赞切换（顶层评论与回复通用）
+   * @returns {Promise} - data: {liked, likeCount}
+   */
+  toggleCommentLike: (commentId) => axiosInstance.post(`/api/forum/comments/${commentId}/like`),
+
+  /**
+   * 上传图片（封面 / 正文内嵌图共用；落盘 uploads/forum/YYYYMM/）
+   *
+   * ⚠️ **必须显式声明 multipart/form-data**（AGENTS.md §3 铁律）：
+   * axiosInstance 的实例级默认头是 `Content-Type: application/json`，而 axios 的
+   * transformRequest 看到"JSON 内容类型 + FormData"会把 FormData **序列化成 JSON**，
+   * 后端拿不到 `file` 字段 → `422 Field required`。
+   * 显式给 multipart 后 axios 交给浏览器自行补 boundary（与后台
+   * admin-frontend/src/api/forum.ts 的 uploadImage 同一套写法）。
+   *
+   * @param {File} file
+   * @returns {Promise} - data: {url}
+   */
+  uploadImage: (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return axiosInstance.post('/api/forum/upload/image', fd, {
+      timeout: 30000,
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+  }
+};
+
 // 导出所有API
 export default {
   auth: authAPI,
@@ -248,5 +411,6 @@ export default {
   serverMonitor: serverMonitorAPI,
   factionBeta: factionBetaAPI,
   staff: staffAPI,
-  chat: chatAPI
+  chat: chatAPI,
+  forum: forumAPI
 };
