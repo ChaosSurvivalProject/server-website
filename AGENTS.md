@@ -125,7 +125,7 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 - VitePress `base: '/wiki'` + `cleanUrls: true`。站内链接写相对路径（VitePress 自动加 base）；**外链必须带协议**（`http(s)://`），否则会被加上 `/wiki` 前缀。
 - 内容分三大分区，新增页面放对应分区并在 `.vitepress/config.mts` 侧边栏登记：`for-new/`（萌新指南）、`management/`（服务器管理）、`develop/`（服务器建设）。
-- 站点外链域名（2026-09-25 起）：官网为 `https://xqly.xt91tv.shop:23333`（HTTPS，明文 HTTP 已禁）。wiki 内指向官网的外链（hero「访问官网」按钮、阵营文档申请入口等）统一写此地址，不要再写死 IP。
+- 站点外链域名（2026-10-03 起）：官网为 `https://xqly.xt91tv.shop`（HTTPS 标准 443，明文 HTTP 已禁；旧部署的 `:23333` 非标端口已随换服务器废弃）。wiki 内指向官网的外链（hero「访问官网」按钮、阵营文档申请入口等）统一写此地址，不要再写死 IP。
 
 ## Git 规约
 
@@ -134,34 +134,42 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 ## 部署拓扑（生产）
 
-**生产对外地址：`https://xqly.xt91tv.shop:23333`**（2026-09-25 起启用）。NAT 外部 23333 → 内部 80，nginx 在内部 80 上**直接跑 SSL**——不是 80→443 跳转，443 无监听；明文 HTTP 请求触发 497，经 `error_page 497` 301 到 HTTPS。
+**生产对外地址：`https://xqly.xt91tv.shop`**（2026-10-03 换服务器后启用，标准 443）。旧站是裸机 nginx + NAT 外部 23333 → 内部 80 且 nginx 在 80 上直接跑 SSL，**那套拓扑已废弃**；现在由 1panel 托管，nginx 是 1panel 的 OpenResty 容器（**host 网络**，监听 80/443），证书用 1panel「SSL」里导入的通配符证书下发给站点。
 
-生产 nginx 站点配置：服务器 `/etc/nginx/http.d/chaos-web.conf`，**仓库内留档在 `for-deploy/chaos-web.conf`**（改 conf 前先读 `for-deploy/README.md`）。
+- 仓库路径 `/opt/xqly-website`；后端容器 `announcement-backend`（`docker compose` 定义在仓库 `backend/docker-compose.yml`，**只绑 `127.0.0.1:5000`**——发布到 `0.0.0.0` 会被 Docker 的 iptables 规则绕过 ufw 直接把 API 暴露到公网）。
+- 站点是 1panel「静态网站」，站点根 `/opt/1panel/www/sites/xqly.xt91tv.shop/index`，三个前端产物都投放在这里（`admin/`、`wiki/` 为子目录，与 SPA 的 `index.html` 共存）。
+- **cookie/凭据类文件只在服务器上**：`backend/.env`（已 gitignore，含 API Key）以只读卷挂进容器（`./.env:/app/backend/.env:ro`），wiki 源码以 `../wiki:/app/wiki:ro` 挂入供 `kb_sync.py` 读取（`KB_WIKI_DIR=/app/wiki`）。
+
+**⚠️ 1panel 的「静态网站」模板不生成 `try_files` 兜底、也不生成 `include proxy/*.conf`**，这两样是上线时手工补进 `/opt/1panel/www/conf.d/xqly.xt91tv.shop.conf` 的。**在面板里改动该站点的网站设置会重新生成这个文件，手工补的东西会丢**（症状：深层路由 404 + `/api` 全部 502）——改完必须回服务器核对 `grep -n 'proxy/\*\.conf'`。自定义 location 全部放在 `/opt/1panel/www/sites/xqly.xt91tv.shop/proxy/xqly-app.conf`。
+
+生产 nginx 配置留档：`for-deploy/xqly.xt91tv.shop.conf`（面板生成的 server 块，含那行 `include`）+ `for-deploy/xqly-app.conf`（手工维护的应用 location），**与线上字节一致**，改 conf 前先读 `for-deploy/README.md`。
 
 同域单入口，Nginx 统一分发：
 
-- `/` → `frontend` 构建产物（SPA 使用 history 路由，**`try_files $uri $uri/ /index.html;` 已配置并生效**，可直接在 `for-deploy/chaos-web.conf` 的兜底 `location /` 核对；`/announcements` 等深层路由刷新、扫码直达 `/staff/xxx` 都依赖它，改动时勿删）
-- `/api` → 反代到本机 FastAPI（:5000，后端所有接口统一挂 `/api` 前缀）；其中 `/api/kb/` 的反代必须为 SSE 追加 `proxy_buffering off` + `proxy_http_version 1.1` + `proxy_set_header Connection ''` + `gzip off`（与后端 `X-Accel-Buffering: no` 两个都要，否则流式变一次性返回）
+- `/` → `frontend` 构建产物（SPA 使用 history 路由，**`try_files $uri $uri/ /index.html;` 由 `xqly-app.conf` 提供**；`/announcements` 等深层路由刷新、扫码直达 `/staff/xxx`、`/team`、`/forum/...` 都依赖它，改动时勿删）
+- `/api` → 反代到本机 FastAPI（`127.0.0.1:5000`，后端所有接口统一挂 `/api` 前缀）；其中 `/api/kb/` 的反代必须为 SSE 追加 `proxy_buffering off` + `proxy_http_version 1.1` + `proxy_set_header Connection ''` + `gzip off`（与后端 `X-Accel-Buffering: no` 两个都要，否则流式变一次性返回）
 - 兼容旧路径（勿删）：`/health` → 反代 FastAPI（外部监控/旧部署门禁在用）；`/announcement/uploads/` → 反代 FastAPI（历史公告正文内嵌的旧图片 URL，存量数据兼容）
-- `/wiki/` → `wiki` 构建产物（VitePress 已按 `/wiki` base 打包）
+- `/wiki/` → `wiki` 构建产物（VitePress 已按 `/wiki` base 打包，cleanUrls 靠 `try_files $uri $uri.html $uri/ =404`）
 - `/admin/` → `admin-frontend` 构建产物（pure-admin-thin，已按 `/admin/` base 打包）
 
-**新增 `location` 前缀时不得与前端页面路由同名**：`location /staff` 会把 SPA 的 `/staff/:code` 一并反代走，页面再也进不去，而 dev 直连后端看不出问题。统一 `/api` 之后新模块已不需要单独加 `location`，正常不会再触发；真要加，前缀与页面路由错开（如曾考虑过的复数前缀）。`chaos-web.conf` 里 `location = /faction-beta { try_files /index.html =404; }` 就是历史上处理这类同名的补丁。
+**新增 `location` 前缀时不得与前端页面路由同名**：`location /staff` 会把 SPA 的 `/staff/:code` 一并反代走，页面再也进不去，而 dev 直连后端看不出问题。统一 `/api` 之后新模块已不需要单独加 `location`，正常不会再触发；真要加，前缀与页面路由错开（如曾考虑过的复数前缀）。旧裸机 conf 里 `location = /faction-beta { try_files /index.html =404; }` 就是历史上处理这类同名的补丁，新版 `xqly-app.conf` 已不再需要它。
 
-后端 Docker 部署时注意：`docker-compose.yml` 位于 `backend/` 下，但**构建上下文是项目根目录**（`context: ..`），因为 Dockerfile 里 `COPY backend/` 依赖该路径——移动文件时两者要一起改。
+**前端产物在本机构建后投放，服务器上不跑 Vite**：生产机内存只剩 ~1GB 且与 MySQL/Redis/halo/napcat 等同机，Vite 构建峰值会 OOM 连坐。构建命令与投放位置见 `for-deploy/README.md`「前端产物从哪来」。
+
+后端 Docker 部署注意：`docker-compose.yml` 位于 `backend/` 下，但**构建上下文是项目根目录**（`context: ..`），Dockerfile 里必须写 `COPY backend/requirements.txt .`（写 `requirements.txt` 会 `not found`，2026-10-03 修过）；根目录 `.dockerignore` 负责把 `node_modules`/`dist`/`.git` 挡在 context 之外。**任何 `docker-compose.yml` / `Dockerfile` 改动都要 `docker compose up -d --build` 重新构建**。
 
 ### 生产定时任务（root crontab）
 
-生产**只有 crontab 一种定时机制**（无 celery / APScheduler / systemd timer），知识库与名片到期两条链路都挂在这里：
+生产**只有 crontab 一种定时机制**（无 celery / APScheduler / systemd timer），知识库与名片到期两条链路都通过 `docker exec` 在容器内执行：
 
-- `0 3 * * *` → `cd /opt/chaos-web-backend && /opt/chaos-web-backend/venv/bin/python kb_sync.py --incremental >> /var/log/kb_sync.log 2>&1`（wiki 改动按 MD5 入库，自增 `index_version`；**2026-09-26 补挂，此前上线时遗漏**）
-- `0 4 * * *` → `cd /opt/chaos-web-backend && venv/bin/python staff_expire.py >> /var/log/staff_expire.log 2>&1`（**漏挂不影响核验正确性**，`valid_to` 权威 + 查询时懒更新兜底，只影响台账刷新时效）
+- `0 3 * * *` → `/usr/bin/docker exec announcement-backend python backend/kb_sync.py --incremental >> /var/log/kb_sync.log 2>&1`（wiki 改动按 MD5 入库，自增 `index_version`，后端免重启）
+- `0 4 * * *` → `/usr/bin/docker exec announcement-backend python backend/staff_expire.py >> /var/log/staff_expire.log 2>&1`（**漏挂不影响核验正确性**，`valid_to` 权威 + 查询时懒更新兜底，只影响台账刷新时效）
 
-改 crontab 前先 `crontab -l > /root/crontab.bak-YYYYMMDD` 备份，再 `crontab 新文件` 安装（**勿直接 sed 改 `/var/spool/cron/crontabs/root`**，务必走 `crontab` 命令）。两条任务**都是 0 变更空跑安全**（kb_sync 无变更不动 `index_version`），漏跑不会写坏数据——但漏挂 `kb_sync` 会导致 wiki 新页面不进知识库，客服对未同步内容直接答不上来。**完整条目快照留档在 `for-deploy/crontab`（与 `chaos-web.conf` 同性质，md5 可与线上比对），改法与验证命令见 `for-deploy/README.md`「改定时任务」节**。
+条目里用 `/usr/bin/docker` 绝对路径（cron 用 `/bin/sh` 且不加载交互式环境，PATH 里未必有 docker）。改 crontab 前先 `crontab -l > /root/crontab.bak-YYYYMMDD` 备份，再 `crontab <文件>` 安装（**勿直接改 `/var/spool/cron/crontabs/root`**，务必走 `crontab` 命令）。两条任务**都是 0 变更空跑安全**（kb_sync 无变更不动 `index_version`），漏跑不会写坏数据——但漏挂 `kb_sync` 会导致 wiki 新页面不进知识库，客服对未同步内容直接答不上来。**完整条目快照留档在 `for-deploy/crontab`，改法与验证命令见 `for-deploy/README.md`「改定时任务」节**。
 
 ## for-deploy 留档目录
 
-- `for-deploy/` 存放生产实际生效、但不属于任何子项目构建产物的配置留档（当前两个：`chaos-web.conf` = nginx 站点配置快照、`crontab` = root crontab 快照；均为**与生产字节一致**的快照，可 `md5sum` 比对，改完后须回拷留档；同步方法与改前注意事项见该目录 `README.md`）。
+- `for-deploy/` 存放生产实际生效、但不属于任何子项目构建产物的配置留档（当前三个：`xqly.xt91tv.shop.conf` = 1panel 站点配置快照、`xqly-app.conf` = 应用 location 快照、`crontab` = root crontab 快照；均为**与生产字节一致**的快照，可 `md5sum` 比对，改完后须回拷留档；同步方法与改前注意事项见该目录 `README.md`）。
 - **该目录随仓库提交到公开仓库，禁止放任何敏感信息**：SSL 证书/私钥、API Key、密码/token/JWT secret、生产数据库数据等一律不进；普通配置里如无必要也不要写外部 IP/端口。敏感文件（证书、`backend/.env`、生产库）只存在于服务器对应路径，不落仓库。
 
 ## 已知遗留 / 注意事项
@@ -169,5 +177,5 @@ pnpm build                # 产物 dist/，部署到 /admin/
 - 后端 CORS 当前 `allow_origins=["*"]`（开发便利），生产收紧时需与同源部署方案一起评估。
 - `backend/app/monitor.py` 中 `server-info` 的 `start_time` / `end_time` / `time_period` 参数是预留参数，当前实现未使用，不要误删（前端会传）。
 - 智能客服（P0）遗留项见 `TODO.md`：真实玩家在线人数（mcstatus）、限流多 worker 共享存储、知识库自动定时任务（当前用 crontab）、检索效果看板等。
-- **HTTPS 证书 2026-12-24 到期**（Let's Encrypt 通配符 `*.xt91tv.shop`，90 天一签）：到期未换证书 = **全站不可访问**。续期后替换 `/etc/nginx/ssl/` 下证书与私钥并 `nginx -s reload`，同时更新 `for-deploy/chaos-web.conf` 头部注释里的到期日期。
-- 生产 Nginx 的 `/api/kb/` SSE 反代已按四件套配置（2026-09-21 起上线，2026-09-25 随 `/api` 前缀改造迁移）；生产改 nginx 时勿丢该 location。
+- **HTTPS 证书 2026-12-24 到期**（Let's Encrypt 通配符 `*.xt91tv.shop`，90 天一签）：到期未换证书 = **全站不可访问**。现在证书由 1panel「SSL」管理并下发给站点 `/opt/1panel/www/sites/xqly.xt91tv.shop/ssl/`，续期后在面板里替换该证书再重载 OpenResty 即可；**旧的裸机路径 `/etc/nginx/ssl/` 已不存在**。
+- 生产 Nginx 的 `/api/kb/` SSE 反代已按四件套配置，现位于 `for-deploy/xqly-app.conf`（1panel 站点通过 `include .../proxy/*.conf` 引入）；生产改 nginx 时勿丢该 location。

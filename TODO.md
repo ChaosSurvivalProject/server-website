@@ -2,6 +2,22 @@
 
 > 已完成事项见各功能的方案文档与 README；本文件只记录**已知遗留与后续计划**。
 
+## 换服务器重新部署（✅ 2026-10-03 完成：1panel + Docker 拓扑）
+
+> 旧服务商跑路、原服务器不可用且**无历史数据备份**（本次不恢复历史数据）。新机改用 1panel 托管 + 后端 Docker，对外地址从 `https://xqly.xt91tv.shop:23333` 变为 **`https://xqly.xt91tv.shop`（标准 443）**。拓扑、留档与坑见 `AGENTS.md`「部署拓扑（生产）」与 `for-deploy/README.md`。
+
+- [x] DNS A 记录指向新机并实测（公共解析 `xqly.xt91tv.shop` 一致）
+- [x] 1panel 建「静态网站」站点 + 绑定通配符证书 `*.xt91tv.shop`（Let's Encrypt，**2026-12-24 到期**）
+- [x] 后端 Docker：修 `Dockerfile`（`COPY backend/requirements.txt`，原写法构建必失败）、新增根 `.dockerignore`、`docker-compose.yml` 挂 `.env` 与 wiki 源码并把 5000 **只绑回环**（发布 `0.0.0.0` 会被 Docker iptables 绕过 ufw 直曝公网）→ `docker compose up -d --build`
+- [x] `backend/.env` 落服务器（`STAFF_PUBLIC_BASE_URL=https://xqly.xt91tv.shop`、`KB_WIKI_DIR=/app/wiki`），600 权限、不入库
+- [x] 前端三套产物**在本机构建后投放**（服务器只剩 ~1GB 内存且与 MySQL/Redis/halo/napcat 同机，跑 Vite 会 OOM 连坐）
+- [x] 补 1panel「静态网站」模板缺的两样：SPA 兜底 `try_files $uri $uri/ /index.html` 与 `include .../proxy/*.conf`（内容见 `for-deploy/xqly-app.conf`）
+- [x] crontab 换 `docker exec` 形式（03:00 `kb_sync` / 04:00 `staff_expire`），实跑 `--check` 与 `--dry-run` 通过
+- [x] 知识库首次全量入库：**15 篇文档 / 95 条切片**
+- [x] 全链路实测：`/`、`/announcements`、`/forum`、`/staff/{code}`、`/team`、`/admin/`、`/wiki/` 及 wiki cleanUrls 深层 → 200（深层路由返回 SPA `index.html`，扫码直达可用）；`/api/*` 经 nginx → 200；管理员登录 → JWT 有效且 `/api/auth/me` 正常；SSE 客服 44 帧 + 源码命中 + `[DONE]` 收尾；未登录 `/api/kb/chat` → 401
+- [ ] **待人工**：后台管理员初始密码在服务器 `backend/data/admin_initial_password.txt`——首次登录后**改密并删除该文件**
+- [ ] **待人工**：确认「历史数据不恢复」符合预期（公告/论坛/员工名片/玩家账号现均为空库，论坛系统板块已由后端自动建好）
+
 ## 智能客服 P0 上线前清单（✅ 2026-09-21 已上线）
 
 - [x] 服务器填写 `backend/.env`（按 `docs/智能客服/智能客服P0落地方案.md` §8：对话模型 + Embedding 的 Base URL / API Key / 模型 / 维度），确认未被提交（已 gitignore）
