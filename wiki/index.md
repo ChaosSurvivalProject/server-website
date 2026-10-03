@@ -18,8 +18,8 @@ hero:
       link: /for-new/factions/
     - theme: alt
       text: 访问官网
-      # 外链（带协议）不会被 VitePress 加 base 前缀；2026-09-25 起官网为 HTTPS xqly.xt91tv.shop:23333
-      link: https://xqly.xt91tv.shop:23333/
+      # 外链（带协议）不会被 VitePress 加 base 前缀；2026-10-03 起官网为 HTTPS xqly.xt91tv.shop（标准 443）
+      link: https://xqly.xt91tv.shop/
 
 features:
   - title: 乱世生存 · 阵营对抗
@@ -39,7 +39,7 @@ features:
 ::: tip 📢服务器更新公告 2026.09.14
 服务器核心为 **Purpur 1.21.11**，通过 ViaVersion / ViaBackwards 支持多版本 Java 版客户端，并通过 Geyser 支持基岩版互通。<br>
 全新「**阵营对战**」玩法设定定稿：**黎明誓约 vs 暮夜同盟**，两大阵营争夺星穹界的未来！<br>
-**内测资格申请**已在[服务器官网](https://xqly.xt91tv.shop:23333/faction-beta)开放，欢迎前往申请；玩法介绍见[阵营玩法总览](/for-new/factions/)。
+**内测资格申请**已在[服务器官网](https://xqly.xt91tv.shop/faction-beta)开放，欢迎前往申请；玩法介绍见[阵营玩法总览](/for-new/factions/)。
 :::
 
 <style>

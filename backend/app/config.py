@@ -88,7 +88,7 @@ class StaffConfig:
 
 STAFF = StaffConfig(
     public_base_url=_env_str(
-        "STAFF_PUBLIC_BASE_URL", "https://xqly.xt91tv.shop:23333"
+        "STAFF_PUBLIC_BASE_URL", "https://xqly.xt91tv.shop"
     ).rstrip("/"),
 )
 
