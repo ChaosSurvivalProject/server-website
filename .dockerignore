@@ -1,0 +1,12 @@
+# 构建上下文是项目根目录（backend/docker-compose.yml 的 context: ..），
+# 用本文件把与后端镜像无关的大目录挡在 context 之外（node_modules/dist/.git 不参与构建）
+.git
+.gitignore
+**/node_modules
+**/dist
+wiki/.vitepress/cache
+wiki/.vitepress/dist
+backend/data
+docs
+.vscode
+.idea
