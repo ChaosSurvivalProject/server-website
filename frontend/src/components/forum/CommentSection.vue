@@ -168,82 +168,12 @@
 </template>
 
 <script>
-/**
- * 内联回复输入框。
- * 单独成组件是因为它在两个层级都要出现（顶层评论下、回复下），
- * 复制两份必然漂移。
- */
-import { defineComponent } from "vue";
 import UserBadge from "./UserBadge.vue";
 import Pager from "./Pager.vue";
+import ReplyForm from "./ReplyForm.vue";
 import { forumAPI } from "../../api/api.js";
 import { authState } from "../../utils/auth.js";
 import { formatRelativeTime } from "../../utils/forumFormat.js";
-
-const ReplyForm = defineComponent({
-  name: "ForumReplyForm",
-  components: { UserBadge },
-  props: {
-    /** 被回复的评论（顶层或回复） */
-    target: { type: Object, required: true },
-    /** 当前用户头像 URL（无则显示首字） */
-    avatar: { type: String, default: null },
-    myInitial: { type: String, default: "?" },
-    submitting: { type: Boolean, default: false },
-  },
-  emits: ["cancel", "submit"],
-  data() {
-    return { text: "" };
-  },
-  computed: {
-    canSubmit() {
-      return this.text.trim().length >= 1 && this.text.trim().length <= 500;
-    },
-  },
-  methods: {
-    submit() {
-      if (!this.canSubmit || this.submitting) return;
-      this.$emit("submit", this.text.trim());
-    },
-  },
-  template: `
-    <div class="cmt-form">
-      <span class="fx-avatar fx-av-28" :class="{ 'fx-avatar-guest': !avatar }">
-        <img v-if="avatar" :src="avatar" alt="" />
-        <template v-else>{{ myInitial }}</template>
-      </span>
-      <div class="cmt-form-main">
-        <div class="cmt-form-tip">
-          <span>
-            回复
-            <b class="reply-to">@{{ target.author?.name }}</b>
-            <span v-if="target.content" class="cmt-form-quote">{{ target.content }}</span>
-          </span>
-          <button type="button" class="cmt-act" @click="$emit('cancel')">取消</button>
-        </div>
-        <textarea
-          v-model="text"
-          class="fx-input cmt-form-textarea"
-          placeholder="友善地回复..."
-          maxlength="500"
-          @keydown.ctrl.enter="submit"
-          @keydown.meta.enter="submit"
-        ></textarea>
-        <div class="cmt-form-foot">
-          <span class="cmt-hint">{{ text.length }}/500</span>
-          <button
-            type="button"
-            class="fx-btn fx-btn-primary fx-btn-sm"
-            :disabled="!canSubmit || submitting"
-            @click="submit"
-          >
-            {{ submitting ? "发表中…" : "发表回复" }}
-          </button>
-        </div>
-      </div>
-    </div>
-  `,
-});
 
 export default {
   name: "ForumCommentSection",
@@ -452,10 +382,6 @@ export default {
   gap: 10px;
   margin-top: 9px;
 }
-.cmt-hint {
-  font-size: 12px;
-  color: var(--fx-text-3);
-}
 .cmt-count {
   margin-left: 6px;
   font-variant-numeric: tabular-nums;
@@ -501,39 +427,11 @@ export default {
   word-break: break-word;
   line-height: 1.7;
 }
-.reply-to {
-  color: var(--fx-brand);
-  font-size: 12.5px;
-  font-weight: 600;
-  margin-right: 4px;
-}
 .cmt-acts {
   display: flex;
   align-items: center;
   gap: 14px;
   margin-top: 7px;
-}
-.cmt-act {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  font-family: inherit;
-  font-size: 12.5px;
-  color: var(--fx-text-3);
-  background: none;
-  border: none;
-  padding: 2px 7px;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: 0.14s;
-}
-.cmt-act:hover {
-  background: var(--fx-bg-soft);
-  color: var(--fx-text-2);
-}
-.cmt-act.on {
-  color: #dc2626;
-  font-weight: 600;
 }
 .reply-list {
   margin-top: 6px;
@@ -560,8 +458,13 @@ export default {
 </style>
 
 <style>
-/* 内联回复框的样式必须放非 scoped：ReplyForm 是 render-function 组件，
-   它的模板节点不经过父组件模板编译，拿不到父组件的 data-v 属性。 */
+/*
+  以下是**内联回复框（ReplyForm.vue）与评论列表共用**的样式，必须放非 scoped 块：
+  ReplyForm 是独立子组件，Vue 只会给它**根节点**补上父组件的 data-v 属性，
+  它内部节点拿不到，写在父组件 scoped 块里对它一律不生效。
+  `.cmt-act` / `.cmt-hint` / `.reply-to` 在列表与回复框里都要用，只在此处定义一份，
+  避免两处定义日后漂移。
+*/
 .cmt-form {
   display: flex;
   gap: 10px;
@@ -584,6 +487,13 @@ export default {
   color: var(--fx-text-2);
   margin-bottom: 7px;
 }
+/* 「回复 @某人」中的 @某人（评论列表里也用同一个类） */
+.reply-to {
+  color: var(--fx-brand);
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-right: 4px;
+}
 .cmt-form-quote {
   display: inline-block;
   max-width: 260px;
@@ -605,5 +515,33 @@ export default {
   justify-content: flex-end;
   gap: 10px;
   margin-top: 8px;
+}
+/* 字数提示（顶部输入区与回复框共用） */
+.cmt-hint {
+  font-size: 12px;
+  color: var(--fx-text-3);
+}
+/* 赞 / 回复 / 取消 这类图标文字的裸按钮 */
+.cmt-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--fx-text-3);
+  background: none;
+  border: none;
+  padding: 2px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.14s;
+}
+.cmt-act:hover {
+  background: var(--fx-bg-soft);
+  color: var(--fx-text-2);
+}
+.cmt-act.on {
+  color: #dc2626;
+  font-weight: 600;
 }
 </style>
