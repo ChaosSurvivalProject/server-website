@@ -60,13 +60,15 @@
 
 > 员工名片 P0 的**有意不做项**（勿当缺陷"修掉"）：应用层限流、查询日志审计、服务端渲染、中文字体。P0 的过期状态由 `valid_to` 判定并把 `active` 回写为 `revoked`（`revoked_reason='expired'`，仅系统写入），`backend/staff_expire.py` + crontab 每日兜底——**crontab 漏挂不影响核验正确性**（判定权威是 `valid_to`）。
 
-## 社区（论坛）模块第一阶段上线清单
+## 社区（论坛）模块第一阶段上线清单（✅ 2026-10-05 全部完成）
 
-- [ ] 生产数据库跑 `create_all` 建 9 张论坛表 + `migrate_user_mute_column()` 补 `users.mute_until`（启动时自动执行，验证 `backend/data/announcements.db` 中 `forum_*` 表齐全）
-- [ ] 确认预置板块与配置键已种子（`forum.ensure_seeded()`，管理员改过的值不会被覆盖）
-- [ ] Nginx **无需任何改动**（论坛图片复用 `/api/announcement/uploads/` 挂载点；`/forum` 是前端 history 路由，已被 `location /` 的 `try_files ... /index.html` 覆盖）——但要**实测** `/forum/post/1` 直接访问与刷新
-- [ ] 前后端构建产物上线（`frontend` → `/`，`admin-frontend` → `/admin/`）
-- [ ] 人工验收走一遍 PRD §10.1–§10.6（重点：未登录引导不报 401 弹窗、≤768px 无横向滚动、评论 `<script>` 按纯文本展示）
+- [x] 生产数据库跑 `create_all` 建 9 张论坛表 + `migrate_user_mute_column()` 补 `users.mute_until`（启动时自动执行，验证 `backend/data/announcements.db` 中 `forum_*` 表齐全）
+- [x] 确认预置板块与配置键已种子（`forum.ensure_seeded()`，管理员改过的值不会被覆盖）
+- [x] Nginx **无需任何改动**（论坛图片复用 `/api/announcement/uploads/` 挂载点；`/forum` 是前端 history 路由，已被 `location /` 的 `try_files ... /index.html` 覆盖）——但要**实测** `/forum/post/1` 直接访问与刷新
+- [x] 前后端构建产物上线（`frontend` → `/`，`admin-frontend` → `/admin/`）
+- [x] 人工验收走一遍 PRD §10.1–§10.6（重点：未登录引导不报 401 弹窗、≤768px 无横向滚动、评论 `<script>` 按纯文本展示）
+
+> 论坛第一阶段上线清单 **5 项全部完成**（2026-10-05 收口），无遗留；后续工作全部在下方第二阶段 / 第三阶段候选里。
 
 ## 社区（论坛）第二阶段候选（按 `docs/论坛/论坛模块第一阶段PRD.md` §12.1 顺延）
 
@@ -99,4 +101,4 @@
 ## 其他遗留
 
 - [ ] 后端 CORS `allow_origins=["*"]` 生产收紧评估（同源部署下可直接收窄）
-- [ ] 记忆项：HTTPS 证书 2026-12-24 到期，续签后需替换 `/etc/nginx/ssl/` 两文件并 reload（详见 `AGENTS.md`「部署拓扑」）
+- [ ] 记忆项：HTTPS 证书 **2026-12-24 到期**（Let's Encrypt 通配符 `*.xt91tv.shop`，90 天一签，**到期未换 = 全站不可访问**）。证书现由 1panel「SSL」管理并下发给站点（`/opt/1panel/www/sites/xqly.xt91tv.shop/ssl/`），续期后在面板里替换该证书再重载 OpenResty 即可——**旧的裸机路径 `/etc/nginx/ssl/` 与 `nginx -s reload` 已随换服务器废弃**（详见 `AGENTS.md`「部署拓扑（生产）」与「已知遗留 / 注意事项」）
