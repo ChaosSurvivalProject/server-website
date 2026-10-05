@@ -32,7 +32,10 @@ Endpoints (matching the existing Vue frontend):
   GET  /staff/public/{code}        工作人员名片验证页数据（匿名，四态白名单）
   GET  /staff/public/team          管理组总览（匿名，仅有效期内公开字段）
   GET/POST/PUT/POST... /staff/admin/*  工作人员台账（分页/统计/新增/编辑/重生成码/撤销/恢复/续期/二维码/导出，需管理员）
-  GET/POST/PUT/DELETE /forum/*     社区论坛（公开 / 登录用户 / 管理员三组接口，见 app/forum.py 模块头）
+  GET/POST/PUT/DELETE /forum/*     社区论坛（公开 / 登录用户 / 管理员三组接口，见 app/forum.py 模块头；
+
+                                   帖子删除进回收站 status=4 + /restore + /purge、评论作者物理自删，
+                                   超期清理 CLI backend/forum_purge.py，见 docs/论坛/论坛删除与回收站PRD.md）
 """
 import logging
 import os
@@ -158,6 +161,16 @@ async def on_startup():
                 logger.info("员工名片启动到期检查：回写 %s 条为 revoked('expired')", changed)
     except Exception as e:  # 不阻断启动
         logger.warning("员工名片启动到期检查失败: %s", e)
+    # 社区回收站超期清理（**启动兜底一次**，定时主路径是 crontab 每日 05:00 跑
+    # backend/forum_purge.py；漏挂 crontab 不影响正确性——deleted_at 是唯一权威，
+    # 恢复接口自校验 + 列表自过滤，超期帖用户看不到也恢复不了，数据只多留几天）
+    try:
+        async with async_session_maker() as session:
+            purged, ids = await forum_module.purge_due(session)
+            if purged:
+                logger.info("论坛回收站启动兜底清理：物理清除 %s 条超 30 天帖子（ids=%s）", purged, ids)
+    except Exception as e:  # 不阻断启动
+        logger.warning("论坛回收站启动兜底清理失败: %s", e)
 
 
 # ── 公告分页查询 ──────────────────────────────────────────────

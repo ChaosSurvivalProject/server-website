@@ -121,6 +121,7 @@ class User(Base):
 _user_extra_migrated = False
 _announcement_content_migrated = False
 _user_mute_migrated = False
+_forum_recycle_migrated = False
 
 
 def migrate_user_extra_columns() -> None:
@@ -215,6 +216,82 @@ def migrate_user_mute_column() -> None:
         _user_mute_migrated = True
     except Exception as e:
         logger.warning("users 表 mute_until 列迁移检查失败: %s", e)
+
+
+def migrate_forum_article_recycle_columns() -> None:
+    """forum_articles 补回收站三列（帖子删除回收站需求，见
+    docs/论坛/论坛删除与回收站PRD.md §1.2；幂等，新库 create_all 已含，直接跳过）。
+
+    三列语义（**缺一不可**）：
+      deleted_at                 进回收站的北京时间 ISO；'' = 不在回收站。
+                                 **30 天保留期判定唯一权威**（恢复接口自校验 +
+                                 回收站列表过滤 + forum_purge.py 清理共用）。
+      status_before_delete       恢复目标状态，只可能是 0 / 1 / 2（删前就不是已发布
+                                 的帖子恢复后仍走对应状态，不重审）。
+      publish_time_before_delete 删前的 publish_time，恢复时回填——否则作者
+                                 "删除→恢复"两次点击就能零成本刷排行榜。
+
+    存量回填（同一次迁移内幂等）：社区 2026-10-05 刚上线，历史作者自删帖
+    （status=3 AND remove_by='author'，第一阶段旧语义）刷成 status=4 回收站。
+    该 UPDATE 会让"30 天窗口"从**原有 update_time** 起算，即历史上早就自删掉的
+    帖子可能在首次清理时被直接物理删除——故实施时先数一遍行数再决定是否保留。
+    存量软删评论（forum_comments.status=2）**保留不动**（后台软删是有意保留的
+    治理痕迹，见该 PRD §0.4-J）。
+    """
+    global _forum_recycle_migrated
+    if _forum_recycle_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [row[1] for row in con.execute("PRAGMA table_info('forum_articles')")]
+            if "deleted_at" not in col_names:
+                con.execute(
+                    "ALTER TABLE forum_articles ADD COLUMN deleted_at VARCHAR(30) NOT NULL DEFAULT ''"
+                )
+                con.commit()
+                logger.info("已为 forum_articles 表补充 deleted_at 列（回收站进站时间，空=不在回收站）")
+            if "status_before_delete" not in col_names:
+                con.execute(
+                    "ALTER TABLE forum_articles ADD COLUMN status_before_delete INTEGER NOT NULL DEFAULT 0"
+                )
+                con.commit()
+                logger.info("已为 forum_articles 表补充 status_before_delete 列（恢复目标状态）")
+            if "publish_time_before_delete" not in col_names:
+                con.execute(
+                    "ALTER TABLE forum_articles ADD COLUMN publish_time_before_delete "
+                    "VARCHAR(30) NOT NULL DEFAULT ''"
+                )
+                con.commit()
+                logger.info("已为 forum_articles 表补充 publish_time_before_delete 列（防刷榜回填）")
+
+            # 存量旧语义回填：status=3 AND remove_by='author' → status=4 回收站。
+            # 刷 update_time 作为 deleted_at（存量无法还原原发布时间，恢复时兜底当前时间）。
+            cur = con.execute(
+                "SELECT count(*) FROM forum_articles WHERE status = 3 AND remove_by = 'author'"
+            )
+            legacy = cur.fetchone()[0]
+            if legacy:
+                con.execute(
+                    "UPDATE forum_articles "
+                    "   SET status = 4, "
+                    "       status_before_delete = 1, "
+                    "       deleted_at = update_time, "
+                    "       publish_time_before_delete = '' "
+                    " WHERE status = 3 AND remove_by = 'author'"
+                )
+                con.commit()
+                logger.info(
+                    "存量作者自删帖已迁移到回收站（status=4）：%s 条，保留期自原 update_time 起算", legacy
+                )
+        finally:
+            con.close()
+        _forum_recycle_migrated = True
+    except Exception as e:
+        # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
+        logger.warning("forum_articles 表回收站三列迁移检查失败: %s", e)
 
 
 class FactionBetaApplication(Base):
@@ -348,12 +425,15 @@ class ServerRecord(Base):
 
 
 # ── 社区（论坛）模块 ──────────────────────────────────────────────
-# 实施依据：docs/论坛/论坛模块第一阶段PRD.md §4。9 张新表全部由
-# Base.metadata.create_all 自动建（无 migrate_* 补列，唯一存量表补列是 users.mute_until）。
+# 实施依据：docs/论坛/论坛模块第一阶段PRD.md §4 + docs/论坛/论坛删除与回收站PRD.md。
 # 布尔语义一律 int（项目规约 §9-5）；时间列一律 String(30) 北京时间 ISO 字符串。
 #
 # 冗余计数（like_count / view_count / comment_count / favorite_count / use_count）
-# 的唯一维护口径见 PRD §8-D6 / §8-D8——只挂在"文章是否处于 status=1"这一个转移点上。
+# 的唯一维护口径见第一阶段 PRD §8-D6 / §8-D8——只挂在"文章是否处于 status=1"这一个
+# 转移点上（作者删除/恢复进回收站同样走 _set_article_status()，不另开扣减口子）。
+#
+# 存量表补列共四处：users.status / users.nickname / users.mute_until / announcements.content_type
+# / forum_articles 回收站三列（后者见 migrate_forum_article_recycle_columns）。
 
 
 class ForumCategory(Base):
@@ -396,11 +476,21 @@ class ForumTag(Base):
 class ForumArticle(Base):
     """文章（先审后发：投稿 status=0，管理员通过后 1）。
 
-    状态机（PRD §4.3 完整版）：
-      0 待审核 → 1 已发布 / 2 已驳回；1 → 3 已下架；3 → 1 恢复；
-      任意可编辑状态经作者编辑保存 → 0 待审核（resubmit_count +1，互动数据全部保留）。
+    状态机（PRD §4.3 + 论坛删除与回收站PRD.md §1.1）：
+      0 待审核 → 1 已发布 / 2 已驳回；1 → 3 已下架（**仅管理员**）→ 1 恢复；
+      0 / 1 / 2 ──(作者删除)──▶ 4 回收站；4 ──(作者或管理员恢复)──▶ status_before_delete；
+      4 ──(作者彻底删除 / 管理员硬删 / 超期清理)──▶ 物理删除（级联，不可恢复）。
+      任意可编辑状态（0/1/2/3 且 remove_by='author'）经作者编辑保存 → 0 待审核
+      （resubmit_count +1，互动数据全部保留；**4 回收站必须先恢复才可编辑**）。
     remove_by 决定"谁把文章移出公开"，进而决定作者能否编辑重提：
-      '' 未移除 / 'author' 作者自删（可编辑重提） / 'admin' 管理员下架（不可编辑重提）。
+      '' 未移除 / 'author' 作者自删（已进回收站 status=4） / 'admin' 管理员下架。
+    **status=3 从此只有"管理员下架"这一个来源**，作者删除不再产生 3。
+
+    回收站三列（docs/论坛/论坛删除与回收站PRD.md §1.2；幂次迁移见
+    migrate_forum_article_recycle_columns）：
+      deleted_at                 进回收站时间，**30 天保留期唯一权威**，'' = 不在回收站；
+      status_before_delete       恢复目标（0/1/2）；
+      publish_time_before_delete 删前发布时间，恢复时回填（防"删除→恢复"刷榜）。
     """
 
     __tablename__ = "forum_articles"
@@ -413,7 +503,7 @@ class ForumArticle(Base):
     summary: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # 后端从正文截取，不让用户填
     cover_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # 封面相对 URL
     author_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
-    status: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0待审核 1已发布 2已驳回 3已下架
+    status: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0待审核 1已发布 2已驳回 3已下架(管理员) 4回收站
     review_note: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # 驳回理由 / 下架原因
     is_top: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 1=置顶
     is_featured: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 1=精华
@@ -426,6 +516,12 @@ class ForumArticle(Base):
     resubmit_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 编辑重提次数
     create_time: Mapped[str] = mapped_column(String(30), nullable=False)
     update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    # ── 回收站（status=4 专用）──
+    deleted_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")  # 进回收站时间，空=不在回收站
+    status_before_delete: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 恢复目标 0/1/2
+    publish_time_before_delete: Mapped[str] = mapped_column(
+        String(30), nullable=False, default=""
+    )  # 删前 publish_time，恢复时回填（防刷榜）
 
 
 class ForumComment(Base):
@@ -547,3 +643,4 @@ async def init_db():
     migrate_user_extra_columns()
     migrate_announcement_content_columns()
     migrate_user_mute_column()
+    migrate_forum_article_recycle_columns()

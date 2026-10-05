@@ -25,7 +25,7 @@ from app.main import app  # noqa: E402
 from app.auth.security import hash_password  # noqa: E402
 from app.crud import _TZ  # noqa: E402
 from datetime import datetime, timedelta  # noqa: E402
-from sqlalchemy import select  # noqa: E402
+from sqlalchemy import select, update  # noqa: E402
 
 FAILS: list[str] = []
 
@@ -316,19 +316,140 @@ def main() -> int:
         check("恢复后 removeBy 清空",
               client.get(f"/api/forum/articles/{aid}", headers=H(alice)).json()["data"]["removeBy"] == "")
 
-        print("\n[13] 作者自删 → 可编辑重提")
+        print("\n[13] 作者删除 → 进回收站（status=4，非物理删）")
+        pub_before = client.get(f"/api/forum/articles/{aid}", headers=H(alice)).json()["data"]
         r = client.delete(f"/api/forum/articles/{aid}", headers=H(alice))
-        check("自删成功", r.status_code == 200, r.text)
-        check("自删后公开不可见", client.get(f"/api/forum/articles/{aid}").status_code == 404)
-        ed4 = client.get(f"/api/forum/articles/{aid}/edit", headers=H(alice))
-        check("作者自删的可编辑重提", ed4.status_code == 200, str(ed4.status_code))
-        client.put(f"/api/forum/articles/{aid}", headers=H(alice), json={
-            "categoryId": cat_id, "title": "重提的帖子", "content": "自删之后又重新提交的内容。"})
-        check("重提后回到待审核",
-              client.get(f"/api/forum/articles/{aid}", headers=H(alice)).json()["data"]["status"] == 0)
+        check("删除成功", r.status_code == 200, r.text)
+        check("回传 status=4 + deletedAt + daysLeft",
+              r.json()["data"]["status"] == 4 and r.json()["data"]["deletedAt"]
+              and r.json()["data"]["daysLeft"] == 30, r.text)
+        check("删除后公开不可见", client.get(f"/api/forum/articles/{aid}").status_code == 404)
+        check("**作者本人**也 404（回收站对所有人不可见，§6-D4）",
+              client.get(f"/api/forum/articles/{aid}", headers=H(alice)).status_code == 404)
+        check("管理员也 404", client.get(f"/api/forum/articles/{aid}", headers=H(admin)).status_code == 404)
+        check("评论列表 404", client.get(f"/api/forum/articles/{aid}/comments").status_code == 404)
+        check("点赞 404（作者本人也不放行）",
+              client.post(f"/api/forum/articles/{aid}/like", headers=H(alice)).status_code == 404)
+        check("收藏 404",
+              client.post(f"/api/forum/articles/{aid}/favorite", headers=H(alice)).status_code == 404)
+        check("评论 404",
+              client.post(f"/api/forum/articles/{aid}/comments", headers=H(alice),
+                          json={"content": "回收站里也要拦住"}).status_code == 404)
+        check("浏览量 404",
+              client.post(f"/api/forum/articles/{aid}/view", headers=H(alice)).status_code == 404)
+        check("作者其他帖子 404",
+              client.get(f"/api/forum/articles/{aid}/author-posts").status_code == 404)
+        # 回收站列表：自己取数据，不经过详情接口（§1.4）
+        rec0 = client.get("/api/forum/my/articles", headers=H(alice),
+                          params={"status": 4}).json()["data"]
+        check("回收站列表出现该帖", rec0["total"] == 1 and rec0["items"][0]["id"] == aid, str(rec0.get("total")))
+        it = rec0["items"][0]
+        check("列表项带删除时间/剩余天数/删除前状态",
+              bool(it["deletedAt"]) and it["daysLeft"] == 30 and it["statusBeforeDelete"] == 1, str(it))
+        check("列表项**不含正文**（§1.4）", "content" not in it, str(sorted(it)))
+        check("回收站列表下发 recycleDays", rec0["recycleDays"] == 30, str(rec0.get("recycleDays")))
+        check("删除前发布态 → use_count -1", tag_counts().get("红石") == 0, str(tag_counts()))
+        check("删除后 publish_time 清空", it["publishTime"] == "", str(it.get("publishTime")))
+        check("互动数据全保留（浏览量）", it["viewCount"] == pub_before["viewCount"])
+        check("互动数据全保留（点赞）", it["likeCount"] == pub_before["likeCount"])
+        check("互动数据全保留（收藏）", it["favoriteCount"] == pub_before["favoriteCount"])
+        check("互动数据全保留（评论）", it["commentCount"] == pub_before["commentCount"])
+        check("状态文案表含回收站", it["statusText"] == "回收站", str(it["statusText"]))
+        # 编辑入口被 400 拦住（回收站里只有「恢复」与「彻底删除」）
+        check("回收站帖不可编辑回填（先恢复）",
+              client.get(f"/api/forum/articles/{aid}/edit", headers=H(alice)).status_code == 400)
+        check("回收站帖不可编辑保存",
+              client.put(f"/api/forum/articles/{aid}", headers=H(alice), json={
+                  "categoryId": cat_id, "title": "绕过回收站", "content": "试图绕过回收站编辑。"}).status_code == 400)
+        check("对已在回收站的帖子再删 → 400",
+              client.delete(f"/api/forum/articles/{aid}", headers=H(alice)).status_code == 400)
+        check("删他人帖 404", client.delete(f"/api/forum/articles/{aid}", headers=H(bob)).status_code == 404)
+        check("删不存在 404", client.delete("/api/forum/articles/99999999", headers=H(alice)).status_code == 404)
+
+        print("\n[13b] 回收站恢复 → 回删除前状态（不重审、不刷榜）")
+        # 先确认：恢复一个**不在回收站**的帖子 → 404
+        r = client.post("/api/forum/articles/99999999/restore", headers=H(alice))
+        check("恢复不存在的帖 404", r.status_code == 404, r.text)
+        # 把手工改旧的 deleted_at 设成 31 天前 → 恢复接口必须 410（§0.4-F）
+        async def _rewind(days: int):
+            async with async_session_maker() as s:
+                await s.execute(
+                    update(ForumArticle)
+                    .where(ForumArticle.id == aid)
+                    .values(deleted_at=(datetime.now(_TZ) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S"))
+                )
+                await s.commit()
+        asyncio.run(_rewind(31))
+        r = client.post(f"/api/forum/articles/{aid}/restore", headers=H(alice))
+        check("超 30 天恢复 → 410 Gone", r.status_code == 410, r.text)
+        check("410 提示含 30 天", "30 天" in r.json().get("detail", ""), r.text)
+        rec_overdue = client.get("/api/forum/my/articles", headers=H(alice),
+                                 params={"status": 4}).json()["data"]
+        check("超期帖仍列在回收站（超期清理归 CLI，读路径不写库）",
+              rec_overdue["total"] == 1, str(rec_overdue.get("total")))
+        # 恢复回已发布：publish_time 回填删除前的值（防刷榜），标签 +1
+        async def _rewind_ok():
+            async with async_session_maker() as s:
+                await s.execute(
+                    update(ForumArticle)
+                    .where(ForumArticle.id == aid)
+                    .values(deleted_at=(datetime.now(_TZ) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%S"))
+                )
+                await s.commit()
+        asyncio.run(_rewind_ok())
+        r = client.post(f"/api/forum/articles/{aid}/restore", headers=H(alice))
+        check("恢复成功（≤30 天）", r.status_code == 200, r.text)
+        restored = r.json()["data"]
+        check("回到删除前状态=1 已发布", restored["status"] == 1, str(restored["status"]))
+        check("恢复**不重审**（直接回已发布）", restored["status"] == 1)
+        back = client.get(f"/api/forum/articles/{aid}", headers=H(alice)).json()["data"]
+        check("恢复后重新公开", client.get(f"/api/forum/articles/{aid}").status_code == 200)
+        check("publish_time 回填删除前的值（不被顶到最前）",
+              back["publishTime"] == pub_before["publishTime"],
+              f'{back["publishTime"]} vs {pub_before["publishTime"]}')
+        check("恢复后 removeBy 清空", back["removeBy"] == "", str(back["removeBy"]))
+        check("回收站三列已清空", "deletedAt" not in back and "daysLeft" not in back, str(sorted(back)))
+        check("恢复后 use_count +1（红石回到 1）", tag_counts().get("红石") == 1, str(tag_counts()))
+        check("恢复后互动数据全保留（浏览量）", back["viewCount"] == pub_before["viewCount"])
+        check("恢复后互动数据全保留（点赞）", back["likeCount"] == pub_before["likeCount"])
+        check("恢复后互动数据全保留（收藏）", back["favoriteCount"] == pub_before["favoriteCount"])
+        check("恢复后互动数据全保留（评论）", back["commentCount"] == pub_before["commentCount"])
+        rec_after = client.get("/api/forum/my/articles", headers=H(alice),
+                               params={"status": 4}).json()["data"]
+        check("回收站已空", rec_after["total"] == 0, str(rec_after.get("total")))
+        check("对非回收站帖恢复 → 404",
+              client.post(f"/api/forum/articles/{aid}/restore", headers=H(alice)).status_code == 404)
+        check("编辑入口重新放行", client.get(f"/api/forum/articles/{aid}/edit", headers=H(alice)).status_code == 200)
+
+        print("\n[13c] 删待审核帖 → 恢复回 0；删已驳回帖 → 恢复回 2")
+        pend = client.post("/api/forum/articles", headers=H(alice), json={
+            "categoryId": cat_id, "title": "待审核的帖子", "content": "待审核帖子的正文内容，足够长度。"}).json()["data"]["id"]
+        client.delete(f"/api/forum/articles/{pend}", headers=H(alice))
+        r = client.post(f"/api/forum/articles/{pend}/restore", headers=H(alice))
+        check("恢复回 status=0 待审核（不是 1）", r.status_code == 200 and r.json()["data"]["status"] == 0, r.text)
+        rej = client.post("/api/forum/articles", headers=H(alice), json={
+            "categoryId": cat_id, "title": "被驳回的帖子", "content": "会被驳回的帖子正文内容，足够长度。"}).json()["data"]["id"]
+        client.put(f"/api/forum/admin/articles/{rej}/review", headers=H(admin),
+                   json={"status": 2, "reviewNote": "内容太短"})
+        client.delete(f"/api/forum/articles/{rej}", headers=H(alice))
+        r = client.post(f"/api/forum/articles/{rej}/restore", headers=H(alice))
+        check("恢复回 status=2 已驳回", r.status_code == 200 and r.json()["data"]["status"] == 2, r.text)
+        check("驳回理由仍在（内容零改动）",
+              client.get(f"/api/forum/articles/{rej}", headers=H(alice)).json()["data"]["reviewNote"] == "内容太短")
+
+        print("\n[13d] 管理员下架帖不可被作者搬进回收站")
+        client.post(f"/api/forum/admin/articles/{aid}/offline", headers=H(admin), json={"reason": "内容违规"})
+        r = client.delete(f"/api/forum/articles/{aid}", headers=H(alice))
+        check("管理员下架帖 → 作者删除 400", r.status_code == 400, r.text)
+        check("提示文案正确", "管理员下架" in r.json().get("detail", ""), r.text)
+        check("仍在下架档（未被搬进回收站）",
+              client.get("/api/forum/my/articles", headers=H(alice),
+                         params={"status": 3}).json()["data"]["total"] >= 1)
+        # 后台恢复下架帖（第一阶段语义不变）
+        client.post(f"/api/forum/admin/articles/{aid}/restore", headers=H(admin))
 
         print("\n[14] 置顶 / 加精 / 推荐 / 排序 / 搜索 / 标签过滤")
-        client.put(f"/api/forum/admin/articles/{aid}/review", headers=H(admin), json={"status": 1})
+        # aid 此时是已发布态（[13d] 已由后台恢复），仍在 guide 板块且带「红石机制/教程」
         r2 = client.post("/api/forum/articles", headers=H(bob), json={
             "categoryId": cat_id, "title": "第二个帖子：红石与建筑", "content": "bob 发的第二篇正文内容。",
             "tags": ["红石"]})
@@ -353,8 +474,8 @@ def main() -> int:
         s = client.get("/api/forum/articles", params={"q": "不存在的词"}).json()["data"]
         check("搜索无结果", s["total"] == 0)
         s = client.get("/api/forum/articles", params={"tag": "红石"}).json()["data"]
-        # [13] 作者重提时未带标签，aid 已无标签；红石只在 aid2 上
-        check("标签过滤只命中 aid2", s["total"] == 1 and s["items"][0]["id"] == aid2, str(s["total"]))
+        # aid 回收/恢复后标签关联仍在（只减 use_count），红石命中 aid + aid2
+        check("标签过滤命中 aid + aid2", s["total"] == 2, str(s["total"]))
         s = client.get("/api/forum/articles", params={"category": "chat"}).json()["data"]
         check("空板块返回 0", s["total"] == 0)
         s = client.get("/api/forum/articles", params={"category": "nonexist"}).json()["data"]
@@ -363,7 +484,7 @@ def main() -> int:
         check("热门标签返回", len(hot) >= 1 and hot[0]["name"] == "红石", str([t["name"] for t in hot]))
         st = client.get("/api/forum/stats").json()["data"]
         check("统计：2 篇文章", st["articleCount"] == 2, str(st))
-        check("统计：标签去重 1 个", st["tagCount"] == 1, str(st))
+        check("统计：标签去重 2 个（红石+建筑）", st["tagCount"] == 2, str(st))
 
         print("\n[15] 后台评论抽屉与级联删除")
         cl = client.get(f"/api/forum/admin/articles/{aid}/comments", headers=H(admin)).json()["data"]

@@ -72,6 +72,15 @@
                   >
                     <i class="fa-solid fa-pen"></i>编辑
                   </button>
+                  <!-- 作者删除入口：回收站帖不显示（需先恢复或去回收站页彻底删除） -->
+                  <button
+                    v-if="canDelete"
+                    type="button"
+                    class="fx-btn fx-btn-sm fx-btn-danger"
+                    @click="deleteTarget = article"
+                  >
+                    <i class="fa-solid fa-trash-can"></i>删除
+                  </button>
                 </div>
                 <div class="art-meta-r">
                   <div class="m">
@@ -165,6 +174,19 @@
           </section>
         </aside>
       </div>
+
+      <ConfirmDialog
+        :visible="!!deleteTarget"
+        title="删除文章"
+        :message="deleteTarget
+          ? `确定删除《${deleteTarget.title}》吗？\n删除后该帖会移入回收站，30 天内可恢复，逾期将彻底清除。`
+          : ''"
+        confirm-text="移入回收站"
+        danger
+        :submitting="deleting"
+        @confirm="confirmDelete"
+        @cancel="deleteTarget = null"
+      />
     </div>
   </div>
 </template>
@@ -179,17 +201,19 @@ import { copyText } from "../../utils/clipboard.js";
 import UserBadge from "../../components/forum/UserBadge.vue";
 import AuthorCard from "../../components/forum/AuthorCard.vue";
 import CommentSection from "../../components/forum/CommentSection.vue";
+import ConfirmDialog from "../../components/forum/ConfirmDialog.vue";
 
 /** 文章状态 → 详情页横幅样式（仅未公开状态显示） */
 const STATUS_BANNER = {
   0: { cls: "fx-banner-wait", icon: "fa-regular fa-clock", text: "该帖正在审核中，通过后才会公开显示。" },
   2: { cls: "fx-banner-reject", icon: "fa-solid fa-circle-exclamation", text: "该帖未通过审核" },
   3: { cls: "fx-banner-offline", icon: "fa-solid fa-box-archive", text: "该帖已下架" },
+  4: { cls: "fx-banner-recycle", icon: "fa-solid fa-trash-can", text: "该帖已在回收站，30 天内可恢复。" },
 };
 
 export default {
   name: "ForumPostDetail",
-  components: { UserBadge, AuthorCard, CommentSection },
+  components: { UserBadge, AuthorCard, CommentSection, ConfirmDialog },
   data() {
     return {
       article: null,
@@ -199,6 +223,8 @@ export default {
       loading: true,
       error: "",
       errorTitle: "帖子不存在或已被删除",
+      deleteTarget: null,
+      deleting: false,
     };
   },
   computed: {
@@ -232,12 +258,16 @@ export default {
     /**
      * 是否显示「编辑」入口。
      * 前端隐藏只是体验，后端会独立校验（§9-13）。
-     * 管理员下架的帖子（removeBy='admin'）不给入口。
+     * 管理员下架的帖子（removeBy='admin'）不给入口；回收站帖需先恢复。
      */
     canEdit() {
       if (!this.article) return false;
       if (this.article.removeBy === "admin" && this.article.status === 3) return false;
       return this.isAuthor && [0, 1, 2, 3].includes(this.article.status);
+    },
+    /** 是否显示「删除」入口（作者本人且不在回收站） */
+    canDelete() {
+      return this.isAuthor && this.article && this.article.status !== 4;
     },
     statusBanner() {
       if (!this.article) return null;
@@ -399,6 +429,24 @@ export default {
     },
     goOtherPost(p) {
       this.$router.push(`/forum/post/${p.id}`);
+    },
+    onDelete() {
+      this.deleteTarget = this.article;
+      this.deleting = false;
+    },
+    async confirmDelete() {
+      if (!this.deleteTarget || this.deleting) return;
+      this.deleting = true;
+      try {
+        await forumAPI.deleteArticle(this.deleteTarget.id);
+        this.showForumToast("已移入回收站，30 天内可恢复");
+        this.$router.replace("/forum/recycle");
+      } catch (e) {
+        this.showForumToast(e?.message || "删除失败");
+      } finally {
+        this.deleting = false;
+        this.deleteTarget = null;
+      }
     },
   },
 };

@@ -1,8 +1,10 @@
 """社区（论坛）模块：/forum/*（对外经 main.py 统一挂 /api 前缀 → /api/forum/*）。
 
-实施唯一依据：docs/论坛/论坛模块第一阶段PRD.md（v1.4）。
+实施唯一依据：docs/论坛/论坛模块第一阶段PRD.md（v1.4）
++ docs/论坛/论坛删除与回收站PRD.md（v1.3，**局部取代**前者的 §8-D16「评论不提供作者自删」
+与 §12.1「评论作者自删与编辑」中的自删半条——评论**编辑**仍不在范围内）。
 
-接口一览（PRD §7，模块内不得手写 /api）：
+接口一览（PRD §7 + 回收站 PRD §5，模块内不得手写 /api）：
 
   ── 公开（匿名可调）──
   GET    /forum/categories                 板块列表（过滤 is_hidden，含系统板块，带文章数）
@@ -19,9 +21,12 @@
   POST   /forum/articles                   发布文章（status=0 待审核）
   GET    /forum/articles/{id}/edit         编辑回填（仅作者本人；越权/不存在一律 404）
   PUT    /forum/articles/{id}              作者编辑重提（仅作者本人；状态一律回到 0）
-  GET    /forum/my/articles                我的文章（各状态 + reviewNote）
+  GET    /forum/my/articles                我的文章（各状态 + reviewNote + recycleDays）
   GET    /forum/my/stats                   侧边栏用户卡 {postCount, likeCount, followerCount}
-  DELETE /forum/articles/{id}              作者自删（status=3, remove_by='author'）
+  DELETE /forum/articles/{id}              作者删除 → **进回收站**（status=4，非物理删）
+  POST   /forum/articles/{id}/restore      作者从回收站恢复 → status_before_delete（超 30 天 410）
+  DELETE /forum/articles/{id}/purge        回收站内彻底删除（物理 + 级联，不可恢复）
+  DELETE /forum/comments/{id}              作者删自己的评论/回复（**物理删除不留痕**，顶层连带回复）
   POST   /forum/articles/{id}/like         文章点赞切换
   POST   /forum/articles/{id}/favorite     文章收藏切换
   POST   /forum/articles/{id}/comments     发表评论 / 发表回复（两级楼中楼）
@@ -33,23 +38,25 @@
   PUT    /forum/admin/articles/{id}/review 审核（1=通过 / 2=驳回）
   POST   /forum/admin/articles/{id}/top|feature|offline|restore
   PUT    /forum/admin/articles/{id}        改板块/标签/封面/标题（**状态不变**）
-  DELETE /forum/admin/articles/{id}        硬删除（级联评论/点赞/收藏/标签关联）
+  DELETE /forum/admin/articles/{id}        硬删除（级载评论/点赞/收藏/标签关联）
   GET    /forum/admin/articles/{id}/comments  评论列表（含已删除）
-  DELETE /forum/admin/comments/{id}        删评论（软删；顶层连带其回复）
+  DELETE /forum/admin/comments/{id}        删评论（**软删** status=2；顶层连带其回复）
   GET/POST/PUT/DELETE /forum/admin/categories|admin/tags|admin/config
   POST   /forum/admin/tags/{id}/merge      标签合并
   GET    /forum/admin/covers               封面图库（只读）
   GET    /forum/admin/user-stats/{userId}  用户论坛数据
 
 所有接口遵循项目统一响应包络 {code, message, data}（code=0 成功）；
-业务失败以 HTTPException(400/401/403/404, detail=...) 抛出。
+业务失败以 HTTPException(400/401/403/404/410, detail=...) 抛出。
 
-三条最容易写错、且各只有一处的口径（改动前先读）：
-1. **标签 use_count 只挂在"文章是否处于 status=1"这一个转移点上**（PRD §8-D8）——
-   入口统一是 `_set_article_status()`，不要在别处直接改 article.status。
+四条最容易写错、且各只有一处的口径（改动前先读）：
+1. **标签 use_count 只挂在"文章是否处于 status=1"这一个转移点上**（第一阶段 PRD §8-D8）——
+   入口统一是 `_set_article_status()`，删除/恢复进回收站也走它，不要在别处直接改 article.status。
 2. **评论 comment_count = 顶层评论数 + 回复数**；删顶层连带其回复减 `1 + 回复数`。
-3. **作者编辑 = 重走审核**（§8-D13）：保存后 status 一律回 0，浏览/点赞/收藏/评论全部保留；
-   `remove_by='admin'` 的已下架帖**不允许**作者编辑（否则等于用重提绕过管理员下架）。
+3. **作者删评论 = 物理删除不留痕**，后台删评论 = 软删留"已删除"标记——
+   **有意不对称**，别顺手统一成一种（回收站 PRD §0.4-J / §6-D7）。
+4. **作者删除帖子 = 进回收站（status=4），不是物理删、也不再产生 status=3**；
+   回收站对**所有人** 404（含作者本人），彻底删除另有 /purge 接口。
 """
 import re
 from datetime import datetime
@@ -76,22 +83,40 @@ from .database import (
     User,
     get_db,
 )
+# 回收站轻量核心（纯 SQLAlchemy，**forum_purge.py CLI 从 forum_core 直连、不 import 本模块**——
+# 本模块顶部是完整 APIRouter + 全部 pydantic 模型，CLI 冷 import 实测 33s 起，见该模块头注释）。
+# 这里 import 并 re-export，保证"作者彻底删除 / 管理员硬删 / 超期自动清理"三条路径语义唯一。
+from .forum_core import (  # noqa: F401  （re-export 供 main.py / 冒烟测试 / CLI 旁路引用）
+    RECYCLE_DAYS,
+    cascade_delete_article,
+    is_recycle_expired,
+    purge_due,
+    recycle_days_left,
+)
 from .uploads import UPLOAD_DIR, save_image
 
 router = APIRouter(prefix="/forum", tags=["forum"])
 
 # ── 常量（后端为唯一权威，前端选项需与此保持一致） ─────────────────
-# 文章状态机（PRD §4.3）
+# 文章状态机（第一阶段 PRD §4.3 + 回收站 PRD §1.1）
 STATUS_PENDING = 0    # 待审核
 STATUS_PUBLISHED = 1  # 已发布
 STATUS_REJECTED = 2   # 已驳回
-STATUS_OFFLINE = 3    # 已下架
+STATUS_OFFLINE = 3    # 已下架（**仅管理员**这一个来源）
+STATUS_RECYCLED = 4   # 回收站（作者删除后的保留态，30 天内可恢复）
 ARTICLE_STATUS_TEXT = {
     STATUS_PENDING: "待审核",
     STATUS_PUBLISHED: "已发布",
     STATUS_REJECTED: "已驳回",
     STATUS_OFFLINE: "已下架",
+    STATUS_RECYCLED: "回收站",
 }
+
+# 可被作者删除（进回收站）的状态；status=3 且 remove_by='admin' **不可删**——
+# 否则作者能把管理员的下架记录搬进回收站、30 天后被自动清除，等于销毁治理证据。
+DELETABLE_STATUSES = (STATUS_PENDING, STATUS_PUBLISHED, STATUS_REJECTED)
+# 恢复的合法目标（只可能是删前状态，绝不重审）
+RESTORE_TARGETS = (STATUS_PENDING, STATUS_PUBLISHED, STATUS_REJECTED)
 
 # 评论状态
 COMMENT_NORMAL = 1
@@ -460,6 +485,10 @@ async def _article_item(db: AsyncSession, article: ForumArticle, user: Optional[
         # 作者/管理员视角才下发 reviewNote（公开列表不含，PRD §7.4）
         if article.author_id == user.id or user.role == "admin":
             item["reviewNote"] = article.review_note
+    if article.status == STATUS_RECYCLED:
+        # 回收站帖只补列表字段（删除时间 / 剩余天数 / 删除前状态），**不含正文**——
+        # 要看完整内容先恢复，恢复是零风险操作（回收站 PRD §1.4 / §0.4-G）
+        item.update(_recycle_fields(article))
     return item
 
 
@@ -506,6 +535,8 @@ async def _article_items(
         }
         if show_note and (a.author_id == user.id or user.role == "admin"):
             item["reviewNote"] = a.review_note
+        if a.status == STATUS_RECYCLED:
+            item.update(_recycle_fields(a))
         items.append(item)
     return items
 
@@ -612,19 +643,29 @@ async def _sync_article_tags(
     await db.flush()
 
 
-async def _set_article_status(db: AsyncSession, article: ForumArticle, new_status: int) -> None:
-    """文章状态转移的唯一入口（PRD §8-D8）。
+async def _set_article_status(
+    db: AsyncSession,
+    article: ForumArticle,
+    new_status: int,
+    publish_time_override: Optional[str] = None,
+) -> None:
+    """文章状态转移的唯一入口（第一阶段 PRD §8-D8 + 回收站 PRD §1.1）。
 
     use_count 只挂在这一个转移点上：
-    - 进入 status=1（审核通过 / 恢复上架）→ 按当期标签各 +1，重写 publish_time；
-    - 离开 status=1（下架 / 作者自删 / 作者编辑重提 / 硬删除前置）→ 按当期标签各 -1，清空 publish_time。
+    - 进入 status=1（审核通过 / 恢复上架 / **从回收站恢复回已发布**）→ 按当期标签各 +1，
+      重写 publish_time（`publish_time_override` 非空时用它替代 _now_iso()——
+      回收站恢复回填删除前的发布时间，防"删除→恢复"刷榜）；
+    - 离开 status=1（下架 / 作者编辑重提 / **作者删除进回收站** / 硬删除前置）→
+      按当期标签各 -1，清空 publish_time。
+
+    ⚠️ 任何绕过本函数直接 `article.status = x` 的写法都会让 use_count 漂移。
     """
     old_status = article.status
     if old_status == new_status:
         return
     tag_ids = await _tag_ids_of(db, article.id)
     if new_status == STATUS_PUBLISHED:
-        article.publish_time = _now_iso()
+        article.publish_time = publish_time_override or _now_iso()
         if old_status != STATUS_PUBLISHED:
             await _bump_tag_use_count(db, tag_ids, +1)
     else:
@@ -635,35 +676,14 @@ async def _set_article_status(db: AsyncSession, article: ForumArticle, new_statu
     await db.flush()
 
 
-async def _cascade_delete_article(db: AsyncSession, article: ForumArticle) -> None:
-    """硬删除一篇文章及其全部关联数据（不留孤儿行）。"""
-    if article.status == STATUS_PUBLISHED:
-        await _bump_tag_use_count(db, await _tag_ids_of(db, article.id), -1)
-    comment_ids = list(
-        (
-            await db.execute(
-                select(ForumComment.id).where(ForumComment.article_id == article.id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    if comment_ids:
-        await db.execute(
-            delete(ForumCommentLike).where(ForumCommentLike.comment_id.in_(comment_ids))
-        )
-    await db.execute(delete(ForumComment).where(ForumComment.article_id == article.id))
-    await db.execute(
-        delete(ForumArticleLike).where(ForumArticleLike.article_id == article.id)
-    )
-    await db.execute(
-        delete(ForumArticleFavorite).where(ForumArticleFavorite.article_id == article.id)
-    )
-    await db.execute(
-        delete(ForumArticleTag).where(ForumArticleTag.article_id == article.id)
-    )
-    await db.delete(article)
-    await db.flush()
+# ── 回收站字段下发（前端不自己算剩余天数，§7.4） ──────────────────
+def _recycle_fields(article: ForumArticle) -> dict:
+    """回收站帖专属下发字段。只给列表字段，**绝不下发正文**（回收站 PRD §1.4）。"""
+    return {
+        "deletedAt": article.deleted_at,
+        "daysLeft": recycle_days_left(article.deleted_at),
+        "statusBeforeDelete": article.status_before_delete,
+    }
 
 
 async def _toggle_relation(
@@ -708,7 +728,17 @@ def _is_admin(user: Optional[User]) -> bool:
 
 
 def _can_view_article(article: ForumArticle, user: Optional[User]) -> bool:
-    """文章可见性（PRD §5.4.2）：未公开文章仅作者本人与管理员可见。"""
+    """文章可见性（第一阶段 PRD §5.4.2 + 回收站 PRD §1.4）。
+
+    - status=1 全文公开；
+    - 未公开（0/2/3）仅作者本人与管理员可见；
+    - **status=4 回收站对所有人一律不可见，含作者本人与管理员**（§6-D4）：
+      _can_view_article 被详情/评论/点赞/收藏/浏览/作者其他帖子六个接口共用，
+      这里放行作者就得在每个接口再补一层 status==1 守卫，不如一开始就不放行——
+      回收站的数据源是 GET /my/articles?status=4，不经过详情接口。
+    """
+    if article.status == STATUS_RECYCLED:
+        return False
     if article.status == STATUS_PUBLISHED:
         return True
     if user is None:
@@ -1184,12 +1214,16 @@ async def get_article_for_edit(
 
     管理员下架的帖子（status=3 且 remove_by='admin'）返回 400，
     因为作者不能靠"编辑重提"绕过下架（PRD §8-D13）。
+    回收站帖子（status=4）返回 400"请先恢复"——编辑入口只能从正常状态进，
+    回收站里只有「恢复」与「彻底删除」两个动作（回收站 PRD §3.2）。
     """
     article = await _get_article(db, article_id)
     if article is None or article.author_id != user.id:
         raise HTTPException(status_code=404, detail="文章不存在")
     if article.status == STATUS_OFFLINE and article.remove_by == REMOVE_BY_ADMIN:
         raise HTTPException(status_code=400, detail="该帖已被管理员下架，请联系管理员处理")
+    if article.status == STATUS_RECYCLED:
+        raise HTTPException(status_code=400, detail="该帖已在回收站，请先恢复后再编辑")
 
     cat = await _get_category_by_id(db, article.category_id)
     tags = (await _get_tags_of_articles(db, [article.id])).get(article.id, [])
@@ -1226,6 +1260,8 @@ async def update_article(
 
     - 准入范围：0 待审核 / 1 已发布 / 2 已驳回 / 3 已下架且 remove_by='author'；
     - `remove_by='admin'` 的已下架帖返回 400（防止用重提绕过管理员下架）；
+    - 回收站帖（status=4）返回 400"请先恢复"——回收站里**没有编辑路径**，
+      否则等于开了第二个不用恢复就能改已删帖的口子（回收站 PRD §1.1）；
     - 浏览量 / 点赞 / 收藏 / 评论**全部保留**（同一篇文章的修订，不是新文章）；
     - 标签与摘要走与创建完全相同的实现（PRD §9-12），杜绝"改了正文摘要还是旧的"。
     """
@@ -1235,6 +1271,8 @@ async def update_article(
         raise HTTPException(status_code=404, detail="文章不存在")
     if article.status == STATUS_OFFLINE and article.remove_by == REMOVE_BY_ADMIN:
         raise HTTPException(status_code=400, detail="该帖已被管理员下架，请联系管理员处理")
+    if article.status == STATUS_RECYCLED:
+        raise HTTPException(status_code=400, detail="该帖已在回收站，请先恢复后再编辑")
 
     cat = await _validate_write_payload(db, data)
     article.category_id = cat.id
@@ -1269,28 +1307,152 @@ async def delete_own_article(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """作者自删（软删：status=3 且 remove_by='author'，数据保留可恢复）。"""
+    """作者删除自己的文章 → **进回收站**（status=4，非物理删）。
+
+    （2026-10-05 语义变更，见 docs/论坛/论坛删除与回收站PRD.md §1.1：旧实现是
+    软删 status=3 + remove_by='author'，作者只能靠编辑重提找回；现改为真正的
+    删除/恢复闭环。）
+
+    规则：
+    - 准入状态 ∈ {0 待审核, 1 已发布, 2 已驳回}；
+    - `status=3 且 remove_by='admin'`（管理员下架）→ **400**，否则作者能把治理
+      证据搬进回收站、30 天后被自动清除；
+    - 已在回收站 → 400「该帖已在回收站」；
+    - 越权/不存在 → 404（与本站"越权一律 404"风格一致，不暴露存在性）；
+    - 禁言用户**可删**（§0.4-K：删除不是"发言"，与禁言期间仍可点赞/收藏同款例外），
+      故此处**不调** _ensure_not_muted；
+    - 删前是已发布 → 标签 use_count -1、publish_time 存入新列后清空
+      （§1.5，一律走 _set_article_status 单点，不在别处直接改 status）；
+    - 浏览量/点赞/收藏/评论**全部保留**（这就是"恢复"的意义）。
+    """
     article = await _get_article(db, article_id)
     if article is None or article.author_id != user.id:
         raise HTTPException(status_code=404, detail="文章不存在")
-    if article.status == STATUS_OFFLINE:
-        raise HTTPException(status_code=400, detail="该文章已下架，无需重复删除")
-    await _set_article_status(db, article, STATUS_OFFLINE)
+    if article.status == STATUS_RECYCLED:
+        raise HTTPException(status_code=400, detail="该帖已在回收站")
+    if article.status == STATUS_OFFLINE and article.remove_by == REMOVE_BY_ADMIN:
+        raise HTTPException(
+            status_code=400, detail="该帖已被管理员下架，请联系管理员处理"
+        )
+    if article.status not in DELETABLE_STATUSES:
+        raise HTTPException(status_code=400, detail="当前状态不允许删除")
+
+    now = _now_iso()
+    article.status_before_delete = article.status
+    # 删前非已发布时 publish_time 本就是空串，原样存/原样回填即可
+    article.publish_time_before_delete = article.publish_time
+    article.deleted_at = now
     article.remove_by = REMOVE_BY_AUTHOR
-    article.update_time = _now_iso()
+    # 离开 status=1 时标签 -1、publish_time 清空（唯一转移点）
+    await _set_article_status(db, article, STATUS_RECYCLED)
+    article.update_time = now
     await db.commit()
-    return _ok({"id": article.id, "status": article.status}, "已删除")
+    return _ok(
+        {
+            "id": article.id,
+            "status": article.status,
+            "deletedAt": article.deleted_at,
+            "daysLeft": recycle_days_left(article.deleted_at),
+        },
+        "已移入回收站，30 天内可恢复",
+    )
+
+
+@router.post("/articles/{article_id}/restore")
+async def restore_own_article(
+    article_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """作者从回收站恢复 → **删除前状态**（status_before_delete），内容零改动、不重审。
+
+    （§0.4-C / §6-D2：回收站是"撤销删除"，不是重新投稿；删前是待审核/已驳回的，
+    恢复后仍是待审核/已驳回，照旧等管理员审。）
+
+    - `status != 4` → 404（含已彻底删除 / 从未删除）；
+    - **超 30 天 → 410 Gone**（deleted_at 是唯一权威，接口自校验，§0.4-F）：
+      漏挂 crontab 也不影响正确性，超期帖恢复不了也列不出来，只是数据多留几天；
+    - 恢复到 status=1 时回填删除前的 publish_time（§0.4-D 防刷榜）；
+      **存量迁移帖该列为空时兜底为当前时间**（历史数据无法还原原发布时间）；
+    - 清空 deleted_at / status_before_delete / publish_time_before_delete 与 remove_by；
+    - 禁言用户**可恢复**（同删除，不属"发言"）。
+    """
+    article = await _get_article(db, article_id)
+    if article is None or article.author_id != user.id:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    if article.status != STATUS_RECYCLED:
+        raise HTTPException(status_code=404, detail="该帖不在回收站")
+    if is_recycle_expired(article.deleted_at):
+        raise HTTPException(
+            status_code=410, detail="已超过 30 天保留期，无法恢复"
+        )
+
+    target = article.status_before_delete
+    if target not in RESTORE_TARGETS:
+        # 纵深防御：数据异常时按待审核兜底（最保守，不会把未过审内容直接公开）
+        target = STATUS_PENDING
+    now = _now_iso()
+    await _set_article_status(
+        db,
+        article,
+        target,
+        publish_time_override=article.publish_time_before_delete or None,
+    )
+    article.deleted_at = ""
+    article.status_before_delete = 0
+    article.publish_time_before_delete = ""
+    article.remove_by = ""
+    article.update_time = now
+    await db.commit()
+    return _ok(
+        await _article_item(db, article, user),
+        "已恢复上架，重新公开" if target == STATUS_PUBLISHED else "已恢复",
+    )
+
+
+@router.delete("/articles/{article_id}/purge")
+async def purge_own_article(
+    article_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """回收站内**彻底删除**（物理删 + 级联，**不可恢复**，也不进任何回收站）。
+
+    与 `DELETE /articles/{id}`（进回收站，可恢复）刻意分成两个动作：
+    入口在回收站页面行内，前端必须走 ConfirmDialog 二次确认（§3.2 / §6-D14），
+    点"取消"不发请求。
+
+    - 仅作者本人；越权/不存在/已被超期清理 → 404；
+    - `status != 4` → 400（正常状态的帖子要走"删除进回收站"，不走这里——
+      防止把"删一下试试"直接变成不可恢复的硬删）；
+    - 级联与超期清理、管理员硬删**共用** forum_core.cascade_delete_article；
+    - 标签 use_count **不再扣减**（进回收站时已扣过，§1.5）；
+    - **不动 uploads/forum/ 下的图片文件**（图床冗余清理归第三阶段，§6-D12）。
+    """
+    article = await _get_article(db, article_id)
+    if article is None or article.author_id != user.id:
+        raise HTTPException(status_code=404, detail="文章不存在")
+    if article.status != STATUS_RECYCLED:
+        raise HTTPException(status_code=400, detail="该帖不在回收站")
+    await cascade_delete_article(db, article)
+    await db.commit()
+    return _ok({"id": article_id}, "已永久删除")
 
 
 @router.get("/my/articles")
 async def my_articles(
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=10, ge=1, le=100),
-    status: Optional[int] = Query(default=None, description="0待审核 1已发布 2已驳回 3已下架；缺省全部"),
+    status: Optional[int] = Query(default=None, description="0待审核 1已发布 2已驳回 3已下架 4回收站；缺省全部"),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """我的文章：当前用户全部状态的文章（含 reviewNote、removeBy、resubmitCount）。"""
+    """我的文章：当前用户全部状态的文章（含 reviewNote、removeBy、resubmitCount）。
+
+    **回收站页面的数据源**（§5.1）：传 status=4 即得回收站列表，列表项额外下发
+    deletedAt / daysLeft / statusBeforeDelete；响应再整体下发 `recycleDays`
+    （保留期**单一来源**，前端提示条与"剩余 N 天"都取它，不硬编码 30）。
+    """
     page_size = max(pageSize, 1)
     offset = (page - 1) * page_size
     stmt = select(ForumArticle).where(ForumArticle.author_id == user.id)
@@ -1300,10 +1462,17 @@ async def my_articles(
     if status is not None:
         stmt = stmt.where(ForumArticle.status == status)
         count_stmt = count_stmt.where(ForumArticle.status == status)
+    else:
+        # 回收站已有独立页面 /forum/recycle，"我的文章"默认全部排除回收站
+        stmt = stmt.where(ForumArticle.status != STATUS_RECYCLED)
+        count_stmt = count_stmt.where(ForumArticle.status != STATUS_RECYCLED)
     stmt = stmt.order_by(ForumArticle.update_time.desc(), ForumArticle.id.desc()).offset(offset).limit(page_size)
     total = (await db.execute(count_stmt)).scalar_one()
     rows = (await db.execute(stmt)).scalars().all()
-    return _ok(_page_payload(await _article_items(db, list(rows), user), page, page_size, total))
+    payload = _page_payload(await _article_items(db, list(rows), user), page, page_size, total)
+    # 保留期天数由后端**单一来源**下发（改 RECYCLE_DAYS 一处，前端零改动）
+    payload["recycleDays"] = RECYCLE_DAYS
+    return _ok(payload)
 
 
 async def _user_forum_stats(db: AsyncSession, user: User) -> dict:
@@ -1489,6 +1658,83 @@ async def toggle_comment_like(
     return _ok({"liked": delta == 1, "likeCount": max(new_count.like_count, 0)})
 
 
+@router.delete("/comments/{comment_id}")
+async def delete_own_comment(
+    comment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """作者删除**自己**的评论/回复 → **物理删除，不留任何痕迹**。
+
+    与后台 `DELETE /admin/comments/{id}`（软删 status=2 + "已删除"标记）**有意不对称**
+    （回收站 PRD §0.4-J / §6-D7）：后台删评论要留治理痕迹供纠纷/举报追溯，
+    作者删自己的话则真的拿走——不写占位节点、不建审计表、不保留 status=2 行。
+    **不要"顺手统一"成一种**，这条不对称必须写在这里和 AGENTS.md 里。
+
+    连带与计数（§2.2，与第一阶段 §8-D15 ④ 同口径，只把"软删"换成"物理删"）：
+    - 删顶层评论 → 其下**全部回复**（**含他人回复**，代价由确认弹窗文案告知，§0.4-H）
+      及上述所有评论的 forum_comment_likes 行一并物理删除，comment_count 原子减
+      `1 + 回复数`；
+    - 删单条回复 → 只删该行与其点赞行，原子减 1；
+    - 只数 status=1 的行：已被后台软删的回复早已扣过 comment_count，不重复扣。
+
+    权限（§2.3）：**仅该评论的作者本人**——楼主不能删自己帖子下别人的评论
+    （本阶段不引入版主/楼主治理权），删他人内容一律走管理员后台。
+    越权 / 不存在 / 已被后台软删 → 一律 **404**（不泄露存在性）。
+    禁言用户**可删**（§0.4-K：删除不是"发言"）。
+    """
+    comment = (
+        await db.execute(select(ForumComment).where(ForumComment.id == comment_id))
+    ).scalar_one_or_none()
+    # 归属校验失败、目标不存在、目标已被后台软删 → 一律 404，不区分提示
+    if comment is None or comment.author_id != user.id or comment.status != COMMENT_NORMAL:
+        raise HTTPException(status_code=404, detail="评论不存在或已被删除")
+    article = await _get_article(db, comment.article_id)
+    if article is None:
+        raise HTTPException(status_code=404, detail="评论不存在或已被删除")
+
+    if comment.parent_id == 0:
+        child_ids = list(
+            (
+                await db.execute(
+                    select(ForumComment.id).where(
+                        ForumComment.parent_id == comment_id,
+                        ForumComment.status == COMMENT_NORMAL,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if child_ids:
+            await db.execute(
+                delete(ForumCommentLike).where(ForumCommentLike.comment_id.in_(child_ids))
+            )
+            await db.execute(delete(ForumComment).where(ForumComment.id.in_(child_ids)))
+        await _bump_comment_count(db, comment.article_id, -(1 + len(child_ids)))
+        deleted_count = 1 + len(child_ids)
+    else:
+        await _bump_comment_count(db, comment.article_id, -1)
+        deleted_count = 1
+
+    await db.execute(
+        delete(ForumCommentLike).where(ForumCommentLike.comment_id == comment_id)
+    )
+    await db.execute(delete(ForumComment).where(ForumComment.id == comment_id))
+    await db.commit()
+
+    # commentCount 由前端拿本响应值**直接回写**（比本地 -delta 抗漂移，§3.4）
+    new_count = (
+        await db.execute(
+            select(ForumArticle.comment_count).where(ForumArticle.id == comment.article_id)
+        )
+    ).scalar_one()
+    return _ok(
+        {"id": comment_id, "deletedCount": deleted_count, "commentCount": max(new_count, 0)},
+        "已删除",
+    )
+
+
 @router.post("/upload/image")
 async def upload_forum_image(
     file: UploadFile = File(...),
@@ -1613,6 +1859,9 @@ async def _toggle_flag(db: AsyncSession, article_id: int, field: str) -> dict:
     article = await _get_article(db, article_id)
     if article is None:
         raise HTTPException(status_code=404, detail="文章不存在")
+    if article.status == STATUS_RECYCLED:
+        # 回收站帖对全站不可见，置顶/加精它没有任何展示意义（PRD §4）
+        raise HTTPException(status_code=400, detail="回收站的文章不可置顶或加精")
     setattr(article, field, 0 if getattr(article, field) else 1)
     article.update_time = _now_iso()
     await db.commit()
@@ -1642,10 +1891,17 @@ async def admin_offline(
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),
 ):
-    """下架：status=3 且 remove_by='admin'（下架后作者不能编辑重提）。原因会展示给作者。"""
+    """下架：status=3 且 remove_by='admin'（下架后作者不能编辑重提）。原因会展示给作者。
+
+    回收站帖（status=4）**不可下架**——它对全站已经不可见，再打一层 remove_by='admin'
+    只会把"作者自删"和"管理员下架"混进同一个状态里，正是新增 status=4 要消除的歧义。
+    要处理回收站帖请走「恢复」或「删除」。
+    """
     article = await _get_article(db, article_id)
     if article is None:
         raise HTTPException(status_code=404, detail="文章不存在")
+    if article.status == STATUS_RECYCLED:
+        raise HTTPException(status_code=400, detail="回收站的文章不可下架，请先恢复或删除")
     if article.status in (STATUS_OFFLINE, STATUS_PENDING):
         raise HTTPException(status_code=400, detail="仅已发布或已驳回的文章可下架")
     article.review_note = (data.reason or "").strip()
@@ -1660,12 +1916,38 @@ async def admin_offline(
 async def admin_restore(
     article_id: int, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
-    """恢复上架：status=1、remove_by=''、publish_time 重写，**不重新审核**。"""
+    """恢复上架。**两种来源，同一条路由**（回收站 PRD §4 / §0.4-E）：
+
+    - `status=3`（管理员下架）：行为与第一阶段**完全不变**——回 1 已发布、
+      remove_by=''、publish_time 重写为当前时间、不重审；
+    - `status=4`（作者自删进回收站）：回到 **status_before_delete**（不重审），
+      回到已发布时回填删除前的 publish_time（防刷榜），并清空回收站三列；
+    - 其它状态 → 400。
+
+    管理员硬删仍是不可恢复的（DELETE /admin/articles/{id}），这条只做恢复。
+    """
     article = await _get_article(db, article_id)
     if article is None:
         raise HTTPException(status_code=404, detail="文章不存在")
+    if article.status == STATUS_RECYCLED:
+        target = article.status_before_delete
+        if target not in RESTORE_TARGETS:
+            target = STATUS_PENDING  # 数据异常兜底成最保守的待审核
+        await _set_article_status(
+            db,
+            article,
+            target,
+            publish_time_override=article.publish_time_before_delete or None,
+        )
+        article.deleted_at = ""
+        article.status_before_delete = 0
+        article.publish_time_before_delete = ""
+        article.remove_by = ""
+        article.update_time = _now_iso()
+        await db.commit()
+        return _ok(await _article_item(db, article, _admin), "已从回收站恢复")
     if article.status != STATUS_OFFLINE:
-        raise HTTPException(status_code=400, detail="仅已下架的文章可恢复")
+        raise HTTPException(status_code=400, detail="仅已下架或回收站的文章可恢复")
     article.review_note = ""
     await _set_article_status(db, article, STATUS_PUBLISHED)
     article.remove_by = ""
@@ -1685,10 +1967,14 @@ async def admin_update_article(
 
     正文**只读**：后台不提供改正文能力，需要改内容由作者自行编辑重提（PRD §8-D9），
     这样改动照样过审，责任链与留痕都清晰。
+    **回收站帖（status=4）不可改属性**：它已对全站不可见，改板块/标题只会让回收站
+    列表展示出与原文不一致的信息，要处理请先「恢复」或「删除」。
     """
     article = await _get_article(db, article_id)
     if article is None:
         raise HTTPException(status_code=404, detail="文章不存在")
+    if article.status == STATUS_RECYCLED:
+        raise HTTPException(status_code=400, detail="回收站的文章不可修改属性，请先恢复或删除")
 
     if data.category_id is not None:
         cat = await _get_category_by_id(db, data.category_id)
@@ -1715,11 +2001,15 @@ async def admin_update_article(
 async def admin_delete_article(
     article_id: int, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
 ):
-    """硬删除（不可恢复）：级联清理评论、评论点赞、文章点赞、收藏、标签关联。"""
+    """硬删除（不可恢复）：级联清理评论、评论点赞、文章点赞、收藏、标签关联。
+
+    级联实现是 forum_core.cascade_delete_article（与"作者回收站彻底删除"、
+    "forum_purge.py 超期清理"共用同一份，语义唯一）。
+    """
     article = await _get_article(db, article_id)
     if article is None:
         raise HTTPException(status_code=404, detail="文章不存在")
-    await _cascade_delete_article(db, article)
+    await cascade_delete_article(db, article)
     await db.commit()
     return _ok({"id": article_id}, "已删除")
 

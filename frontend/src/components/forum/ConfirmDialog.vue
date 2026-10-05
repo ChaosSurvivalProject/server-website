@@ -104,4 +104,14 @@ export default {
   border-color: #dc2626;
   color: #fff;
 }
+.fx-btn-primary {
+  background: #4caf50;
+  border-color: #4caf50;
+  color: #fff;
+}
+.fx-btn-primary:hover:not(:disabled) {
+  background: #388e3c;
+  border-color: #388e3c;
+  color: #fff;
+}
 </style>

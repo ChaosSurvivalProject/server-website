@@ -81,7 +81,7 @@
             <!-- 正文：纯文本，保留换行 -->
             <div class="cmt-text">{{ c.content }}</div>
 
-            <!-- 操作行：赞 / 回复（第一阶段无删除入口，§8-D16） -->
+            <!-- 操作行：赞 / 回复 / 作者删除 -->
             <div class="cmt-acts">
               <button
                 type="button"
@@ -95,7 +95,27 @@
               <button type="button" class="cmt-act" @click="toggleReply(c)">
                 <i class="fa-regular fa-comment"></i>回复
               </button>
+              <button
+                v-if="canDeleteComment(c)"
+                type="button"
+                class="cmt-act cmt-act-danger"
+                @click="deleteTarget = c"
+              >
+                <i class="fa-regular fa-trash-can"></i>删除
+              </button>
             </div>
+
+            <!-- 作者删评论确认 -->
+            <ConfirmDialog
+              :visible="deleteTarget && deleteTarget.id === c.id"
+              title="删除评论"
+              :message="`确定删除这条评论吗？`"
+              confirm-text="删除"
+              danger
+              :submitting="deleteSubmitting"
+              @confirm="confirmDelete(c)"
+              @cancel="deleteTarget = null"
+            />
 
             <!-- 内联回复框（挂在其正下方） -->
             <ReplyForm
@@ -138,7 +158,27 @@
                     <button type="button" class="cmt-act" @click="toggleReply(r, c)">
                       <i class="fa-regular fa-comment"></i>回复
                     </button>
+                    <button
+                      v-if="canDeleteComment(r)"
+                      type="button"
+                      class="cmt-act cmt-act-danger"
+                      @click="deleteTarget = r"
+                    >
+                      <i class="fa-regular fa-trash-can"></i>删除
+                    </button>
                   </div>
+
+                  <!-- 作者删回复确认 -->
+                  <ConfirmDialog
+                    :visible="deleteTarget && deleteTarget.id === r.id"
+                    title="删除回复"
+                    :message="`确定删除这条回复吗？`"
+                    confirm-text="删除"
+                    danger
+                    :submitting="deleteSubmitting"
+                    @confirm="confirmDelete(r)"
+                    @cancel="deleteTarget = null"
+                  />
 
                   <ReplyForm
                     v-if="replyTarget && replyTarget.id === r.id"
@@ -171,13 +211,14 @@
 import UserBadge from "./UserBadge.vue";
 import Pager from "./Pager.vue";
 import ReplyForm from "./ReplyForm.vue";
+import ConfirmDialog from "./ConfirmDialog.vue";
 import { forumAPI } from "../../api/api.js";
 import { authState } from "../../utils/auth.js";
 import { formatRelativeTime } from "../../utils/forumFormat.js";
 
 export default {
   name: "ForumCommentSection",
-  components: { UserBadge, Pager, ReplyForm },
+  components: { UserBadge, Pager, ReplyForm, ConfirmDialog },
   props: {
     /** 所属文章 id */
     articleId: { type: Number, required: true },
@@ -198,6 +239,8 @@ export default {
       /** 当前展开的回复目标：{id, rootId, authorId, authorName, content} */
       replyTarget: null,
       replySubmitting: false,
+      deleteTarget: null,
+      deleteSubmitting: false,
     };
   },
   computed: {
@@ -348,6 +391,44 @@ export default {
 
     bumpCount(delta) {
       this.$emit("count-change", delta);
+    },
+
+    canDeleteComment(comment) {
+      const me = authState.user;
+      return !!me && !!comment.author && me.id === comment.author.id;
+    },
+    async confirmDelete(comment) {
+      if (!comment || this.deleteSubmitting) return;
+      this.deleteSubmitting = true;
+      try {
+        const res = await forumAPI.deleteComment(comment.id);
+        // 顶层评论连带其下全部回复，直接移除整棵子树
+        const idx = this.comments.findIndex((c) => c.id === comment.id);
+        if (idx !== -1) {
+          this.comments.splice(idx, 1);
+          this.total -= 1;
+        } else {
+          // 回复：从所属顶层评论的 replies 中移除
+          for (const c of this.comments) {
+            if (!c.replies) continue;
+            const ri = c.replies.findIndex((r) => r.id === comment.id);
+            if (ri !== -1) {
+              c.replies.splice(ri, 1);
+              break;
+            }
+          }
+        }
+        // 后端返回最新的 article.commentCount，同步给父级
+        if (typeof res?.commentCount === "number") {
+          this.$emit("count-change", res.commentCount - this.commentCount);
+        }
+        this.showForumToast("评论已删除");
+      } catch (e) {
+        this.showForumToast(e?.message || "删除失败");
+      } finally {
+        this.deleteSubmitting = false;
+        this.deleteTarget = null;
+      }
     },
   },
 };
@@ -543,5 +624,12 @@ export default {
 .cmt-act.on {
   color: #dc2626;
   font-weight: 600;
+}
+.cmt-act-danger {
+  color: #dc2626;
+}
+.cmt-act-danger:hover {
+  background: #fef2f2;
+  color: #b91c1c;
 }
 </style>

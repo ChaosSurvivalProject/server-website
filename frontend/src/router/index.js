@@ -73,6 +73,12 @@ const routes = [
     component: () => import('../views/forum/MyPosts.vue')
   },
   {
+    path: '/forum/recycle',
+    name: 'ForumRecycle',
+    // 回收站（作者视角：status=4 列表 + 恢复 / 彻底删除）
+    component: () => import('../views/forum/RecycleBin.vue')
+  },
+  {
     path: '/login',
     name: 'Login',
     // 登录/注册共用 AuthView，通过 initialMode 区分

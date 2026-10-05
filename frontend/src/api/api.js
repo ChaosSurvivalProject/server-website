@@ -332,10 +332,29 @@ export const forumAPI = {
     axiosInstance.put(`/api/forum/articles/${articleId}`, payload),
 
   /**
-   * 作者自删（软删：status=3 且 removeBy='author'，数据保留可恢复）
+   * 作者自删（软删：status=4 回收站，数据保留可恢复）
    * @param {number} articleId
    */
   deleteArticle: (articleId) => axiosInstance.delete(`/api/forum/articles/${articleId}`),
+
+  /**
+   * 作者从回收站恢复文章（回到删除前状态，不重审）
+   * @param {number} articleId
+   */
+  restoreArticle: (articleId) => axiosInstance.post(`/api/forum/articles/${articleId}/restore`),
+
+  /**
+   * 作者在回收站内彻底删除文章（物理删，不可恢复）
+   * @param {number} articleId
+   */
+  purgeArticle: (articleId) => axiosInstance.delete(`/api/forum/articles/${articleId}/purge`),
+
+  /**
+   * 作者自删评论（物理删，连带清掉回复与评论点赞）
+   * @param {number} commentId
+   * @returns {Promise} - data: {commentCount}
+   */
+  deleteComment: (commentId) => axiosInstance.delete(`/api/forum/comments/${commentId}`),
 
   /**
    * 我的文章（各状态；含 reviewNote / removeBy / resubmitCount）

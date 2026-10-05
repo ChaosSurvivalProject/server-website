@@ -6,9 +6,14 @@
           <h1 class="page-title">我的文章</h1>
           <p class="page-sub">投稿需管理员审核通过后才会公开；被驳回的帖子会显示理由，可修改后重新提交。</p>
         </div>
-        <router-link to="/forum/new" class="fx-btn fx-btn-primary">
-          <i class="fa-solid fa-pen-to-square"></i>发布新文章
-        </router-link>
+        <div class="my-hd-acts">
+          <router-link to="/forum/new" class="fx-btn fx-btn-primary">
+            <i class="fa-solid fa-pen-to-square"></i>发布新文章
+          </router-link>
+          <router-link to="/forum/recycle" class="fx-btn fx-btn-ghost">
+            <i class="fa-solid fa-trash-can"></i>回收站
+          </router-link>
+        </div>
       </div>
 
       <!-- 状态筛选 -->
@@ -28,6 +33,12 @@
         <button type="button" class="fx-btn fx-btn-sm" :disabled="loading" @click="fetchList">
           <i class="fa-solid fa-rotate"></i>刷新
         </button>
+      </div>
+
+      <!-- 全部筛选下的提示横幅 -->
+      <div v-if="statusFilter === ''" class="recycle-hint">
+        <i class="fa-solid fa-circle-info"></i>已删除的文章可在
+        <router-link to="/forum/recycle" class="recycle-link">回收站</router-link>找回，保留 30 天
       </div>
 
       <div v-if="loading" class="fx-loading-box">
@@ -95,20 +106,26 @@
           </div>
 
           <div class="mr-acts">
-            <router-link :to="`/forum/post/${a.id}`" class="fx-btn fx-btn-sm">查看</router-link>
-            <!-- 管理员下架的不给编辑入口（后端也会 400 拦一道） -->
-            <router-link
-              v-if="canEdit(a)"
-              :to="`/forum/edit/${a.id}`"
-              class="fx-btn fx-btn-primary fx-btn-sm"
-            >编辑</router-link>
-            <span v-else class="mr-hint">管理员下架，请联系管理员</span>
-            <button
-              v-if="a.status !== 3"
-              type="button"
-              class="fx-btn fx-btn-danger fx-btn-sm"
-              @click="onDelete(a)"
-            >删除</button>
+            <!-- 回收站帖不能直接进详情（后端 404），也不给编辑/删除入口 -->
+            <template v-if="a.status !== 4">
+              <router-link :to="`/forum/post/${a.id}`" class="fx-btn fx-btn-sm">查看</router-link>
+              <!-- 管理员下架的不给编辑入口（后端也会 400 拦一道） -->
+              <router-link
+                v-if="canEdit(a)"
+                :to="`/forum/edit/${a.id}`"
+                class="fx-btn fx-btn-primary fx-btn-sm"
+              >编辑</router-link>
+              <span v-else class="mr-hint">管理员下架，请联系管理员</span>
+              <button
+                v-if="canDelete(a)"
+                type="button"
+                class="fx-btn fx-btn-danger fx-btn-sm"
+                @click="onDelete(a)"
+              >删除</button>
+            </template>
+            <template v-else>
+              <span class="mr-hint">请前往回收站操作</span>
+            </template>
           </div>
         </div>
       </div>
@@ -120,9 +137,9 @@
       :visible="!!deleteTarget"
       title="删除文章"
       :message="deleteTarget
-        ? `确定删除《${deleteTarget.title}》吗？\n删除后该帖会从社区隐藏（数据保留，你可以自行重新提交）。`
+        ? `确定删除《${deleteTarget.title}》吗？\n删除后该帖会移入回收站，30 天内可恢复，逾期将彻底清除。`
         : ''"
-      confirm-text="确定删除"
+      confirm-text="移入回收站"
       danger
       :submitting="deleting"
       @confirm="confirmDelete"
@@ -197,6 +214,10 @@ export default {
     canEdit(a) {
       if (a.status === 3 && a.removeBy === "admin") return false;
       return [0, 1, 2, 3].includes(a.status);
+    },
+    canDelete(a) {
+      // 回收站帖只能走回收站页的「彻底删除」，这里不重复暴露按钮
+      return a.status !== 4;
     },
 
     async fetchList() {
@@ -277,6 +298,41 @@ export default {
 }
 .my-hd .fx-btn {
   text-decoration: none;
+}
+.my-hd-acts {
+  display: inline-flex;
+  align-items: center;
+  gap: 20px;
+}
+.recycle-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #fff7e6;
+  color: #b45309;
+  font-size: 12.5px;
+  font-weight: 500;
+}
+.recycle-link {
+  color: #b45309;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.recycle-link:hover {
+  color: #8c6b12;
+}
+.fx-btn-ghost {
+  background: #fff;
+  border-color: var(--fx-line);
+  color: var(--fx-text-2);
+}
+.fx-btn-ghost:hover:not(:disabled) {
+  border-color: #c7d2e0;
+  color: var(--fx-text);
 }
 .toolbar {
   display: flex;

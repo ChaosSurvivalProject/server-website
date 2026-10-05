@@ -30,7 +30,8 @@ export const ARTICLE_STATUS_META = {
   0: { text: "待审核", color: "#b45309", bg: "#fff7e6" },
   1: { text: "已发布", color: "#15803d", bg: "#eafaf0" },
   2: { text: "已驳回", color: "#b91c1c", bg: "#feecec" },
-  3: { text: "已下架", color: "#475569", bg: "#eef2f7" }
+  3: { text: "已下架", color: "#475569", bg: "#eef2f7" },
+  4: { text: "回收站", color: "#7c3aed", bg: "#f5f3ff" }
 };
 
 /**
