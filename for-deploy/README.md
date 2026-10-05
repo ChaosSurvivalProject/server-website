@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | `xqly.xt91tv.shop.conf` | `/opt/1panel/www/conf.d/xqly.xt91tv.shop.conf` | 1panel 生成的站点 server 块。**除末尾那行 `include .../proxy/*.conf;` 外全部由面板生成**，不要把它当成手工配置来维护 |
 | `xqly-app.conf` | `/opt/1panel/www/sites/xqly.xt91tv.shop/proxy/xqly-app.conf` | 手工维护的应用 location：静态资源缓存 + `/api/kb/` SSE 四件套 + `/api` 反代 + legacy 兼容路径 + `/admin`、`/wiki` 跳转 + `/wiki/` cleanUrls + **SPA fallback** |
-| `crontab` | root 用户 crontab（`crontab -l`） | 生产**唯一**的定时机制：`kb_sync.py --incremental`（03:00 知识库增量同步）+ `staff_expire.py`（04:00 名片到期回写），两者都通过 `docker exec` 在容器内执行 |
+| `crontab` | root 用户 crontab（`crontab -l`） | 生产**唯一**的定时机制：`kb_sync.py --incremental`（03:00 知识库增量同步）+ `staff_expire.py`（04:00 名片到期回写）+ `forum_purge.py`（05:00 论坛回收站超期清理），三者都通过 `docker exec` 在容器内执行 |
 
 ## 与生产保持同步
 
@@ -75,7 +75,7 @@ ssh root@<生产机> 'docker exec 1Panel-openresty-TV94 nginx -t && docker exec 
 
 ## 改定时任务（crontab）
 
-生产没有 celery / APScheduler / systemd timer，**所有定时逻辑都挂 root crontab**（Ubuntu `cron.service`）。两条业务任务的代码都在仓库内（`backend/kb_sync.py`、`backend/staff_expire.py`），本目录只留 crontab 条目快照。
+生产没有 celery / APScheduler / systemd timer，**所有定时逻辑都挂 root crontab**（Ubuntu `cron.service`）。三条业务任务的代码都在仓库内（`backend/kb_sync.py`、`backend/staff_expire.py`、`backend/forum_purge.py`），本目录只留 crontab 条目快照。
 
 改法（**不要 `sed` 改 `/var/spool/cron/crontabs/root`，务必走 `crontab` 命令**，否则可能因末尾换行/属主问题被 cron 忽略）：
 
@@ -93,10 +93,11 @@ ssh root@<生产机> 'crontab -l' | diff - for-deploy/crontab           # ④ �
 ```bash
 /usr/bin/docker exec announcement-backend python backend/kb_sync.py --check
 /usr/bin/docker exec announcement-backend python backend/staff_expire.py --dry-run
+/usr/bin/docker exec announcement-backend python backend/forum_purge.py --dry-run
 ```
 
 注意：
 
-- **两条任务都是 0 变更空跑安全**：`kb_sync` 无变更时不动 `index_version`、`staff_expire` 无到期行时不写库，漏跑不会写坏数据。真正的影响是**时效**——`kb_sync` 漏挂则 wiki 新页面不进知识库（客服静默答不上来，不报错）；`staff_expire` 漏挂只影响后台台账状态刷新时效（判定权威是 `valid_to`，公开核验接口查询时会懒更新兜底，**不影响核验正确性**）。
+- **三条任务都是 0 变更空跑安全**：`kb_sync` 无变更时不动 `index_version`、`staff_expire` 无到期行时不写库、`forum_purge` 无超期帖时不写库，漏跑不会写坏数据。真正的影响是**时效**——`kb_sync` 漏挂则 wiki 新页面不进知识库（客服静默答不上来，不报错）；`staff_expire` 漏挂只影响后台台账状态刷新时效（判定权威是 `valid_to`，公开核验接口查询时会懒更新兜底，**不影响核验正确性**）；`forum_purge` 漏挂只让超 30 天的回收站帖多留几天（判定权威是 `deleted_at`，恢复接口自校验 + 列表自过滤，超期帖用户看不到也恢复不了）。
 - **上线清单必须逐条实跑核对**：`kb_sync` 的 crontab 曾在旧站上线清单里被默认"已完成"，实际自 2026-09-21 上线起一直未挂，直到 2026-09-26 实跑 `crontab -l` 才发现。crontab、nginx location、构建产物这类**代码侧无法自证**的上线项，一律上服务器实跑一遍再在 `TODO.md` 打勾。
 - 日志在 `/var/log/kb_sync.log` 与 `/var/log/staff_expire.log`（都是 append，单行/天，暂不需轮转）。

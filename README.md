@@ -44,9 +44,12 @@ server-website/
 │   │   ├── kb_retrieve.py       # 知识库：向量 + FTS5 trigram + RRF 混合检索
 │   │   ├── kb_llm.py            # 知识库：OpenAI 兼容 chat 流式客户端（httpx）
 │   │   ├── kb.py                # 知识库：/api/kb/* 全部路由（SSE 问答 + 限流 + 管理接口）
-│   │   └── staff.py             # 员工名片：/api/staff/* 全部路由（验证页 + 台账 + 到期回写 + 二维码 + CSV）
+│   │   ├── staff.py             # 员工名片：/api/staff/* 全部路由（验证页 + 台账 + 到期回写 + 二维码 + CSV）
+│   │   ├── forum.py             # 社区论坛：/api/forum/* 全部路由（公开 / 登录用户 / 管理员三组）
+│   │   └── forum_core.py        # 社区论坛轻量核心（纯 SQLAlchemy，供 CLI 复用：RECYCLE_DAYS / purge_due / cascade_delete_article）
 │   ├── kb_sync.py               # wiki → 知识库 同步脚本（CLI，按 MD5 增量）
 │   ├── staff_expire.py          # 员工名片到期检查脚本（CLI，crontab 每日一次）
+│   ├── forum_purge.py           # 论坛回收站超期清理脚本（CLI，crontab 每日一次 + 启动兜底）
 │   ├── run.py                   # uvicorn 启动脚本
 │   ├── seed.py                  # 测试数据种子
 │   ├── Dockerfile
@@ -281,7 +284,7 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 
 ### 社区（论坛）
 
-社区论坛第一阶段（MVP）：匿名可浏览 → 登录可发帖/点赞/收藏/评论（**两级楼中楼**）→ 管理员审核与运营。实施唯一依据 `docs/论坛/论坛模块第一阶段PRD.md`（v1.4）+ 交互原型 `docs/论坛/prototype/index.html`；落点 `backend/app/forum.py`。**「先审后发」**：新帖 `status=0 待审核`，管理员通过后才公开。
+社区论坛第一阶段（MVP）：匿名可浏览 → 登录可发帖/点赞/收藏/评论（**两级楼中楼**）→ 管理员审核与运营。实施唯一依据 `docs/论坛/论坛模块第一阶段PRD.md`（v1.4）+ 交互原型 `docs/论坛/prototype/index.html`；帖子删除与回收站见 `docs/论坛/论坛删除与回收站PRD.md`（v1.3，**局部取代**第一阶段 PRD 的 §8-D16 与 §12.1 中「评论作者自删」半条）。落点 `backend/app/forum.py`（回收站轻量核心 `backend/app/forum_core.py`，超期清理 CLI `backend/forum_purge.py`）。**「先审后发」**：新帖 `status=0 待审核`，管理员通过后才公开。
 
 **公开接口（匿名可调）**
 
@@ -292,7 +295,7 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | GET | `/api/forum/stats` | 社区统计 `{articleCount, viewCount, tagCount}`（`status=1` 实时聚合） |
 | GET | `/api/forum/config` | 前台配置（Banner 三项 + `defaultSort` + `searchPlaceholder`；打赏预留键不下发） |
 | GET | `/api/forum/articles` | 文章列表（参数 `page`,`pageSize`,`category`,`sort`,`q`,`tag`；`category=home`=全部 / `recommend`=置顶∪加精按浏览量；`sort=latest\|views\|comments`；**置顶帖在任意排序档中都恒排最前**） |
-| GET | `/api/forum/articles/{id}` | 详情（未公开文章对非作者非管理员按 404 处理；**不计数浏览量**） |
+| GET | `/api/forum/articles/{id}` | 详情（未公开文章对非作者非管理员按 404 处理；**回收站帖对所有人 404，含作者本人**；**不计数浏览量**） |
 | GET | `/api/forum/articles/{id}/comments` | 评论列表（`page`,`pageSize`；**只对顶层评论分页**，每条内嵌 `replies`；已登录附每条 `liked`） |
 | GET | `/api/forum/articles/{id}/author-posts` | 作者其他已发布文章（最多 5 条） |
 | POST | `/api/forum/articles/{id}/view` | 浏览量 +1（需登录；原子自增，重复刷新重复计为已接受行为） |
@@ -305,8 +308,11 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | POST | `/api/forum/articles` | 发布文章（`status=0`；body `{categoryId,title,content,coverUrl?,tags[]}`；受禁言拦截） |
 | GET | `/api/forum/articles/{id}/edit` | 编辑回填（**仅作者本人**；越权/不存在一律 404；`remove_by='admin'` 的已下架帖 400） |
 | PUT | `/api/forum/articles/{id}` | 作者编辑重提（**仅作者本人**；`status` 一律回 0、清空 `reviewNote`/`publishTime`/`removeBy`、`resubmitCount+1`，**浏览/点赞/收藏/评论全部保留**） |
-| DELETE | `/api/forum/articles/{id}` | 作者自删（软删：`status=3` + `removeBy='author'`，数据保留可恢复） |
-| GET | `/api/forum/my/articles` | 我的文章（各状态 + `reviewNote`/`removeBy`/`resubmitCount`） |
+| DELETE | `/api/forum/articles/{id}` | 作者删除 → **进回收站**（`status=4` + `deleted_at`，保留 30 天；**不再产生 `status=3`**，后者只剩管理员下架一个来源） |
+| POST | `/api/forum/articles/{id}/restore` | 从回收站恢复 → `status_before_delete`（0/1/2，不重审）；**超 30 天返 410** |
+| DELETE | `/api/forum/articles/{id}/purge` | 回收站内**彻底删除**（物理 + 级联，不可恢复；前端一律二次确认） |
+| DELETE | `/api/forum/comments/{id}` | 作者删自己的评论/回复（**物理删除不留痕**；删顶层连带其下全部回复） |
+| GET | `/api/forum/my/articles` | 我的文章（各状态 + `reviewNote`/`removeBy`/`resubmitCount`；`status=4` 时额外下发 `deletedAt`/`daysLeft`/`statusBeforeDelete`，回收站页面据此取数） |
 | GET | `/api/forum/my/stats` | 侧边栏用户卡 `{postCount, likeCount, followerCount}`（`followerCount` 恒 0） |
 | POST | `/api/forum/articles/{id}/like` | 文章点赞切换（幂等）→ `{liked, likeCount}` |
 | POST | `/api/forum/articles/{id}/favorite` | 文章收藏切换（幂等）→ `{favorited, favoriteCount}` |
@@ -323,11 +329,11 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | PUT | `/api/forum/admin/articles/{id}/review` | 审核（`{status: 1\|2, reviewNote?}`；驳回理由必填；通过时重写 `publishTime`） |
 | POST | `/api/forum/admin/articles/{id}/top` `/feature` | 置顶 / 加精切换（幂等） |
 | POST | `/api/forum/admin/articles/{id}/offline` | 下架（`{reason?}`；写 `remove_by='admin'`，作者此后**不能**编辑重提） |
-| POST | `/api/forum/admin/articles/{id}/restore` | 恢复上架（`remove_by=''`，`publish_time` 重写，**不重新审核**） |
+| POST | `/api/forum/admin/articles/{id}/restore` | 恢复上架（`remove_by=''`，`publish_time` 重写，**不重新审核**）；`status=4` 时为**回收站恢复** → `status_before_delete`（超 30 天 410） |
 | PUT | `/api/forum/admin/articles/{id}` | 改板块/标签/封面/标题（**状态不变**，不重新审核；**正文只读**） |
-| DELETE | `/api/forum/admin/articles/{id}` | 硬删除（级联评论/点赞/收藏/标签关联） |
+| DELETE | `/api/forum/admin/articles/{id}` | 硬删除（级联评论/点赞/收藏/标签关联；回收站帖同样走这里） |
 | GET | `/api/forum/admin/articles/{id}/comments` | 评论抽屉（含已删除标记） |
-| DELETE | `/api/forum/admin/comments/{id}` | 删评论（软删；删顶层连带其全部回复并清 `comment_likes`） |
+| DELETE | `/api/forum/admin/comments/{id}` | 删评论（**软删 `status=2` 留治理痕迹**；删顶层连带其全部回复并清 `comment_likes`）——与作者侧物理删**有意不对称** |
 | GET/POST/PUT/DELETE | `/api/forum/admin/categories[/{id}]` | 板块管理（系统板块不可删/改名/隐藏；有已发布文章的板块删除 400） |
 | GET/POST/PUT/DELETE | `/api/forum/admin/tags[/{id}]` | 标签管理（重命名 / 置热 / 删除） |
 | POST | `/api/forum/admin/tags/{id}/merge` | 标签合并（`{targetTagId}`；引用全部迁移、删源、重算 `use_count`） |
@@ -336,12 +342,14 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | GET | `/api/forum/admin/user-stats/{userId}` | 用户论坛数据（发帖/获赞/粉丝 + 最近 5 篇） |
 | PUT | `/api/auth/admin/users/{id}/mute` | 禁言/解禁（body `{muteUntil}`，空串=解禁；与 `status` 三态**正交**） |
 
-- **状态机**（`forum_articles.status`）：`0 待审核 → 1 已发布 / 2 已驳回`；`1 → 3 已下架`；`3 → 1 恢复`；任意可编辑态经**作者编辑保存 → 0**（`resubmit_count+1`）。已驳回的文章必须由作者重提回 0 才能再审。
-- **`remove_by` 决定作者能否编辑重提**：`''` 未移除 / `'author'` 作者自删（可重提）/ `'admin'` 管理员下架（**不可重提**，返 400，否则等于绕过下架）。
+- **状态机**（`forum_articles.status`）：`0 待审核 → 1 已发布 / 2 已驳回`；`1 → 3 已下架`（**仅管理员**）`→ 1 恢复`；`0/1/2 ──作者删除──▶ 4 回收站`；`4 ──恢复（作者或管理员）──▶ status_before_delete`；`4 ──彻底删除/后台硬删/超期清理──▶ 物理删除`（级联，不可恢复）。任意可编辑态（0/1/2/3 且 `remove_by='author'`）经**作者编辑保存 → 0**（`resubmit_count+1`）；**回收站帖必须先恢复才能编辑**。已驳回的文章必须由作者重提回 0 才能再审。
+- **回收站三列**（`deleted_at` / `status_before_delete` / `publish_time_before_delete`，`migrate_forum_article_recycle_columns()` 幂等补列）：`deleted_at` 是 **30 天保留期的唯一权威**（恢复接口自校验 + 列表自过滤 + `forum_purge.py` 清理共用）；恢复时回填删前 `publish_time`，否则「删除→恢复」两次点击即可零成本刷榜。超期清理主路径是 crontab 每日 05:00 跑 `forum_purge.py`，`main.py` 启动兜底一次——**漏挂 crontab 不影响正确性**（超期帖用户看不到也恢复不了，只是数据多留几天）。
+- **`remove_by` 决定作者能否编辑重提**：`''` 未移除 / `'author'` 作者自删（已在回收站，须先恢复）/ `'admin'` 管理员下架（**不可重提**，返 400，否则等于绕过下架）。
 - **标签 `use_count` = 被 `status=1` 文章引用的数量**，只挂在状态转移这一个点上；浏览/点赞/收藏/评论计数一律原子 SQL 自增。
 - **`comment_count` = 顶层评论数 + 回复数**（回复也算评论）；评论纯文本存储，不接受 Markdown/HTML。
-- **禁言语义**：能登录浏览，但**不能发帖/评论/上传**（点赞收藏不受影响）；命中返回 403 + `detail="账号已被禁言，至 <时间>"`。
-- 端到端回归脚本：`cd backend && python3 forum_smoke_test.py`（临时库 + `TestClient`，176 项断言）。
+- **禁言语义**：能登录浏览，但**不能发帖/评论/上传**（点赞收藏不受影响）；命中返回 403 + `detail="账号已被禁言，至 <时间>"`。**删自己的帖子/评论属例外，禁言期间仍可用**。
+- **后台回收站筛选尚未实现**：`GET /api/forum/admin/articles` 的 `status` 参数已支持 `4`、`admin/articles/{id}/restore` 也已支持回收站帖，但后台文章管理页的下拉只有 0/1/2/3（见 `TODO.md`）。
+- 端到端回归脚本：`cd backend && python3 forum_smoke_test.py`（临时库 + `TestClient`，覆盖状态机/计数/回收站/权限/级联等断言）。
 
 ### 其他
 
@@ -371,13 +379,13 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 - `html`：富文本编辑器（wangEditor）产出的 HTML，入库前由后端 `nh3` 白名单消毒（仅放行常用标签 + `style` 内联样式）。
 - `markdown`：Markdown 源码，原样入库（nh3 会破坏 Markdown 语法），由前端渲染——主站用 `marked` + `DOMPurify` 消毒后展示，后台编辑器为 md-editor-v3（双编辑器共存，按格式自动切换）。
 
-社区（论坛）模块的 9 张表由 `Base.metadata.create_all` 自动建（无补列迁移），**唯一需要迁移的存量表是 `users` 补 `mute_until` 列**（`migrate_user_mute_column()`，幂等，失败只记 warning）：
+社区（论坛）模块的 9 张表由 `Base.metadata.create_all` 自动建，存量表补列由 4 个幂等迁移函数在 `init_db()` 里完成（`migrate_user_extra_columns()` / `migrate_announcement_content_columns()` / `migrate_user_mute_column()` / `migrate_forum_article_recycle_columns()`，失败只记 warning、不阻断启动）。其中回收站迁移会补 `forum_articles` 三列，并把旧语义的作者自删帖（`status=3 AND remove_by='author'`）刷成 `status=4` + `deleted_at=update_time`：
 
 | 表 | 用途 |
 |----|------|
 | `forum_categories` | 板块（2 个系统板块 `home`/`recommend` 不可删改名隐藏） |
 | `forum_tags` | 标签（`use_count` = 被已发布文章引用数） |
-| `forum_articles` | 文章（`status` 0待审核/1已发布/2已驳回/3已下架；`remove_by` + `resubmit_count`） |
+| `forum_articles` | 文章（`status` 0待审核/1已发布/2已驳回/3已下架(管理员)/4回收站；`remove_by` + `resubmit_count` + 回收站三列 `deleted_at`/`status_before_delete`/`publish_time_before_delete`） |
 | `forum_comments` | 评论（`parent_id` 只指向顶层评论；两级楼中楼） |
 | `forum_article_likes` / `forum_article_favorites` / `forum_comment_likes` | 点赞与收藏关系（`(x, user_id)` 联合唯一，切换语义） |
 | `forum_article_tags` | 文章—标签关联（不用逗号串，否则合并/重命名/删除会写坏数据） |
@@ -425,7 +433,8 @@ docker compose up -d --build
 | `/forum/post/:id` | forum/PostDetail | 文章详情（顶部「← 返回社区」+ 全局导航栏；Markdown 渲染 + 点赞/收藏/分享 + 两级评论区 + 作者卡） |
 | `/forum/new` | forum/PostEditor | 发布文章（与编辑页复用同一组件；md-editor-v3 分屏编辑器；本地草稿防丢失） |
 | `/forum/edit/:id` | forum/PostEditor | 编辑文章（`mode=edit`；**仅作者本人**，保存后回待审核重走审核） |
-| `/forum/my` | forum/MyPosts | 我的文章（各状态 + 驳回理由 + 编辑重提 + 自删） |
+| `/forum/my` | forum/MyPosts | 我的文章（各状态 + 驳回理由 + 编辑重提 + 删除进回收站 + 入口「查看已删除文章」） |
+| `/forum/recycle` | forum/RecycleBin | 回收站（保留期与剩余天数、逐条恢复 / 彻底删除；不可恢复的删除一律二次确认） |
 | `/login` | AuthView（登录） | 登录页（用户名/邮箱 + 密码） |
 | `/register` | AuthView（注册） | 注册页（邮箱 + 密码 + 确认密码 + 滑块拼图人机验证） |
 

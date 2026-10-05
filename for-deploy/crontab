@@ -1,7 +1,7 @@
 # 星穹旅驿官网 · 生产 root crontab（2026-10-03 起：1panel + Docker 拓扑）
 # 与线上 `crontab -l` 字节一致，可 md5sum 比对；改法见 for-deploy/README.md「改定时任务」节。
 # 生产只有 crontab 一种定时机制（无 celery / APScheduler / systemd timer）。
-# 两条任务都是 0 变更空跑安全（kb_sync 无变更不动 index_version），漏跑不会写坏数据。
+# 三条任务都是 0 变更空跑安全（kb_sync 无变更不动 index_version），漏跑不会写坏数据。
 
 # 员工名片到期回写（0 变更空跑安全；漏挂不影响核验正确性：
 # 判定权威是 valid_to，公开验证接口查询时懒更新会兜底回写）
@@ -10,3 +10,7 @@
 # 知识库增量同步：wiki 源码变更按 MD5 入库，自增 kb_settings.index_version
 # （服务端每轮对话轻量比对版本号后重建内存索引，无需重启后端容器）
 0 3 * * * /usr/bin/docker exec announcement-backend python backend/kb_sync.py --incremental >> /var/log/kb_sync.log 2>&1
+
+# 论坛回收站超期清理（0 变更空跑安全；漏挂不影响正确性：
+# 判定权威是 deleted_at，恢复接口自校验 + 列表自过滤，超期帖用户看不到也恢复不了）
+0 5 * * * /usr/bin/docker exec announcement-backend python backend/forum_purge.py >> /var/log/forum_purge.log 2>&1

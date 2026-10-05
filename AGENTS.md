@@ -101,7 +101,13 @@ pnpm build                # 产物 dist/，部署到 /admin/
 - **禁言（`users.mute_until`）与 `status` 三态正交**：禁用=不能登录，禁言=能登录浏览但不能发帖/评论。判定在写操作依赖 `_ensure_not_muted()`（读操作不受限），返回 403 + `detail="账号已被禁言，至 <时间>"`。**点赞/收藏不属"发言"，禁言期间仍可用**——这是有意的，别顺手一起禁。
 - **「首页/推荐」是两个系统板块**（`is_system=1`）：`home`=全部已发布，`recommend`=`is_featured=1 OR is_top=1` 且固定按 `view_count` 倒序。系统板块后台**不可删、不可改名、不可隐藏**；文章**禁止投稿到系统板块**（后端创建/修改时校验 400）。
 - **置顶帖在任意排序档中都恒排最前**（`ORDER BY is_top DESC, <排序列> DESC`），不是只有默认排序才置顶。
-- **第一阶段有意不做**（顺延第二/三阶段，已登记 `TODO.md`，勿当缺陷补齐）：站内信、关注/粉丝（`followerCount` 恒 0）、打赏、等级/头衔、评论审核队列与敏感词、评论作者自删、文章版本记录、回复折叠、回复通知、统计定时任务、全文检索、图床冗余清理、富文本。对应位置只留 UI 占位（统一走 `showForumToast()` 提示"功能开发中"，**不跳转不请求**），配置键 `forum_config.reward*` 预留但无 UI。
+- **⚙️ 帖子删除与回收站（`docs/论坛/论坛删除与回收站PRD.md` v1.3，2026-10-05 上线）**：
+  - **作者删除帖子 = 进回收站（`status=4` + `deleted_at`），不是物理删、也不再产生 `status=3`**——`status=3` 此后只有"管理员下架"一个来源。删除 / 恢复**统一走 `_set_article_status()`**，标签 `use_count` 仍只挂"进入/离开 `status=1`"这一个转移点（彻底删除时因已是 4，天然不会重复扣减）。回收站帖**对所有人 404（含作者本人）**：详情 / 评论列表 / 点赞 / 收藏 / 评论 / 浏览全封，彻底删除只有 `DELETE /api/forum/articles/{id}/purge` 一条路。
+  - **30 天保留期的唯一权威是 `deleted_at`**（不是 `status`、更不是 crontab）：恢复接口自校验（超期 **410**）、回收站列表自过滤、`backend/forum_purge.py` 清理共用同一口径。恢复目标 = `status_before_delete`（0/1/2，**不重审**），并回填 `publish_time_before_delete`——不回填则"删除→恢复"两次点击就能零成本刷排行榜。**crontab 漏挂不影响正确性**（超期帖用户看不到也恢复不了，只是数据多留几天），与员工名片 `valid_to` 同款口径。
+  - **评论删除：作者侧物理删（不留痕）/ 后台软删（`status=2` 留治理痕迹）——有意不对称，别顺手统一成一种**（回收站 PRD §0.4-J / §6-D7，实现注释在 `forum.py` 模块头）。作者删顶层评论**连带其下全部回复物理删除（含他人回复）**，确认弹窗必须写明"该评论下的 N 条回复将一并删除"；后台删评论仍是软删。**禁言用户仍可删自己的内容**（删除不属"发言"，与"禁言期间点赞/收藏仍可用"同属例外）。
+  - `GET /api/forum/my/articles?status=4` 是回收站列表的取数口（额外下发 `deletedAt` / `daysLeft` / `statusBeforeDelete`，**不含正文**）；**不做回收站正文预览**——要看内容先恢复（恢复零风险）。删除不清理 `uploads/forum/` 里的图片（图床冗余清理属第三阶段）。
+  - **⚠️ 后台回收站筛选尚未实现**（回收站 PRD §5 第 9 项未落地，已登记 `TODO.md`）：`GET /api/forum/admin/articles` 的 `status` 参数与 `admin/articles/{id}/restore` 后端**都已支持 `4`**，但后台文章管理页的状态下拉只有 0/1/2/3，因此后台目前筛不出也操作不了回收站帖。
+- **第一阶段有意不做**（顺延第二/三阶段，已登记 `TODO.md`，勿当缺陷补齐）：站内信、关注/粉丝（`followerCount` 恒 0）、打赏、等级/头衔、评论审核队列与敏感词、文章版本记录、回复折叠、回复通知、统计定时任务、全文检索、图床冗余清理、富文本。对应位置只留 UI 占位（统一走 `showForumToast()` 提示"功能开发中"，**不跳转不请求**），配置键 `forum_config.reward*` 预留但无 UI。（**"评论作者自删"已由回收站 PRD 提前实现**，只剩评论**编辑**未定，见 `TODO.md`。）
 - **Banner 配图整幅铺满**：配了 `bannerImage` 就 `position:absolute; inset:0` 铺满整个横幅，`object-fit:cover` + `object-position:center`（溢出**居中裁剪**、**不拉伸**），z-index 依次为 图 0 → 压暗蒙版 1 → 文字 2 → 底部操作条 3。三条要一起写：只写 `cover` 会在偏心位置裁切，只写 `width/height:100%` 会拉伸变形。配图可能很亮，蒙版只做白字可读性保障（`background:linear-gradient(100deg, rgba(15,23,42,.62) …)`）；配图 404 时要用**响应式开关**（`artBroken`）而不是 `display:none`，才能把与它是兄弟节点的蒙版一起撤掉，否则纯渐变底上会蒙一层灰。
 - **徽章只有"管理员"一种**（依据 `users.role`）：常量化在 `frontend/src/utils/forumBadges.js`（后台同名表保持一致），**不要在多个组件里硬编码颜色**；依据文档示例的"炽热行者""VIP"等等级头衔属第二阶段，不得以假数据填充。
 - 论坛页面样式令牌与 Markdown 正文排版在 `frontend/src/assets/styles/forum.css`（全局，8 个公共组件共用）；类名一律 `fx-` 前缀，因为全站 `App.vue` 有像素风的全局 `.btn`，不加前缀会互相串味。
@@ -173,12 +179,13 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 ### 生产定时任务（root crontab）
 
-生产**只有 crontab 一种定时机制**（无 celery / APScheduler / systemd timer），知识库与名片到期两条链路都通过 `docker exec` 在容器内执行：
+生产**只有 crontab 一种定时机制**（无 celery / APScheduler / systemd timer），知识库 / 名片到期 / 论坛回收站超期清理三条链路都通过 `docker exec` 在容器内执行：
 
 - `0 3 * * *` → `/usr/bin/docker exec announcement-backend python backend/kb_sync.py --incremental >> /var/log/kb_sync.log 2>&1`（wiki 改动按 MD5 入库，自增 `index_version`，后端免重启）
 - `0 4 * * *` → `/usr/bin/docker exec announcement-backend python backend/staff_expire.py >> /var/log/staff_expire.log 2>&1`（**漏挂不影响核验正确性**，`valid_to` 权威 + 查询时懒更新兜底，只影响台账刷新时效）
+- `0 5 * * *` → `/usr/bin/docker exec announcement-backend python backend/forum_purge.py >> /var/log/forum_purge.log 2>&1`（物理清除超 30 天的回收站帖；**漏挂不影响正确性**，`deleted_at` 权威 + 恢复接口自校验 + 列表自过滤，只是数据多留几天）
 
-条目里用 `/usr/bin/docker` 绝对路径（cron 用 `/bin/sh` 且不加载交互式环境，PATH 里未必有 docker）。改 crontab 前先 `crontab -l > /root/crontab.bak-YYYYMMDD` 备份，再 `crontab <文件>` 安装（**勿直接改 `/var/spool/cron/crontabs/root`**，务必走 `crontab` 命令）。两条任务**都是 0 变更空跑安全**（kb_sync 无变更不动 `index_version`），漏跑不会写坏数据——但漏挂 `kb_sync` 会导致 wiki 新页面不进知识库，客服对未同步内容直接答不上来。**完整条目快照留档在 `for-deploy/crontab`，改法与验证命令见 `for-deploy/README.md`「改定时任务」节**。
+条目里用 `/usr/bin/docker` 绝对路径（cron 用 `/bin/sh` 且不加载交互式环境，PATH 里未必有 docker）。改 crontab 前先 `crontab -l > /root/crontab.bak-YYYYMMDD` 备份，再 `crontab <文件>` 安装（**勿直接改 `/var/spool/cron/crontabs/root`**，务必走 `crontab` 命令）。三条任务**都是 0 变更空跑安全**（kb_sync 无变更不动 `index_version`、forum_purge 无超期帖不写库），漏跑不会写坏数据——但漏挂 `kb_sync` 会导致 wiki 新页面不进知识库，客服对未同步内容直接答不上来。**完整条目快照留档在 `for-deploy/crontab`，改法与验证命令见 `for-deploy/README.md`「改定时任务」节**。
 
 ## for-deploy 留档目录
 

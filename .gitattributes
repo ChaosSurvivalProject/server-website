@@ -1,0 +1,4 @@
+# for-deploy/crontab 是「与生产字节一致」的快照，安装时走 `scp` + `crontab <file>`。
+# 若被 git 的 autocrlf 转成 CRLF，安装后 cron 会报 `bad minute`（见 for-deploy/README.md），
+# 且与线上 `crontab -l` 的 md5 比对会失败——因此禁止对该文件做行尾转换。
+for-deploy/crontab -text
