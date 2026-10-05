@@ -140,6 +140,11 @@ pnpm build                # 产物 dist/，部署到 /admin/
 - 远程：`git@github.com:ChaosSurvivalProject/server-website.git`，主分支 `main`。
 - 提交信息使用 Conventional Commits 前缀（`feat` / `fix` / `refactor` 等，可带 scope 如 `feat(backend):`），描述用中文。
 
+## 文档归档口径
+
+- `TODO.md` **只留未完成项与后续计划**：清单/上线项收口后整段搬到 `docs/归档/已完成清单.md`（按完成时间倒序），并在 `TODO.md` 留一行指向归档的链接；只有**仍有未完成条目**的清单才在 `TODO.md` 保留一个收尾小节（如「换服务器重新部署：待人工收尾」）。
+- 归档只搬清单本身：技术决策与规约仍写在 `AGENTS.md` / `README.md` / 各模块方案文档里，**不要往归档文件里新增规约**。换服务器、改端口这类使历史值失效的变更，在归档条目上补一句注记（如二维码前缀 `:23333` → 443），**不要静默改写历史记录**。
+
 ## 部署拓扑（生产）
 
 **生产对外地址：`https://xqly.xt91tv.shop`**（2026-10-03 换服务器后启用，标准 443）。旧站是裸机 nginx + NAT 外部 23333 → 内部 80 且 nginx 在 80 上直接跑 SSL，**那套拓扑已废弃**；现在由 1panel 托管，nginx 是 1panel 的 OpenResty 容器（**host 网络**，监听 80/443），证书用 1panel「SSL」里导入的通配符证书下发给站点。
