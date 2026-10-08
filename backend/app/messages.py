@@ -18,7 +18,6 @@
   PUT    /messages/admin/update/{id}   编辑站内信
   DELETE /messages/admin/delete/{id}   删除站内信（软删）
 """
-import json
 from datetime import datetime
 from typing import Any, Optional
 
@@ -41,13 +40,9 @@ from .crud import (
     admin_update_message,
     admin_delete_message,
     admin_messages_page,
-    create_task,
-    get_pending_tasks,
-    update_task_status,
 )
 from .database import (
     Message,
-    Task,
     UserMessage,
     get_db,
 )
@@ -569,54 +564,6 @@ async def create_beta_review_message(
     await db.commit()
     await db.refresh(msg)
     return msg
-
-
-# ── Worker 任务处理 ──────────────────────────────────────────────
-async def process_send_reply_notification(db: AsyncSession, payload: dict) -> None:
-    """处理 send_reply_notification 任务。"""
-    comment_id = payload.get("comment_id")
-    if not comment_id:
-        raise ValueError("missing comment_id")
-
-    comment = (
-        await db.execute(select(ForumComment).where(ForumComment.id == comment_id))
-    ).scalar_one_or_none()
-    if comment is None:
-        raise ValueError("comment not found")
-
-    article = await _get_article(db, comment.article_id)
-    if article is None:
-        raise ValueError("article not found")
-
-    # 被回复者
-    target_user_id = comment.reply_to_user_id or comment.author_id
-    if target_user_id == comment.author_id:
-        # 顶层评论的回复：reply_to_user_id 才是被回复者
-        if not comment.reply_to_user_id:
-            return  # 没有明确的被回复者，不发送通知
-
-    await create_reply_message(
-        db,
-        article_id=comment.article_id,
-        comment_id=comment.id,
-        reply_user_id=comment.author_id,
-        target_user_id=target_user_id,
-        reply_content=comment.content,
-        replied_comment_content="",
-    )
-
-
-TASK_HANDLERS = {
-    "send_reply_notification": process_send_reply_notification,
-}
-
-
-async def process_task(db: AsyncSession, task: Task) -> None:
-    handler = TASK_HANDLERS.get(task.type)
-    if handler is None:
-        raise ValueError(f"unknown task type: {task.type}")
-    payload = json.loads(task.payload) if isinstance(task.payload, str) else task.payload
-    await handler(db, payload)
 
 
 # ── 注册路由 ──────────────────────────────────────────────────────

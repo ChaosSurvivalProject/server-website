@@ -24,7 +24,7 @@
 - 站内信收件箱页面（三个 Tab：回复我的、收到点赞、系统通知）。
 - 头部导航栏未读消息入口与未读计数。
 - 后台「站内信管理」页面（替代原公告管理）。
-- 消息写入与异步补全的基础设施。
+- 消息直接写入。
 - 文章审核通过/驳回时的定向审核通知。
 - 阵营内测审核通过/驳回时的定向审核通知。
 
@@ -154,21 +154,6 @@ messages
 - 定向消息创建时即插入 `user_messages`，`is_read = 0`（reply / article_review / beta_review）。
 - 广播消息用户点击后插入 `user_messages`，`is_read = 1`（system_announcement / activity_announcement）。
 
-### 6.3 tasks（通用任务表）
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| id | INTEGER PK | 自增主键 |
-| type | TEXT NOT NULL | 任务类型：send_reply_notification |
-| payload | TEXT NOT NULL | JSON 负载：`{comment_id, reply_id, ...}` |
-| status | INTEGER DEFAULT 0 | 0=pending，1=processing，2=done，3=failed |
-| retry_count | INTEGER DEFAULT 0 | 重试次数 |
-| error_message | TEXT | 错误信息 |
-| created_at | TEXT NOT NULL | 创建时间 |
-| updated_at | TEXT NOT NULL | 更新时间 |
-
-> 本表作为**通用任务模块**的初始版本，调度与执行均在独立 worker 进程中完成。后续新增任务类型（如消息推送、数据清理等）可直接复用该表。
-
 ## 7. 接口设计
 
 ### 7.1 前台接口
@@ -194,7 +179,9 @@ messages
 
 ### 7.3 论坛模块内部触发
 
-- 评论创建成功后，同步写入 `tasks` 一条 `send_reply_notification` 任务（payload 包含评论 ID）。
+- 评论创建成功后，同步创建回复通知（定向消息）。
+- 顶层评论：通知文章作者「评论了你的文章」。
+- 回复评论：通知被回复者「回复了你的评论」。
 
 ### 7.4 后台审核触发
 
@@ -229,7 +216,7 @@ messages
   - 删除后该消息对当前用户不可见，列表中不再展示。
 - **广播消息**（系统公告 / 活动公告）：
   - 前台**不展示删除按钮**，禁止用户删除；
-  - 仅管理员可在后台操作删除（软删 `messages.is_deleted = 1`），删除后全体用户均不可见。
+  - 仅管理员可在后台操作删除（软删 `messages.is_deleted = 1`，删除后全体用户均不可见）。
 - **收到点赞**Tab：本次占位，删除按钮后续补充。
 
 ## 9. 后台设计
@@ -258,71 +245,14 @@ messages
 | 编辑 | 回显数据，发布时间置灰不可改 |
 | 删除 | 系统公告/活动公告：管理员可删除（软删 messages.is_deleted = 1，全体用户不可见）；审核通知：管理员可删除 |
 
-## 10. 异步处理
-
-### 10.1 方案选择
-
-采用 **方案 A：独立 Python CLI + crontab 定时轮询**。
-
-- 与现有 `kb_sync.py`、`staff_expire.py`、`forum_purge.py` 口径一致。
-- 生产 crontab 新增一条：
-  ```
-  * * * * * /usr/bin/docker exec announcement-backend python backend/message_worker.py >> /var/log/message_worker.log 2>&1
-  ```
-
-### 10.2 处理流程
-
-```
-定时触发（每分钟）
-    ↓
-SELECT * FROM tasks WHERE status = 0 ORDER BY created_at ASC LIMIT 10
-    ↓
-for task in tasks:
-    UPDATE tasks SET status = 1 WHERE id = task.id
-    try:
-        process_task(task)
-        UPDATE tasks SET status = 2 WHERE id = task.id
-    except Exception as e:
-        UPDATE tasks SET status = 3, error_message = e WHERE id = task.id
-```
-
-### 10.3 任务补全逻辑
-
-- `send_reply_notification`：
-  1. 根据 payload 中的评论 ID 查询评论内容、回复内容、文章 ID。
-  2. 查询被回复者的用户信息（昵称）。
-  3. 查询回复者的用户信息（昵称、头像）。
-  4. 组装 `messages` 行 + `user_messages` 行（定向给被回复者）。
-
-- `send_review_notification`（由后台审核动作同步触发，不经过 worker 任务表）：
-  1. 文章审核：根据文章 ID 查询作者 ID，组装 `article_review` 类型的定向消息。
-  2. 阵营内测审核：根据申请 ID 查询用户名，组装 `beta_review` 类型的定向消息。
-  3. 直接写入 `messages` + `user_messages`（`is_read = 0`）。
-
-## 11. 兼容性处理
-
-| 原有模块 | 处理方式 |
-|---|---|
-| 前台 `/announcements` 页面 | **直接移除**，不再使用 |
-| 前台 `/announcements/:id` 页面 | **直接移除**，不再使用 |
-| 后台公告管理页 | **改造为站内信管理**，保留路由 `/announcement/list` 和 `/announcement/edit` |
-| 原 `announcements` 表数据 | **迁移到 `messages` 表后删除旧表** |
-| 旧接口 `/api/announcement/*` | 不再兼容，前端不再调用 |
-
-## 12. 时间格式
-
-- 统一存储北京时间 naive ISO 字符串：`YYYY-MM-DDTHH:MM:SS`。
-- 前端解析避免使用 `new Date(iso)`（会被当作 UTC 解析），统一走项目内 `parseIso()` 工具函数。
-
-## 13. 安全与性能
+## 10. 安全与性能
 
 - 所有接口遵循统一响应包络 `{code, message, data}`。
 - 布尔语义用 int（0/1），不用 bool。
 - 匿名可打接口的数值入参必须有上界。
 - 关系表插入/删除走原子 SQL，避免 read-modify-write。
-- Worker 单次处理 10 条任务，防止单次轮询耗时过长。
 
-## 14. 待办事项
+## 11. 待办事项
 
 | ID | 事项 | 优先级 | 备注 |
 |---|---|---|---|
@@ -332,13 +262,13 @@ for task in tasks:
 | TODO-04 | 消息实时推送 | P2 | WebSocket / SSE 可选方案待评估 |
 | TODO-05 | 消息搜索与筛选 | P3 | 支持按关键词、时间范围搜索 |
 
-## 15. 里程碑
+## 12. 里程碑
 
 | 里程碑 | 内容 | 预计工期 |
 |---|---|---|
 | M1 | 数据模型迁移 + 后台站内信管理 | 2 天 |
 | M2 | 前台收件箱页面 + 导航栏未读入口 | 2 天 |
-| M3 | 回复通知触发链路 + Worker 异步补全 | 1 天 |
+| M3 | 回复通知触发链路 | 1 天 |
 | M4 | 文章审核通知触发 + 联调 | 1 天 |
 | M5 | 冒烟测试 + 生产部署 | 1 天 |
 
@@ -351,5 +281,4 @@ for task in tasks:
 | 定向消息 | 仅发送给特定用户的消息（如回复通知） |
 | 广播消息 | 面向全体用户的消息（如系统公告） |
 | 软删除 | 数据物理保留，通过 `is_deleted` 标记为不可见 |
-| Worker | 独立 Python 脚本，定时从 `tasks` 消费待处理任务 |
 | naive ISO | 不带时区后缀的北京时间字符串，如 `2026-10-07T14:30:00` |

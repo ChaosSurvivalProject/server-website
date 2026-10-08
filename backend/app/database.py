@@ -463,21 +463,6 @@ class UserMessage(Base):
     __table_args__ = (UniqueConstraint("user_id", "message_id", name="uq_user_message"),)
 
 
-class Task(Base):
-    """通用任务表（站内信 worker 异步处理初始版本）。"""
-
-    __tablename__ = "tasks"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    payload: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
-    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
-    updated_at: Mapped[str] = mapped_column(String(30), nullable=False)
-
-
 # ── 社区（论坛）模块 ──────────────────────────────────────────────
 # 实施依据：docs/论坛/论坛模块第一阶段PRD.md §4 + docs/论坛/论坛删除与回收站PRD.md。
 # 布尔语义一律 int（项目规约 §9-5）；时间列一律 String(30) 北京时间 ISO 字符串。

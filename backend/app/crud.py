@@ -571,51 +571,5 @@ async def admin_messages_page(
         "hasPrev": page > 1,
     }
 
-
-# ── Task CRUD ──────────────────────────────────────────────────────
-async def create_task(db: AsyncSession, task_type: str, payload: dict) -> Task:
-    import json
-    now = _now_iso()
-    obj = Task(
-        type=task_type,
-        payload=json.dumps(payload, ensure_ascii=False),
-        status=0,
-        retry_count=0,
-        error_message=None,
-        created_at=now,
-        updated_at=now,
-    )
-    db.add(obj)
-    await db.commit()
-    await db.refresh(obj)
-    return obj
-
-
-async def get_pending_tasks(db: AsyncSession, limit: int = 10) -> list[Task]:
-    result = await db.execute(
-        select(Task)
-        .where(Task.status == 0)
-        .order_by(Task.created_at.asc())
-        .limit(limit)
-    )
-    return result.scalars().all()
-
-
-async def update_task_status(
-    db: AsyncSession,
-    task_id: int,
-    status: int,
-    error_message: str | None = None,
-) -> Task | None:
-    task = (await db.execute(select(Task).where(Task.id == task_id))).scalar_one_or_none()
-    if task is None:
-        return None
-    task.status = status
-    task.updated_at = _now_iso()
-    if error_message is not None:
-        task.error_message = error_message
-    if status == 3:  # failed
-        task.retry_count = task.retry_count + 1
-    await db.commit()
     await db.refresh(task)
     return task
