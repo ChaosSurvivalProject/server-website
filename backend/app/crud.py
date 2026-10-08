@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func, and_, or_, insert
 
-from .database import Message, UserMessage, Task, User
+from .database import Message, UserMessage, User
 from .schemas import MessageCreate, MessageUpdate
 
 # 统一时区：消息时间按北京时间存储（naive ISO 字符串，见 AGENTS.md 存储约定）。
