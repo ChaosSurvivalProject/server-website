@@ -8,20 +8,6 @@ const routes = [
     component: Home
   },
   {
-    path: '/announcements',
-    name: 'Announcements',
-    // 懒加载Announcements组件
-    component: () => import('../views/Announcements.vue')
-  },
-  {
-    path: '/announcements/:id',
-    name: 'AnnouncementDetail',
-    // 懒加载AnnouncementDetail组件
-    component: () => import('../views/AnnouncementDetail.vue'),
-    // 路由参数
-    props: true
-  },
-  {
     path: '/faction-beta',
     name: 'FactionBeta',
     // 阵营对战玩法内测资格申请（需登录后填写）

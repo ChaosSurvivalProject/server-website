@@ -1,23 +1,29 @@
 import { http } from "@/utils/http";
 
-export type AnnouncementContentType = "html" | "markdown";
+export type MessageContentType = "markdown";
 
-export type AnnouncementItem = {
+export type MessageItem = {
   id: number;
+  type: string;
+  category: string | null;
   title: string;
-  /** 原始内容：contentType=html 时为富文本 HTML，markdown 时为 Markdown 源码 */
+  /** 原始内容：Markdown 源码 */
   rawContent: string;
-  contentType: AnnouncementContentType;
-  isPublished: number;
-  creator: string;
-  publishTime: string;
-  readCount: number;
-  createTime: string;
-  updateTime: string;
+  isBroadcast: number;
+  isDeleted: number;
+  status: number;
+  relatedArticleId: number | null;
+  relatedCommentId: number | null;
+  relatedUserId: number | null;
+  fromUserId: number | null;
+  replyContent: string | null;
+  repliedCommentContent: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type PageResult = {
-  items: AnnouncementItem[];
+  items: MessageItem[];
   page: number;
   pageSize: number;
   totalPages: number;
@@ -26,27 +32,27 @@ export type PageResult = {
   hasPrev: boolean;
 };
 
-/** 管理员：分页查询所有公告（含草稿） */
-export const queryPage = (params: { page?: number; pageSize?: number }) => {
-  return http.request<PageResult>("get", "/api/announcement/admin/page", { params });
+/** 管理员：分页查询所有站内信（含草稿） */
+export const queryPage = (params: { page?: number; pageSize?: number; keyword?: string; type?: string; status?: number }) => {
+  return http.request<PageResult>("get", "/api/messages/admin/page", { params });
 };
 
-/** 查询公告详情（与主站契约 frontend/src/api/api.js 的 detail 接口一致） */
+/** 查询站内信详情 */
 export const getDetail = (id: number) => {
-  return http.request<AnnouncementItem>("get", `/api/announcement/detail/${id}`);
+  return http.request<MessageItem>("get", `/api/messages/admin/detail/${id}`);
 };
 
-/** 管理员：创建公告 */
+/** 管理员：创建站内信 */
 export const create = (data: any) => {
-  return http.request<AnnouncementItem>("post", "/api/announcement/create", { data });
+  return http.request<MessageItem>("post", "/api/messages/admin/create", { data });
 };
 
-/** 管理员：更新公告 */
+/** 管理员：更新站内信 */
 export const update = (id: number, data: any) => {
-  return http.request<AnnouncementItem>("put", `/api/announcement/update/${id}`, { data });
+  return http.request<MessageItem>("put", `/api/messages/admin/update/${id}`, { data });
 };
 
-/** 管理员：删除公告 */
+/** 管理员：删除站内信 */
 export const remove = (id: number) => {
-  return http.request("delete", `/api/announcement/delete/${id}`);
+  return http.request("delete", `/api/messages/admin/delete/${id}`);
 };

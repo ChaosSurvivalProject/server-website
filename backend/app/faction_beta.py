@@ -12,6 +12,8 @@
 业务失败以 HTTPException(400/401/403/404, detail=...) 抛出，前端 axios
 拦截器统一读取 detail 展示。
 """
+import json
+import logging
 import re
 from datetime import datetime
 from typing import Optional
@@ -26,6 +28,7 @@ from .database import FactionBetaApplication, User, get_db
 from .crud import _TZ  # 统一北京时间（naive ISO 字符串，见 AGENTS.md 存储约定）
 
 router = APIRouter(prefix="/faction-beta", tags=["faction-beta"])
+logger = logging.getLogger("uvicorn.error")
 
 # ── 申请表选项（后端为唯一权威，前端选项需与此保持一致） ─────────
 # 阵营命名来自 chaos 设定文档《阵营设定_黎明誓约与暮夜同盟》
@@ -257,6 +260,20 @@ async def review(
     obj.update_time = _now_iso()
     await db.commit()
     await db.refresh(obj)
+
+    # 站内信：阵营内测审核结果通知申请人
+    try:
+        from .messages import create_beta_review_message
+        await create_beta_review_message(
+            db,
+            application_id=obj.id,
+            username=obj.username,
+            status=data.status,
+            review_note=obj.review_note,
+        )
+    except Exception as e:
+        logger.warning("写入阵营审核通知失败: %s", e)
+
     return {"code": 0, "message": "审核完成", "data": _dump(obj)}
 
 

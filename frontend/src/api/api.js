@@ -82,57 +82,6 @@ export const serverMonitorAPI = {
   }
 };
 
-// 公告API（契约参照 backend/app/schemas.py：正文对外字段为 rawContent 原始内容 +
-// contentType 内容格式（'html'=富文本 / 'markdown'=Markdown，Markdown 由前端渲染））
-export const announcementAPI = {
-  /**
-   * 获取公告列表
-   * @param {number} page - 页码
-   * @param {number} pageSize - 每页数量
-   * @param {number} isPublished - 是否已发布 (0: 草稿, 1: 已发布)
-   * @returns {Promise} - 返回Promise对象
-   */
-  queryPage: (page, pageSize, isPublished = '1') => {
-    return axiosInstance.get('/api/announcement/page', {
-      params: {
-        page,
-        pageSize,
-        isPublished
-      }
-    });
-  },
-
-  /**
-   * 获取公告详情
-   * @param {number} announcementId - 公告ID
-   * @returns {Promise} - 返回Promise对象
-   */
-  getDetail: (announcementId) => {
-    return axiosInstance.get(`/api/announcement/detail/${announcementId}`);
-  },
-
-  /**
-   * 获取上一篇/下一篇公告导航（已发布公告，按 id 顺序；prev=更早，next=更新）
-   * @param {number} announcementId - 公告ID
-   * @returns {Promise} - data: {prev: {id, title, publishTime} | null, next: {id, title, publishTime} | null}
-   */
-  getPrevNext: (announcementId) => {
-    return axiosInstance.get(`/api/announcement/prev-next/${announcementId}`);
-  },
-
-  /**
-   * 增加公告阅读量
-   * @param {number} announcementId - 公告ID
-   * @returns {Promise} - 返回Promise对象
-   */
-  addWatchCount: (announcementId) => {
-    return axiosInstance.post(`/api/announcement/addWatchCount`,{
-      announcementId
-    });
-  }
-};
-
-
 // 阵营对战玩法内测资格申请API（需登录；管理端接口在 admin-frontend 维护）
 export const factionBetaAPI = {
   /**
@@ -423,6 +372,36 @@ export const forumAPI = {
   }
 };
 
+// 站内信 API（PRD §7.1）
+export const messagesAPI = {
+  /** 未读计数（含定向未读 + 广播未点击） */
+  getUnreadCount: () => axiosInstance.get('/api/messages/unread-count'),
+
+  /** 回复我的列表 */
+  getReplies: (page = 1, pageSize = 10) =>
+    axiosInstance.get('/api/messages/replies', { params: { page, pageSize } }),
+
+  /** 收到点赞列表（本次占位，返回空数组） */
+  getLikes: (page = 1, pageSize = 10) =>
+    axiosInstance.get('/api/messages/likes', { params: { page, pageSize } }),
+
+  /** 系统通知列表（广播公告 + 定向审核通知） */
+  getSystem: (page = 1, pageSize = 10) =>
+    axiosInstance.get('/api/messages/system', { params: { page, pageSize } }),
+
+  /** 标记单条已读 */
+  markRead: (messageId) =>
+    axiosInstance.post(`/api/messages/${messageId}/read`),
+
+  /** 批量标记已读 */
+  markAllRead: (msgType) =>
+    axiosInstance.post('/api/messages/read-all', null, { params: msgType ? { msg_type: msgType } : {} }),
+
+  /** 删除定向消息 */
+  deleteMessage: (messageId) =>
+    axiosInstance.delete(`/api/messages/${messageId}`),
+};
+
 // 导出所有API
 export default {
   auth: authAPI,
@@ -431,5 +410,6 @@ export default {
   factionBeta: factionBetaAPI,
   staff: staffAPI,
   chat: chatAPI,
-  forum: forumAPI
+  forum: forumAPI,
+  messages: messagesAPI,
 };

@@ -10,20 +10,16 @@
 
       <!-- 已登录：站内信按钮（头像左侧）+ 头像（桌面端右缘 / 移动端三横线左侧） -->
       <div v-if="loggedIn" class="nav-avatar-wrap">
-        <!--
-          站内信（PRD §5.1-N2）：第一阶段只做 UI 占位——点击提示"功能开发中"，
-          **不跳转、不请求接口**。独立成按钮而非塞进头像菜单，是为第二阶段
-          站内信系统预留位置（届时只需把 onClick 换成打开未读列表，
-          未读数角标也挂在这里，见 PRD §5.1-N4 第一阶段不做角标）。
-        -->
+        <!-- 站内信：点击跳转收件箱，未读角标实时展示 -->
         <button
           type="button"
           class="nav-bell"
           aria-label="站内信"
-          title="站内信（开发中）"
-          @click.stop="onSiteMessage"
+          :title="unreadCount > 0 ? `站内信（${unreadCount} 条未读）` : '站内信'"
+          @click.stop="goMessages"
         >
           <i class="fa-regular fa-bell"></i>
+          <span v-if="unreadCount > 0" class="nav-bell-badge">{{ unreadCount }}</span>
         </button>
 
         <button
@@ -118,9 +114,6 @@
         <router-link to="/" class="nav-icon"
           ><i class="fa-solid fa-house"></i>首页</router-link
         >
-        <router-link to="/announcements" class="nav-icon"
-          ><i class="fa-solid fa-bullhorn"></i>服务器公告</router-link
-        >
         <router-link to="/forum" class="nav-icon"
           ><i class="fa-solid fa-users"></i>社区</router-link
         >
@@ -132,11 +125,6 @@
           <li>
             <router-link to="/" @click="closeMenu()"
               ><i class="fa-solid fa-house"></i>首页</router-link
-            >
-          </li>
-          <li>
-            <router-link to="/announcements" @click="closeMenu()"
-              ><i class="fa-solid fa-bullhorn"></i>服务器公告</router-link
             >
           </li>
           <li>
@@ -160,6 +148,13 @@
         </ul>
       </div>
     </div>
+
+    <!-- 站内信弹窗 -->
+    <MessagesPopup
+      :visible="showMessagesPopup"
+      @update:visible="val => { showMessagesPopup = val; }"
+      @read-change="handleMessagesReadChange"
+    />
   </nav>
 </template>
 
@@ -169,15 +164,21 @@ import defaultAvatar from "../assets/images/avatar-default.svg";
 import McConfig from "../config/mc-config.js";
 import { authState, clearAuth } from "../utils/auth.js";
 import { showForumToast } from "../utils/forumToast.js";
+import { messagesAPI } from "../api/api.js";
+import MessagesPopup from "../views/Messages.vue";
 
 export default {
   name: "NavBar",
+  components: { MessagesPopup },
   data() {
     return {
       mobileMenuOpen: false,
       logoImg,
       defaultAvatar,
       avatarMenuOpen: false,
+      unreadCount: 0,
+      unreadTimer: null,
+      showMessagesPopup: false,
     };
   },
   computed: {
@@ -216,9 +217,30 @@ export default {
         });
       }
     },
-    /** 站内信占位：第一阶段只提示，不跳转不请求（PRD §5.1-N2） */
-    onSiteMessage() {
-      showForumToast("站内信功能开发中，敬请期待");
+    /** 站内信：打开弹窗 */
+    goMessages() {
+      this.showMessagesPopup = true;
+    },
+    /** 关闭站内信弹窗 */
+    closeMessagesPopup() {
+      this.showMessagesPopup = false;
+    },
+    /** 未读计数变化（弹窗内触发） */
+    handleMessagesReadChange(count) {
+      this.unreadCount = count;
+    },
+    /** 轮询未读计数（每 30 秒） */
+    async loadUnreadCount() {
+      if (!authState.token) {
+        this.unreadCount = 0;
+        return;
+      }
+      try {
+        const res = await messagesAPI.getUnreadCount();
+        this.unreadCount = res.count || 0;
+      } catch (e) {
+        // ignore
+      }
     },
     toggleMenu() {
       this.mobileMenuOpen = !this.mobileMenuOpen;
@@ -253,9 +275,16 @@ export default {
   mounted() {
     // 点击头像以外区域时关闭下拉菜单
     document.addEventListener("click", this.closeAvatarMenu);
+    // 站内信未读计数轮询
+    this.loadUnreadCount();
+    this.unreadTimer = setInterval(this.loadUnreadCount, 30000);
   },
   beforeUnmount() {
     document.removeEventListener("click", this.closeAvatarMenu);
+    if (this.unreadTimer) {
+      clearInterval(this.unreadTimer);
+      this.unreadTimer = null;
+    }
   },
 };
 </script>
@@ -455,6 +484,21 @@ nav {
 .nav-bell:hover {
   border-color: rgba(255, 255, 255, 0.5);
   background-color: rgba(255, 255, 255, 0.12);
+}
+.nav-bell-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  line-height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: #f56c6c;
+  color: white;
+  font-size: 11px;
+  text-align: center;
+  font-weight: bold;
 }
 
 /* ── 已登录头像（常驻：桌面端右缘 / 移动端三横线左侧） ── */

@@ -44,8 +44,8 @@ export default [
         name: "AnnouncementList",
         component: () => import("@/views/announcement/list.vue"),
         meta: {
-          title: "公告管理",
-          icon: "ep/bullhorn",
+          title: "站内信管理",
+          icon: "ep/message",
           showLink: true
         }
       },
@@ -54,7 +54,7 @@ export default [
         name: "AnnouncementEdit",
         component: () => import("@/views/announcement/edit.vue"),
         meta: {
-          title: "编辑公告",
+          title: "编辑站内信",
           showLink: false,
           activeMenu: "/announcement/list"
         }

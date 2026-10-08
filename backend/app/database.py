@@ -64,19 +64,7 @@ class Base(DeclarativeBase):
     pass
 
 
-class Announcement(Base):
-    __tablename__ = "announcements"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    content: Mapped[str] = mapped_column(Text, nullable=False)  # 原始内容：contentType=html 时为富文本 HTML，markdown 时为 Markdown 源码
-    content_type: Mapped[str] = mapped_column(String(20), nullable=False, default="html")  # 'html'=富文本, 'markdown'=Markdown（渲染在前端）
-    is_published: Mapped[int] = mapped_column(Integer, default=0)  # 0=draft, 1=published
-    creator: Mapped[str] = mapped_column(String(100), nullable=False)
-    publish_time: Mapped[str] = mapped_column(String(30), nullable=False)  # ISO format string
-    read_count: Mapped[int] = mapped_column(Integer, default=0)
-    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
-    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
 
 
 # 用户状态（布尔语义用 int 的项目规约扩展为三态）
@@ -424,6 +412,72 @@ class ServerRecord(Base):
     update_time: Mapped[str] = mapped_column(String(30), nullable=False)
 
 
+# ── 站内信模块（docs/站内信/站内信功能PRD.md） ──────────────────────
+# messages：消息主表；user_messages：用户消息状态表；tasks：通用任务表。
+
+
+class Message(Base):
+    """消息主表（站内信）。
+
+    定向消息（reply / article_review / beta_review）创建时即插入 user_messages；
+    广播消息（system_announcement / activity_announcement）用户点击后才插入。
+    """
+
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    type: Mapped[str] = mapped_column(
+        String(32), nullable=False, index=True
+    )  # reply / system_announcement / activity_announcement / article_review / beta_review
+    category: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True, index=True
+    )  # system / activity / article_review / beta_review
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # Markdown 源码（可选）
+    related_article_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    related_comment_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    related_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    from_user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    reply_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    replied_comment_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_broadcast: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    is_deleted: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    status: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 0=草稿, 1=已发布（仅广播消息有效）
+    created_at: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    updated_at: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class UserMessage(Base):
+    """用户消息状态表（收件箱 + 已读/删除状态）。"""
+
+    __tablename__ = "user_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    message_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    is_read: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_deleted: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    created_at: Mapped[str] = mapped_column(String(30), nullable=False)
+    updated_at: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", "message_id", name="uq_user_message"),)
+
+
+class Task(Base):
+    """通用任务表（站内信 worker 异步处理初始版本）。"""
+
+    __tablename__ = "tasks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    payload: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[int] = mapped_column(Integer, nullable=False, default=0, index=True)
+    retry_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    updated_at: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
 # ── 社区（论坛）模块 ──────────────────────────────────────────────
 # 实施依据：docs/论坛/论坛模块第一阶段PRD.md §4 + docs/论坛/论坛删除与回收站PRD.md。
 # 布尔语义一律 int（项目规约 §9-5）；时间列一律 String(30) 北京时间 ISO 字符串。
@@ -641,6 +695,110 @@ async def init_db():
             logger.error("SQLite 不支持 FTS5，知识库全文检索不可用（仅向量检索）: %s", e)
     # 存量库补列（新库 create_all 已含新列，迁移幂等直接跳过）
     migrate_user_extra_columns()
-    migrate_announcement_content_columns()
     migrate_user_mute_column()
     migrate_forum_article_recycle_columns()
+    # 站内信：announcements 表迁移到 messages 表（仅对存量库执行，新库跳过）
+    await migrate_announcements_to_messages()
+
+
+# ── 站内信存量数据迁移 ────────────────────────────────────────────────
+_announcements_migrated = False
+
+
+async def migrate_announcements_to_messages() -> None:
+    """将存量 announcements 表数据迁移到 messages 表，随后删除旧表。
+
+    幂等：迁移一次后不再执行。新库（无 announcements 表）直接跳过。
+    """
+    global _announcements_migrated
+    if _announcements_migrated:
+        return
+    try:
+        import sqlite3
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        _TZ = ZoneInfo("Asia/Shanghai")
+        def _now_iso() -> str:
+            return datetime.now(_TZ).strftime("%Y-%m-%dT%H:%M:%S")
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            cur = con.cursor()
+            # 检查 announcements 表是否存在
+            cur.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='announcements'"
+            )
+            if cur.fetchone()[0] == 0:
+                _announcements_migrated = True
+                return
+
+            # 检查 messages 表是否已有数据（防止重复迁移）
+            cur.execute("SELECT count(*) FROM messages")
+            if cur.fetchone()[0] > 0:
+                logger.info("站内信迁移跳过：messages 表已有数据")
+                _announcements_migrated = True
+                return
+
+            # 查询所有公告
+            cur.execute(
+                "SELECT id, title, content, content_type, is_published, creator, "
+                "       publish_time, create_time, update_time FROM announcements"
+            )
+            rows = cur.fetchall()
+            if not rows:
+                logger.info("站内信迁移：announcements 表无数据")
+            else:
+                now = _now_iso()
+                for row in rows:
+                    (
+                        ann_id,
+                        title,
+                        content,
+                        content_type,
+                        is_published,
+                        creator,
+                        publish_time,
+                        create_time,
+                        update_time,
+                    ) = row
+                    # 尝试把 creator 字符串映射到 users.id
+                    from_user_id = None
+                    if creator:
+                        user_row = cur.execute(
+                            "SELECT id FROM users WHERE username = ? OR nickname = ?",
+                            (creator, creator),
+                        ).fetchone()
+                        if user_row:
+                            from_user_id = user_row[0]
+
+                    cur.execute(
+                        "INSERT INTO messages "
+                        "(type, category, title, content, is_broadcast, is_deleted, status, "
+                        " from_user_id, created_at, updated_at) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            "system_announcement",
+                            "system",
+                            title or "",
+                            content or "",
+                            1,
+                            0,
+                            1 if is_published else 0,
+                            from_user_id,
+                            create_time or now,
+                            update_time or now,
+                        ),
+                    )
+                con.commit()
+                logger.info("站内信迁移完成：%s 条公告已写入 messages 表", len(rows))
+
+            # 删除旧表
+            cur.execute("DROP TABLE IF EXISTS announcements")
+            con.commit()
+            logger.info("站内信迁移：旧 announcements 表已删除")
+            _announcements_migrated = True
+        finally:
+            con.close()
+    except Exception as e:
+        logger.warning("站内信迁移失败（不阻断启动）: %s", e)

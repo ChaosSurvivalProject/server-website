@@ -3,18 +3,21 @@ import { ref, reactive, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { queryPage, remove } from "@/api/announcement";
-import type { AnnouncementItem, PageResult } from "@/api/announcement";
+import type { MessageItem, PageResult } from "@/api/announcement";
 
 const router = useRouter();
 const loading = ref(false);
-const tableData = ref<AnnouncementItem[]>([]);
+const tableData = ref<MessageItem[]>([]);
 const pageData = reactive({
   page: 1,
   pageSize: 10,
   total: 0,
   totalPages: 1,
   hasNext: false,
-  hasPrev: false
+  hasPrev: false,
+  keyword: "",
+  type: "",
+  status: undefined as number | undefined,
 });
 
 const fetchData = async () => {
@@ -22,19 +25,20 @@ const fetchData = async () => {
   try {
     const res: PageResult = await queryPage({
       page: pageData.page,
-      pageSize: pageData.pageSize
+      pageSize: pageData.pageSize,
+      keyword: pageData.keyword || undefined,
+      type: pageData.type || undefined,
+      status: pageData.status,
     });
     tableData.value = res.items || [];
     Object.assign(pageData, {
-      page: res.page,
-      pageSize: res.pageSize,
       total: res.total,
       totalPages: res.totalPages,
       hasNext: res.hasNext,
-      hasPrev: res.hasPrev
+      hasPrev: res.hasPrev,
     });
   } catch (e: any) {
-    ElMessage.error(e.message || "获取公告列表失败");
+    ElMessage.error(e.message || "获取站内信列表失败");
   } finally {
     loading.value = false;
   }
@@ -44,24 +48,32 @@ const handleCreate = () => {
   router.push("/announcement/edit");
 };
 
-const handleEdit = (row: AnnouncementItem) => {
+const handleEdit = (row: MessageItem) => {
   router.push({ path: "/announcement/edit", query: { id: String(row.id) } });
 };
 
-const handleDelete = (row: AnnouncementItem) => {
-  ElMessageBox.confirm(`确定要删除公告「${row.title}」吗？此操作不可恢复。`, "删除确认", {
-    confirmButtonText: "确定",
-    cancelButtonText: "取消",
-    type: "warning"
-  }).then(async () => {
-    try {
-      await remove(row.id);
-      ElMessage.success("删除公告成功");
-      fetchData();
-    } catch (e: any) {
-      ElMessage.error(e.message || "删除失败");
-    }
-  });
+const handleDelete = async (row: MessageItem) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除站内信「${row.title}」吗？此操作不可恢复。`,
+      "删除确认",
+      {
+        confirmButtonText: "确定",
+        cancelButtonText: "取消",
+        type: "warning",
+      }
+    );
+    await remove(row.id);
+    ElMessage.success("删除成功");
+    fetchData();
+  } catch (e: any) {
+    // 取消不提示
+  }
+};
+
+const handleSearch = () => {
+  pageData.page = 1;
+  fetchData();
 };
 
 const handlePageChange = (val: number) => {
@@ -83,48 +95,89 @@ const formatDate = (iso: string) => {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 };
 
+const typeLabel = (type: string) => {
+  const map: Record<string, string> = {
+    reply: "回复我的",
+    system_announcement: "系统公告",
+    activity_announcement: "活动公告",
+    article_review: "文章审核通知",
+    beta_review: "阵营内测审核通知",
+  };
+  return map[type] || type;
+};
+
+const statusLabel = (status: number) => {
+  return status === 1 ? "已发布" : "草稿";
+};
+
 onMounted(() => {
   fetchData();
 });
 </script>
 
 <template>
-  <div class="announcement-list">
+  <div class="message-list">
     <div class="toolbar">
+      <div class="filters">
+        <el-input
+          v-model="pageData.keyword"
+          placeholder="搜索标题/内容"
+          clearable
+          style="width: 240px"
+          @keydown.enter="handleSearch"
+        />
+        <el-select v-model="pageData.type" placeholder="消息类型" clearable style="width: 160px">
+          <el-option label="系统公告" value="system_announcement" />
+          <el-option label="活动公告" value="activity_announcement" />
+          <el-option label="文章审核通知" value="article_review" />
+          <el-option label="阵营内测审核通知" value="beta_review" />
+          <el-option label="回复我的" value="reply" />
+        </el-select>
+        <el-select v-model="pageData.status" placeholder="状态" clearable style="width: 120px">
+          <el-option label="已发布" :value="1" />
+          <el-option label="草稿" :value="0" />
+        </el-select>
+        <el-button type="primary" @click="handleSearch">查询</el-button>
+      </div>
       <el-button type="primary" @click="handleCreate">
-        <el-icon><Plus /></el-icon> 新建公告
+        <el-icon><Plus /></el-icon> 新建站内信
       </el-button>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="tableData"
-      border
-      stripe
-      style="width: 100%"
-    >
+    <el-table v-loading="loading" :data="tableData" border stripe style="width: 100%">
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="title" label="标题" min-width="200">
         <template #default="{ row }">
           <span :title="row.title">{{ row.title }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="creator" label="发布人" width="100" />
-      <el-table-column label="格式" width="100">
+      <el-table-column label="类型" width="130">
         <template #default="{ row }">
-          <el-tag v-if="row.contentType === 'markdown'" type="primary" size="small">Markdown</el-tag>
-          <el-tag v-else type="info" size="small">富文本</el-tag>
+          <el-tag size="small">{{ typeLabel(row.type) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="分类" width="100">
+        <template #default="{ row }">
+          <span v-if="row.category">{{ row.category }}</span>
+          <span v-else>-</span>
         </template>
       </el-table-column>
       <el-table-column label="状态" width="80">
         <template #default="{ row }">
-          <el-tag v-if="row.isPublished" type="success" size="small">已发布</el-tag>
-          <el-tag v-else type="warning" size="small">草稿</el-tag>
+          <el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small">
+            {{ statusLabel(row.status) }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="广播" width="70">
+        <template #default="{ row }">
+          <el-tag v-if="row.isBroadcast" type="info" size="small">是</el-tag>
+          <span v-else>否</span>
         </template>
       </el-table-column>
       <el-table-column label="发布时间" width="150">
         <template #default="{ row }">
-          {{ formatDate(row.publishTime) }}
+          {{ formatDate(row.createdAt) }}
         </template>
       </el-table-column>
       <el-table-column label="操作" width="160" fixed="right">
@@ -150,14 +203,23 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.announcement-list {
+.message-list {
   padding: 20px;
 }
 
 .toolbar {
   margin-bottom: 16px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .pagination {

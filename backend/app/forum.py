@@ -1612,6 +1612,37 @@ async def create_comment(
     await _bump_comment_count(db, article_id, +1)
     await db.commit()
 
+    # 站内信：评论创建成功后，直接发送通知
+    try:
+        from .messages import create_reply_message, create_article_comment_message
+
+        if parent_id:
+            # 回复评论：通知被回复的人
+            target_user_id = data.reply_to_user_id or parent.author_id
+            if target_user_id and target_user_id != user.id:
+                await create_reply_message(
+                    db,
+                    article_id=article_id,
+                    comment_id=comment.id,
+                    reply_user_id=user.id,
+                    target_user_id=target_user_id,
+                    reply_content=comment.content,
+                    replied_comment_content=parent.content,
+                )
+        else:
+            # 顶层评论：通知文章作者
+            if article.author_id and article.author_id != user.id:
+                await create_article_comment_message(
+                    db,
+                    article_id=article_id,
+                    comment_id=comment.id,
+                    commenter_id=user.id,
+                    article_author_id=article.author_id,
+                    comment_content=comment.content,
+                )
+    except Exception as e:
+        logger.warning("发送回复通知失败: %s", e)
+
     node = _comment_node(comment, user, set())
     if data.reply_to_user_id:
         target = (
@@ -1852,6 +1883,20 @@ async def admin_review(
     await _set_article_status(db, article, data.status)
     article.update_time = _now_iso()
     await db.commit()
+
+    # 站内信：文章审核结果通知作者
+    try:
+        from .messages import create_article_review_message
+        await create_article_review_message(
+            db,
+            article_id=article.id,
+            author_id=article.author_id,
+            status=data.status,
+            review_note=article.review_note,
+        )
+    except Exception as e:
+        logger.warning("写入文章审核通知失败: %s", e)
+
     return _ok(await _article_item(db, article, _admin), "审核完成")
 
 
