@@ -25,8 +25,9 @@ const defaultConfig: AxiosRequestConfig = {
     "X-Requested-With": "XMLHttpRequest"
   },
   // 数组格式参数序列化（https://github.com/axios/axios/issues/5142）
+  // 使用 repeat 格式：{ type: ['a', 'b'] } -> type=a&type=b，而非 type[0]=a&type[1]=b
   paramsSerializer: {
-    serialize: stringify as unknown as CustomParamsSerializer
+    serialize: (params: any) => stringify(params, { arrayFormat: 'repeat' }) as unknown as CustomParamsSerializer
   }
 };
 

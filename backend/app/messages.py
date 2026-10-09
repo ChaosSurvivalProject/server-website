@@ -256,7 +256,7 @@ async def admin_page(
     page: int = Query(default=1, ge=1),
     pageSize: int = Query(default=10, ge=1, le=100),
     keyword: Optional[str] = Query(default=None, description="标题/正文关键词"),
-    type: Optional[str] = Query(default=None, description="消息类型"),
+    type: Optional[str | list[str]] = Query(default=None, description="消息类型，可多选"),
     status: Optional[int] = Query(default=None, description="0=草稿, 1=已发布"),
     db: AsyncSession = Depends(get_db),
     _admin: User = Depends(require_admin),

@@ -33,7 +33,7 @@ export type PageResult = {
 };
 
 /** 管理员：分页查询所有站内信（含草稿） */
-export const queryPage = (params: { page?: number; pageSize?: number; keyword?: string; type?: string; status?: number }) => {
+export const queryPage = (params: { page?: number; pageSize?: number; keyword?: string; type?: string | string[]; status?: number }) => {
   return http.request<PageResult>("get", "/api/messages/admin/page", { params });
 };
 

@@ -16,7 +16,7 @@ const pageData = reactive({
   hasNext: false,
   hasPrev: false,
   keyword: "",
-  type: "",
+  type: ["system_announcement", "activity_announcement"],
   status: undefined as number | undefined,
 });
 
@@ -27,7 +27,7 @@ const fetchData = async () => {
       page: pageData.page,
       pageSize: pageData.pageSize,
       keyword: pageData.keyword || undefined,
-      type: pageData.type || undefined,
+      type: pageData.type.length ? pageData.type : undefined,
       status: pageData.status,
     });
     tableData.value = res.items || [];
@@ -126,7 +126,7 @@ onMounted(() => {
           style="width: 240px"
           @keydown.enter="handleSearch"
         />
-        <el-select v-model="pageData.type" placeholder="消息类型" clearable style="width: 160px">
+        <el-select v-model="pageData.type" multiple placeholder="消息类型" clearable style="width: 220px">
           <el-option label="系统公告" value="system_announcement" />
           <el-option label="活动公告" value="activity_announcement" />
           <el-option label="文章审核通知" value="article_review" />

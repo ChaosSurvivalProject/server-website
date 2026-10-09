@@ -508,7 +508,7 @@ async def admin_messages_page(
     page: int = 1,
     page_size: int = 10,
     keyword: str | None = None,
-    msg_type: str | None = None,
+    msg_type: str | list[str] | None = None,
     status: int | None = None,
 ) -> dict:
     """管理员：站内信管理分页（含草稿）。"""
@@ -524,7 +524,10 @@ async def admin_messages_page(
         like = f"%{keyword.strip()}%"
         conditions.append(or_(Message.title.like(like), Message.content.like(like)))
     if msg_type:
-        conditions.append(Message.type == msg_type)
+        if isinstance(msg_type, list):
+            conditions.append(Message.type.in_(msg_type))
+        else:
+            conditions.append(Message.type == msg_type)
     if status is not None:
         conditions.append(Message.status == status)
 

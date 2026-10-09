@@ -311,6 +311,24 @@ export default {
       const el = document.getElementById("comment-" + commentId);
       if (!el) return;
       el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      let timer;
+      const finish = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          window.removeEventListener("scroll", finish);
+          this.$nextTick(() => this._startFlash(el));
+        }, 120);
+      };
+
+      window.addEventListener("scroll", finish);
+      setTimeout(() => {
+        window.removeEventListener("scroll", finish);
+        this.$nextTick(() => this._startFlash(el));
+      }, 500);
+    },
+
+    _startFlash(el) {
       el.animate(
         [
           { backgroundColor: "#fff3e0" },
