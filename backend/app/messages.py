@@ -425,7 +425,7 @@ async def create_article_comment_message(
         return None
 
     now = _now_iso()
-    title = f"{commenter.nickname or commenter.username} 评论了你的文章"
+    title = f"{commenter.nickname or commenter.username} 评论了你的文章《{article.title}》"
 
     msg = Message(
         type=_TYPE_REPLY,

@@ -64,7 +64,7 @@
       </div>
 
       <div v-else class="cmt-list">
-        <div v-for="c in comments" :key="c.id" class="cmt">
+        <div v-for="c in comments" :key="c.id" :id="'comment-' + c.id" class="cmt">
           <span class="fx-avatar fx-av-36" :class="{ 'fx-avatar-admin': c.author?.badge === '管理员' }">
             <img v-if="c.author?.avatar" :src="c.author.avatar" :alt="c.author.name" />
             <template v-else>{{ (c.author?.name || "?").slice(0, 1) }}</template>
@@ -130,7 +130,7 @@
 
             <!-- 其下回复：缩进列表，正序（先来后到），不再嵌套 -->
             <div v-if="c.replies && c.replies.length" class="reply-list">
-              <div v-for="r in c.replies" :key="r.id" class="cmt cmt-reply">
+              <div v-for="r in c.replies" :key="r.id" :id="'comment-' + r.id" class="cmt cmt-reply">
                 <span
                   class="fx-avatar fx-av-28"
                   :class="{ 'fx-avatar-admin': r.author?.badge === '管理员' }"
@@ -224,6 +224,8 @@ export default {
     articleId: { type: Number, required: true },
     /** 文章的 comment_count（顶层 + 回复），作为标题的初值 */
     commentCount: { type: Number, default: 0 },
+    /** 需要高亮闪烁的评论 id（从站内信点击进入） */
+    highlightCommentId: { type: Number, default: null },
   },
   emits: ["count-change", "need-login", "placeholder"],
   data() {
@@ -265,6 +267,11 @@ export default {
     articleId() {
       this.fetchComments(1);
     },
+    highlightCommentId(val) {
+      if (val) {
+        this.$nextTick(() => this.flashComment(val));
+      }
+    },
   },
   mounted() {
     this.fetchComments(1);
@@ -293,7 +300,27 @@ export default {
         this.comments = [];
       } finally {
         this.loading = false;
+        if (this.highlightCommentId) {
+          this.$nextTick(() => this.flashComment(this.highlightCommentId));
+        }
       }
+    },
+
+    /** 高亮闪烁指定评论 2 次（从站内信点击进入） */
+    flashComment(commentId) {
+      const el = document.getElementById("comment-" + commentId);
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.animate(
+        [
+          { backgroundColor: "#fff3e0" },
+          { backgroundColor: "#ffe0b2" },
+          { backgroundColor: "#fff3e0" },
+          { backgroundColor: "#ffe0b2" },
+          { backgroundColor: "#fff3e0" },
+        ],
+        { duration: 600, iterations: 1 }
+      );
     },
 
     onPageChange(p) {

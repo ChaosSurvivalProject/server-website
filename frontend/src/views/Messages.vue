@@ -81,6 +81,9 @@
                 <span class="msg-title-text">{{ msg.title }}</span>
               </div>
               <div class="msg-content">{{ msg.content || msg.replyContent || '' }}</div>
+              <div v-if="msg.type === 'reply' && msg.repliedCommentContent" class="msg-quote">
+                {{ msg.repliedCommentContent }}
+              </div>
               <div class="msg-meta">{{ formatDate(msg.createdAt) }}</div>
             </div>
             <button
@@ -544,6 +547,18 @@ export default {
 .msg-meta {
   font-size: 12px;
   color: #999;
+}
+.msg-quote {
+  font-size: 12px;
+  color: #666;
+  background: #f5f5f5;
+  padding: 4px 8px;
+  border-left: 3px solid #ddd;
+  margin-top: 4px;
+  border-radius: 0 4px 4px 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .msg-delete {
   background: none;

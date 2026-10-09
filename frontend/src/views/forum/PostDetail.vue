@@ -139,6 +139,7 @@
           <CommentSection
             :article-id="articleId"
             :comment-count="commentCount"
+            :highlight-comment-id="highlightCommentId"
             @count-change="onCommentCountChange"
             @need-login="goLogin($router)"
             @placeholder="showForumToast"
@@ -230,6 +231,10 @@ export default {
   computed: {
     articleId() {
       return Number(this.$route.params.id);
+    },
+    highlightCommentId() {
+      const q = this.$route.query.commentId;
+      return q ? Number(q) : null;
     },
     loggedIn() {
       return !!authState.token;
