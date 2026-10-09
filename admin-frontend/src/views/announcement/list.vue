@@ -98,6 +98,7 @@ const formatDate = (iso: string) => {
 const typeLabel = (type: string) => {
   const map: Record<string, string> = {
     reply: "回复我的",
+    like: "收到点赞",
     system_announcement: "系统公告",
     activity_announcement: "活动公告",
     article_review: "文章审核通知",
@@ -132,6 +133,7 @@ onMounted(() => {
           <el-option label="文章审核通知" value="article_review" />
           <el-option label="阵营内测审核通知" value="beta_review" />
           <el-option label="回复我的" value="reply" />
+          <el-option label="收到点赞" value="like" />
         </el-select>
         <el-select v-model="pageData.status" placeholder="状态" clearable style="width: 120px">
           <el-option label="已发布" :value="1" />

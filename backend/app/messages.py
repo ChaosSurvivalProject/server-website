@@ -6,7 +6,7 @@
   ── 登录用户 ──
   GET    /messages/unread-count        未读计数
   GET    /messages/replies             回复我的列表
-  GET    /messages/likes               收到点赞列表（本次空数组占位）
+  GET    /messages/likes               收到点赞列表
   GET    /messages/system              系统通知列表（广播 + 审核通知）
   POST   /messages/{id}/read           标记单条已读
   POST   /messages/read-all            批量标记已读
@@ -72,6 +72,7 @@ router = APIRouter(prefix="/messages", tags=["messages"])
 
 # ── 常量 ──────────────────────────────────────────────────────────
 _TYPE_REPLY = "reply"
+_TYPE_LIKE = "like"
 _TYPE_SYSTEM_ANNOUNCEMENT = "system_announcement"
 _TYPE_ACTIVITY_ANNOUNCEMENT = "activity_announcement"
 _TYPE_ARTICLE_REVIEW = "article_review"
@@ -146,7 +147,7 @@ async def list_likes(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """收到点赞列表（本次功能占位，返回空数组）。"""
+    """收到点赞列表（v1.1：文章/评论被点赞后定向通知作者）。"""
     result = await get_messages_page(db, user.id, msg_type="like", page=page, page_size=pageSize)
     return _ok(result)
 
@@ -449,6 +450,98 @@ async def create_article_comment_message(
 
     um = UserMessage(
         user_id=article_author_id,
+        message_id=msg.id,
+        is_read=0,
+        is_deleted=0,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(um)
+    await db.commit()
+    await db.refresh(msg)
+    return msg
+
+
+async def create_like_message(
+    db: AsyncSession,
+    *,
+    article_id: int,
+    comment_id: Optional[int],
+    liker_id: int,
+    author_id: int,
+    comment_content: str = "",
+    reply_to_nickname: str = "",
+) -> Message | None:
+    """创建点赞通知（定向消息，PRD v1.1 §7.3）。
+
+    - 文章点赞（comment_id 为空）：标题「{点赞者} 点赞了我的文章」，内容为文章标题快照（带书名号《》）；
+    - 评论点赞：标题「{点赞者} 点赞了我的评论」，内容为评论正文快照
+      （回复类评论带「回复 @{被回复者昵称}：」前缀）；
+    - **自己赞自己不通知**；点赞通知失败不影响点赞主流程（调用方 try/except 兜底）；
+    - **同一点赞者对同一内容只保留一条未删除通知**：否则「赞 → 取消 → 再赞」的反复
+      切换会给作者刷出多条重复通知（接收者删掉旧通知后，新的点赞仍会生成新通知）。
+    """
+    if liker_id == author_id:
+        return None
+
+    article = await _get_article(db, article_id)
+    if article is None:
+        return None
+
+    # 去重：同一点赞者 + 同一文章 + 同一评论（文章点赞时 related_comment_id 为 NULL）
+    dup_cond = [
+        Message.type == _TYPE_LIKE,
+        Message.from_user_id == liker_id,
+        Message.related_article_id == article_id,
+        Message.is_deleted == 0,
+    ]
+    if comment_id:
+        dup_cond.append(Message.related_comment_id == comment_id)
+    else:
+        dup_cond.append(Message.related_comment_id.is_(None))
+    existing = (await db.execute(select(Message.id).where(*dup_cond))).first()
+    if existing is not None:
+        return None
+
+    users = await _get_users(db, {liker_id, author_id})
+    liker = users.get(liker_id)
+    author = users.get(author_id)
+    if liker is None or author is None:
+        return None
+
+    liker_name = liker.nickname or liker.username
+
+    if comment_id:
+        title = f"{liker_name} 点赞了我的评论"
+        content = comment_content
+        if reply_to_nickname:
+            content = f"回复 @{reply_to_nickname}：{comment_content}"
+    else:
+        title = f"{liker_name} 点赞了我的文章"
+        content = f"《{article.title}》"
+
+    now = _now_iso()
+    msg = Message(
+        type=_TYPE_LIKE,
+        category=None,
+        title=title,
+        content=content,
+        related_article_id=article_id,
+        related_comment_id=comment_id,
+        related_user_id=author_id,
+        from_user_id=liker_id,
+        is_broadcast=0,
+        is_deleted=0,
+        status=1,
+        created_at=now,
+        updated_at=now,
+    )
+    db.add(msg)
+    await db.flush()
+
+    # 定向消息：立即插入 user_messages
+    um = UserMessage(
+        user_id=author_id,
         message_id=msg.id,
         is_read=0,
         is_deleted=0,

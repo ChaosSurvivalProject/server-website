@@ -72,7 +72,8 @@ async def get_messages_page(
 
     - 过滤掉 messages.is_deleted=1 的消息
     - 过滤掉当前用户 user_messages.is_deleted=1 的记录
-    - msg_type='reply' 只返回 reply 类型；msg_type='system' 返回广播 + 审核通知
+    - msg_type='reply' 只返回 reply 类型；msg_type='like' 只返回点赞通知；
+      msg_type='system' 返回广播 + 审核通知
     """
     page = max(page, 1)
     page_size = max(page_size, 1)
@@ -320,7 +321,13 @@ async def get_unread_count(db: AsyncSession, user_id: int) -> int:
 
 
 async def mark_message_read(db: AsyncSession, user_id: int, message_id: int) -> bool:
-    """标记单条消息为已读（广播消息：不存在则插入并标记已读）。"""
+    """标记单条消息为已读（广播消息：不存在则插入并标记已读）。
+
+    定向消息（reply / like / 审核通知）创建时即插入 user_messages，因此**没有记录
+    就不是发给当前用户的**——此时按 404 处理，不给补插：补插会让调用者把他人的私有
+    消息"读"进自己的收件箱（列表按 user_messages join，之后就能在列表里看到）。
+    广播消息保持原语义：点击即补插 is_read=1。
+    """
     # 检查消息是否存在且未被删除
     msg = await get_message(db, message_id)
     if msg is None or msg.is_deleted == 1:
@@ -337,6 +344,8 @@ async def mark_message_read(db: AsyncSession, user_id: int, message_id: int) -> 
     ).scalar_one_or_none()
 
     if um is None:
+        if msg.is_broadcast == 0:
+            return False
         now = _now_iso()
         um = UserMessage(
             user_id=user_id,
@@ -359,6 +368,7 @@ async def mark_all_read(db: AsyncSession, user_id: int, msg_type: str | None = N
     """批量标记已读。
 
     - msg_type='reply'：只标记 reply 定向消息
+    - msg_type='like'：只标记 like 点赞通知（v1.1）
     - msg_type='system'：标记 article_review / beta_review 定向审核通知 + 广播消息
     - msg_type=None（默认）：标记所有定向消息（不含广播消息；广播消息点击后才写入 user_messages）
     """
@@ -370,6 +380,8 @@ async def mark_all_read(db: AsyncSession, user_id: int, msg_type: str | None = N
     
     if msg_type == "reply":
         stmt = stmt.join(Message, Message.id == UserMessage.message_id).where(Message.type == "reply")
+    elif msg_type == "like":
+        stmt = stmt.join(Message, Message.id == UserMessage.message_id).where(Message.type == "like")
     elif msg_type == "system":
         stmt = stmt.join(Message, Message.id == UserMessage.message_id).where(
             or_(
@@ -421,15 +433,17 @@ async def mark_all_read(db: AsyncSession, user_id: int, msg_type: str | None = N
 
 
 async def delete_user_message(db: AsyncSession, user_id: int, message_id: int) -> bool:
-    """软删除定向消息（同时标记 messages.is_deleted=1 与 user_messages.is_deleted=1）。"""
+    """软删除定向消息（同时标记 messages.is_deleted=1 与 user_messages.is_deleted=1）。
+
+    仅允许删除**自己的**消息：必须存在该用户的 user_messages 记录（定向消息创建时
+    即插入），否则返回 False → 接口 400。否则任意登录用户凭消息 ID 就能软删别人的
+    消息——messages.is_deleted 是全局标记，会连带从真实接收者的列表里消失。
+    """
     msg = await get_message(db, message_id)
     if msg is None or msg.is_deleted == 1:
         return False
     if msg.is_broadcast == 1:
         return False  # 广播消息前台不可删除
-
-    msg.is_deleted = 1
-    msg.updated_at = _now_iso()
 
     um = (
         await db.execute(
@@ -439,9 +453,14 @@ async def delete_user_message(db: AsyncSession, user_id: int, message_id: int) -
             )
         )
     ).scalar_one_or_none()
-    if um is not None:
-        um.is_deleted = 1
-        um.updated_at = _now_iso()
+    if um is None or um.is_deleted == 1:
+        return False  # 不是发给当前用户的消息（或此前已删除）
+
+    msg.is_deleted = 1
+    msg.updated_at = _now_iso()
+
+    um.is_deleted = 1
+    um.updated_at = _now_iso()
 
     await db.commit()
     return True

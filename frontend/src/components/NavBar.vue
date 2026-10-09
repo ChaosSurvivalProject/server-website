@@ -10,12 +10,12 @@
 
       <!-- 已登录：站内信按钮（头像左侧）+ 头像（桌面端右缘 / 移动端三横线左侧） -->
       <div v-if="loggedIn" class="nav-avatar-wrap">
-        <!-- 站内信：点击跳转收件箱，未读角标实时展示 -->
+        <!-- 消息中心（前台展示名；模块内部仍叫站内信）：点击打开收件箱弹窗，未读角标实时展示 -->
         <button
           type="button"
           class="nav-bell"
-          aria-label="站内信"
-          :title="unreadCount > 0 ? `站内信（${unreadCount} 条未读）` : '站内信'"
+          aria-label="消息中心"
+          :title="unreadCount > 0 ? `消息中心（${unreadCount} 条未读）` : '消息中心'"
           @click.stop="goMessages"
         >
           <i class="fa-regular fa-bell"></i>

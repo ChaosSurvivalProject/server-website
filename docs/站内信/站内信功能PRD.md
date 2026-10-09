@@ -1,8 +1,17 @@
 # 站内信功能需求规格说明书
 
-> 版本：v1.0  
-> 状态：草案  
-> 最后更新：2026-10-07
+> 版本：v1.1  
+> 状态：已开发（v1.1 增量：收到点赞通知；待部署上线）  
+> 最后更新：2026-10-09
+
+---
+
+## 版本记录
+
+| 版本 | 日期 | 变更 |
+|---|---|---|
+| v1.0 | 2026-10-07 | 首版：收件箱三 Tab（回复我的 / 收到点赞占位 / 系统通知）、后台站内信管理、回复与审核通知链路 |
+| v1.1 | 2026-10-09 | 「收到点赞」Tab 正式实现：文章/评论被点赞后定向通知作者；点赞消息支持已读/删除/全部已读；前台展示名改为「消息中心」（弹窗标题 + 导航栏 tooltip，见 §8.1） |
 
 ---
 
@@ -15,7 +24,8 @@
 - 提供统一的站内信收件箱，支持未读计数、状态标记、删除。
 - 区分「定向互动通知」与「广播系统通知」两类消息，采用不同的已读与展示策略。
 - 复用现有 Markdown 渲染管线与后台管理框架，最小化改造成本。
-- 为后续「收到点赞」「评论详情展开」「头像上传」等功能预留扩展点。
+- 文章/评论被点赞时，定向通知作者，形成互动闭环（v1.1）。
+- 为后续「评论详情展开」「头像上传」等功能预留扩展点。
 
 ## 3. 范围
 
@@ -27,10 +37,10 @@
 - 消息直接写入。
 - 文章审核通过/驳回时的定向审核通知。
 - 阵营内测审核通过/驳回时的定向审核通知。
+- **文章/评论被点赞时的定向点赞通知**（v1.1）。
 
 ### 3.2 本次不包含
 
-- 「收到点赞」Tab（功能占位，后续迭代）。
 - 评论详情展开（点击回复通知仅跳转到文章评论区，评论详情后做）。
 - 头像上传（使用默认头像占位，上传功能延后到个人中心模块）。
 - 消息推送实时通道（如 WebSocket / SSE 通知）。
@@ -45,6 +55,7 @@
 | US-04 | 登录用户 | 作为登录用户，我希望能将消息标记为已读，避免重复提醒。 | P0 |
 | US-05 | 登录用户 | 作为登录用户，我希望能删除「回复我的」消息，保持收件箱整洁。 | P0 |
 | US-06 | 登录用户 | 作为登录用户，点击回复通知后，能跳转到对应文章的评论区。 | P0 |
+| US-06b | 登录用户 | 作为内容作者，我希望能看到谁点赞了我的文章/评论，以便了解内容反响。 | P1（v1.1 交付） |
 | US-07 | 登录用户 | 作为登录用户，点击文章审核通知后，能跳转到对应文章。 | P0 |
 | US-08 | 登录用户 | 作为登录用户，点击系统公告/活动公告后，抽屉展开正文内容。 | P0 |
 | US-09 | 管理员 | 作为管理员，我希望能发布系统公告/活动公告，通知全体用户。 | P0 |
@@ -60,7 +71,7 @@
 messages
 ├── 定向消息（is_broadcast = 0）
 │   ├── reply（回复我的）
-│   ├── like（收到点赞）— 本次不生成，Tab 留待后续
+│   ├── like（收到点赞）— v1.1 起真实生成
 │   ├── article_review（文章审核通知）
 │   └── beta_review（阵营内测审核通知）
 └── 广播消息（is_broadcast = 1）
@@ -69,6 +80,7 @@ messages
 ```
 
 > 审核通知（文章审核 / 阵营内测审核）为**定向消息**：仅通知发起审核的作者/申请人，不广播给全体用户。
+> 点赞通知（like）同为**定向消息**：仅通知被点赞内容的作者，创建时即插入 `user_messages`（`is_read = 0`）。
 
 ### 5.2 前台展示结构
 
@@ -80,7 +92,17 @@ messages
   - 日期：当年显示月日，非当年显示年月日
   - 交互：点击跳转到对应文章的评论区
 
-- **Tab 2：收到点赞**（like 定向消息）— **本次功能占位，不生成数据**
+- **Tab 2：收到点赞**（like 定向消息，v1.1）
+  - 左侧：爱心图标
+  - 标题：{nickname} 点赞了我的文章 / {nickname} 点赞了我的评论
+  - 内容（`content` 字段，快照，不随原文修改而变）：
+    - 文章点赞：文章标题（带书名号），如《如何搭建刷铁机》
+    - 评论点赞（顶层评论）：评论正文，如 `今天天气不错`
+    - 评论点赞（回复）：`回复 @{被回复者昵称}：{评论正文}`，如 `回复 @Alice：你说的对`
+  - 日期：`yyyy-MM-dd HH:mm`（北京时间，`parseIso()` 手工解析，不用 `new Date(iso)`）
+  - 交互：点击跳转到对应文章（评论点赞额外携带 `commentId` 定位到评论区）
+  - 已读规则：创建时即未读，点击后标记已读
+  - 删除规则：定向消息，支持用户删除（软删，同「回复我的」）
 
 - **Tab 3：系统通知**
   - **子类型 A：系统公告 / 活动公告（广播消息）**
@@ -103,7 +125,7 @@ messages
 ### 5.3 未读计数规则
 
 - **统计范围**：所有消息中用户尚未标记为已读的数量。
-- **定向消息**（reply / article_review / beta_review）：创建时即插入 `user_messages`，`is_read = 0`，计入未读。
+- **定向消息**（reply / like / article_review / beta_review）：创建时即插入 `user_messages`，`is_read = 0`，计入未读。
 - **广播消息**（system_announcement / activity_announcement）：
   - 创建时**不预插** `user_messages`；
   - 用户进入「系统通知」Tab 时，对该用户尚未产生 `user_messages` 记录的广播消息，**批量插入** `user_messages` 记录（`is_read = 0`），这些消息随即计入未读计数；
@@ -122,14 +144,14 @@ messages
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | id | INTEGER PK | 自增主键 |
-| type | TEXT NOT NULL | 消息类型：reply / system_announcement / activity_announcement / article_review / beta_review |
-| category | TEXT | 系统通知分类：system / activity / article_review / beta_review |
+| type | TEXT NOT NULL | 消息类型：reply / like / system_announcement / activity_announcement / article_review / beta_review |
+| category | TEXT | 系统通知分类：system / activity / article_review / beta_review（点赞通知为 NULL） |
 | title | TEXT NOT NULL | 标题 |
-| content | TEXT | Markdown 正文（可选） |
-| related_article_id | INTEGER | 关联文章 ID（回复通知 / 文章审核通知） |
-| related_comment_id | INTEGER | 关联评论 ID（回复通知） |
-| related_user_id | INTEGER | 关联用户 ID（审核通知：被通知的作者/申请人） |
-| from_user_id | INTEGER | 触发者 ID（回复通知：谁回复的） |
+| content | TEXT | Markdown 正文（可选）；点赞通知存被点赞内容的快照（文章标题 / 评论正文 / `回复 @xxx：正文`） |
+| related_article_id | INTEGER | 关联文章 ID（回复通知 / 文章审核通知 / 点赞通知） |
+| related_comment_id | INTEGER | 关联评论 ID（回复通知 / 评论点赞通知） |
+| related_user_id | INTEGER | 关联用户 ID（审核通知：被通知的作者/申请人；点赞通知：被点赞内容作者） |
+| from_user_id | INTEGER | 触发者 ID（回复通知：谁回复的；点赞通知：谁点赞的） |
 | reply_content | TEXT | 回复内容（回复通知） |
 | replied_comment_content | TEXT | 被回复的内容（回复通知） |
 | is_broadcast | INTEGER DEFAULT 0 | 0=定向，1=广播 |
@@ -151,7 +173,7 @@ messages
 | updated_at | TEXT NOT NULL | 更新时间 |
 
 - 唯一约束：`UNIQUE(user_id, message_id)`
-- 定向消息创建时即插入 `user_messages`，`is_read = 0`（reply / article_review / beta_review）。
+- 定向消息创建时即插入 `user_messages`，`is_read = 0`（reply / like / article_review / beta_review）。
 - 广播消息用户点击后插入 `user_messages`，`is_read = 1`（system_announcement / activity_announcement）。
 
 ## 7. 接口设计
@@ -162,11 +184,11 @@ messages
 |---|---|---|---|
 | GET | `/api/messages/unread-count` | 未读计数（含定向未读 + 广播未点击） | 登录 |
 | GET | `/api/messages/replies` | 回复我的列表 | 登录 |
-| GET | `/api/messages/likes` | 收到点赞列表（本次返回空数组） | 登录 |
+| GET | `/api/messages/likes` | 收到点赞列表（v1.1 起返回真实点赞通知） | 登录 |
 | GET | `/api/messages/system` | 系统通知列表（含广播公告 + 定向审核通知） | 登录 |
-| POST | `/api/messages/{id}/read` | 标记单条已读 | 登录 |
-| POST | `/api/messages/read-all` | 批量标记已读 | 登录 |
-| DELETE | `/api/messages/{id}` | 删除定向消息（软删：同时标记 messages.is_deleted = 1 与 user_messages.is_deleted = 1） | 登录 |
+| POST | `/api/messages/{id}/read` | 标记单条已读（定向消息仅接收者本人可标；广播消息点击即补插 `is_read=1`） | 登录 |
+| POST | `/api/messages/read-all` | 批量标记已读（`msg_type` 支持 `reply` / `like` / `system`，缺省标记全部定向消息） | 登录 |
+| DELETE | `/api/messages/{id}` | 删除定向消息（软删：同时标记 messages.is_deleted = 1 与 user_messages.is_deleted = 1；**仅接收者本人可删**，他人凭 ID 删除返回 400） | 登录 |
 
 ### 7.2 管理员接口
 
@@ -180,8 +202,17 @@ messages
 ### 7.3 论坛模块内部触发
 
 - 评论创建成功后，同步创建回复通知（定向消息）。
-- 顶层评论：通知文章作者「评论了你的文章」。
-- 回复评论：通知被回复者「回复了你的评论」。
+  - 顶层评论：通知文章作者「评论了你的文章」。
+  - 回复评论：通知被回复者「回复了你的评论」。
+- **文章被点赞**（`POST /api/forum/articles/{id}/like`，仅新增点赞 `delta=+1` 时触发，取消点赞不触发）：创建 `like` 类型定向消息通知文章作者。
+- **评论被点赞**（`POST /api/forum/comments/{id}/like`，仅新增点赞 `delta=+1` 时触发）：创建 `like` 类型定向消息通知评论作者。
+- 点赞通知规则：
+  - **自己赞自己不通知**（`liker_id == author_id` 时跳过）；
+  - **同一点赞者对同一内容只保留一条未删除通知**（按 `from_user_id + related_article_id + related_comment_id` 去重）：避免「赞 → 取消 → 再赞」反复横跳刷出多条重复通知；接收者删掉旧通知后，新的点赞仍会生成新通知；
+  - 标题：`{点赞者昵称} 点赞了我的文章` / `{点赞者昵称} 点赞了我的评论`；
+  - 内容快照：文章标题（带书名号《》）/ 评论正文（回复类评论带 `回复 @{被回复者昵称}：` 前缀）；
+  - `related_article_id` / `related_comment_id` / `from_user_id` / `related_user_id` 均落库，供前端跳转；
+  - 通知失败不影响点赞主流程（try/except 兜底，与回复通知同口径）。
 
 ### 7.4 后台审核触发
 
@@ -192,32 +223,37 @@ messages
 
 ### 8.1 页面路由
 
-- `/messages`：站内信收件箱（三个 Tab：回复我的、收到点赞、系统通知）。
+- `/messages`：收件箱弹窗（**前台展示名「消息中心」**）。弹窗头部结构：
+  - 左侧：圆角矩形消息图标（`fa-regular fa-comment-dots`，浅绿底 `#e8f5e9` + 浅绿边框 `#c8e6c9` + 主题绿图标 `#4caf50`，高度覆盖标题 + 副标题）；
+  - 中部：标题「消息中心」+ 副标题（全局未读口径：`当前有 N 条未读消息` / `当前无未读消息`，与导航栏角标同源，打开弹窗与已读/删除/全部已读操作后刷新）；
+  - 右侧：关闭按钮。
+  - 导航栏铃铛按钮的 tooltip / aria-label 同为「消息中心」；模块、接口 `/api/messages/*` 与后台「站内信管理」命名不变。三个 Tab：回复我的、收到点赞、系统通知。
 
 ### 8.2 导航栏
 
-- 已登录状态下，导航栏站内信按钮显示未读角标。
-- 点击按钮跳转 `/messages` 页面。
-- 进入页面后自动拉取未读计数；**只有用户点击具体某条消息后，才标记该条为已读**。
+- 已登录状态下，导航栏消息按钮（铃铛）显示未读角标，悬浮提示「消息中心（N 条未读）」。
+- 点击按钮打开消息中心弹窗。
+- 进入弹窗后自动拉取未读计数；**只有用户点击具体某条消息后，才标记该条为已读**。
 
 ### 8.3 列表项交互
 
 | 消息类型 | 点击行为 |
 |---|---|
 | reply | 跳转到 `/forum/post/{related_article_id}`，路由 query 携带 `commentId={related_comment_id}` |
+| like | 跳转到 `/forum/post/{related_article_id}`；评论点赞（`related_comment_id` 非空）额外携带 `commentId={related_comment_id}` |
 | article_review | 跳转到 `/forum/post/{related_article_id}` |
 | beta_review | 跳转到 `/faction-beta`（或申请详情页） |
 | system_announcement / activity_announcement | 抽屉展开正文（Markdown 渲染） |
 
 ### 8.4 删除
 
-- **定向消息**（回复我的 / 审核通知）：
+- **定向消息**（回复我的 / 收到点赞 / 审核通知）：
   - 用户点击删除按钮后，同时标记 `messages.is_deleted = 1` 与 `user_messages.is_deleted = 1`；
-  - 删除后该消息对当前用户不可见，列表中不再展示。
+  - 删除后该消息对当前用户不可见，列表中不再展示；
+  - **仅接收者本人可删**：定向消息创建时即插入接收者的 `user_messages`，删除接口校验该记录存在，他人凭消息 ID 删除返回 400（`messages.is_deleted` 是全局标记，不校验会连带删掉别人的收件箱内容）。
 - **广播消息**（系统公告 / 活动公告）：
   - 前台**不展示删除按钮**，禁止用户删除；
   - 仅管理员可在后台操作删除（软删 `messages.is_deleted = 1`，删除后全体用户均不可见）。
-- **收到点赞**Tab：本次占位，删除按钮后续补充。
 
 ## 9. 后台设计
 
@@ -256,8 +292,8 @@ messages
 
 | ID | 事项 | 优先级 | 备注 |
 |---|---|---|---|
-| TODO-01 | 收到点赞 Tab | P1 | 本次功能占位，后续迭代 |
-| TODO-02 | 评论详情展开 | P1 | 点击回复通知仅跳转到文章页，评论详情报后期 |
+| ~~TODO-01~~ | ~~收到点赞 Tab~~ | ~~P1~~ | **v1.1 已交付**（2026-10-09） |
+| TODO-02 | 评论详情展开 | P1 | 点击回复/点赞通知仅跳转到文章页并定位评论，评论详情报后期 |
 | TODO-03 | 头像上传功能 | P2 | 延后到个人中心模块统一实现 |
 | TODO-04 | 消息实时推送 | P2 | WebSocket / SSE 可选方案待评估 |
 | TODO-05 | 消息搜索与筛选 | P3 | 支持按关键词、时间范围搜索 |
@@ -271,6 +307,7 @@ messages
 | M3 | 回复通知触发链路 | 1 天 |
 | M4 | 文章审核通知触发 + 联调 | 1 天 |
 | M5 | 冒烟测试 + 生产部署 | 1 天 |
+| M6（v1.1） | 收到点赞通知（触发链路 + Tab + 冒烟） | 1 天 |
 
 ---
 

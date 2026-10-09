@@ -27,10 +27,10 @@
   POST   /forum/articles/{id}/restore      作者从回收站恢复 → status_before_delete（超 30 天 410）
   DELETE /forum/articles/{id}/purge        回收站内彻底删除（物理 + 级联，不可恢复）
   DELETE /forum/comments/{id}              作者删自己的评论/回复（**物理删除不留痕**，顶层连带回复）
-  POST   /forum/articles/{id}/like         文章点赞切换
+  POST   /forum/articles/{id}/like         文章点赞切换（新增点赞→站内信通知作者，v1.1）
   POST   /forum/articles/{id}/favorite     文章收藏切换
   POST   /forum/articles/{id}/comments     发表评论 / 发表回复（两级楼中楼）
-  POST   /forum/comments/{id}/like         评论点赞切换（顶层与回复通用）
+  POST   /forum/comments/{id}/like         评论点赞切换（新增点赞→站内信通知评论作者，v1.1）
   POST   /forum/upload/image               图片上传（登录用户；落盘 uploads/forum/YYYYMM/）
 
   ── 管理员（require_admin）──
@@ -1532,6 +1532,23 @@ async def toggle_article_like(
         )
     await db.commit()
     new_count = (await _get_article(db, article_id)).like_count
+
+    # 站内信：新增点赞（delta=+1）且非作者自赞时，定向通知文章作者（PRD v1.1 §7.3）。
+    # 取消点赞（delta=-1）不产生通知；通知失败不影响点赞主流程。
+    if delta == 1 and article.author_id and article.author_id != user.id:
+        try:
+            from .messages import create_like_message
+
+            await create_like_message(
+                db,
+                article_id=article_id,
+                comment_id=None,
+                liker_id=user.id,
+                author_id=article.author_id,
+            )
+        except Exception as e:
+            logger.warning("发送点赞通知失败: %s", e)
+
     return _ok({"liked": delta == 1, "likeCount": max(new_count, 0)})
 
 
@@ -1686,6 +1703,31 @@ async def toggle_comment_like(
     new_count = (
         await db.execute(select(ForumComment).where(ForumComment.id == comment_id))
     ).scalar_one()
+
+    # 站内信：新增点赞（delta=+1）且非作者自赞时，定向通知评论作者（PRD v1.1 §7.3）。
+    # 回复类评论的内容快照带「回复 @{被回复者昵称}：」前缀，与前端评论区展示口径一致。
+    if delta == 1 and comment.author_id and comment.author_id != user.id:
+        try:
+            from .messages import create_like_message
+
+            reply_to_nickname = ""
+            if comment.parent_id and comment.reply_to_user_id:
+                target = await _get_users(db, {comment.reply_to_user_id})
+                target_user = target.get(comment.reply_to_user_id)
+                if target_user is not None:
+                    reply_to_nickname = target_user.nickname or target_user.username
+            await create_like_message(
+                db,
+                article_id=comment.article_id,
+                comment_id=comment_id,
+                liker_id=user.id,
+                author_id=comment.author_id,
+                comment_content=comment.content,
+                reply_to_nickname=reply_to_nickname,
+            )
+        except Exception as e:
+            logger.warning("发送点赞通知失败: %s", e)
+
     return _ok({"liked": delta == 1, "likeCount": max(new_count.like_count, 0)})
 
 

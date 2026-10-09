@@ -34,7 +34,15 @@
 
       <div class="messages-card">
         <div class="messages-header">
-          <h2>站内信</h2>
+          <div class="messages-heading">
+            <div class="messages-heading-icon">
+              <i class="fa-regular fa-comment-dots"></i>
+            </div>
+            <div class="messages-heading-text">
+              <h2 class="messages-title">消息中心</h2>
+              <p class="messages-subtitle">{{ unreadSubtitle }}</p>
+            </div>
+          </div>
           <button class="close-btn" @click="close">×</button>
         </div>
 
@@ -150,11 +158,13 @@ export default {
 
     const tabStates = reactive({
       reply: 0,
+      like: 0,
       system: 0,
     });
 
     const tabs = computed(() => [
       { key: "reply", label: "回复我的", unread: tabStates.reply },
+      { key: "like", label: "收到点赞", unread: tabStates.like },
       { key: "system", label: "系统通知", unread: tabStates.system },
     ]);
 
@@ -171,6 +181,13 @@ export default {
     });
 
     const hasUnread = computed(() => filteredItems.value.some((item) => !item.isRead));
+
+    // 弹窗头部副标题：全局未读数（与导航栏角标同源，loadUnreadCount 刷新）
+    const unreadSubtitle = computed(() =>
+      unreadCount.value > 0
+        ? `当前有 ${unreadCount.value} 条未读消息`
+        : "当前无未读消息"
+    );
 
     const detailVisible = ref(false);
     const detailMsg = reactive({
@@ -224,6 +241,8 @@ export default {
         let res;
         if (activeTab.value === "reply") {
           res = await messagesAPI.getReplies(page.value, pageSize.value);
+        } else if (activeTab.value === "like") {
+          res = await messagesAPI.getLikes(page.value, pageSize.value);
         } else {
           res = await messagesAPI.getSystem(page.value, pageSize.value);
         }
@@ -252,11 +271,13 @@ export default {
     async function loadAllTabUnread() {
       if (!authState.token) return;
       try {
-        const [replyRes, systemRes] = await Promise.all([
+        const [replyRes, likeRes, systemRes] = await Promise.all([
           messagesAPI.getReplies(1, 100),
+          messagesAPI.getLikes(1, 100),
           messagesAPI.getSystem(1, 100),
         ]);
         tabStates.reply = countUnread(replyRes.items || []);
+        tabStates.like = countUnread(likeRes.items || []);
         tabStates.system = countUnread(systemRes.items || []);
       } catch (e) {
         // ignore
@@ -290,6 +311,9 @@ export default {
       }
       if (msg.type === "reply" && msg.relatedArticleId) {
         window.location.href = `/forum/post/${msg.relatedArticleId}${msg.relatedCommentId ? `?commentId=${msg.relatedCommentId}` : ""}`;
+      } else if (msg.type === "like" && msg.relatedArticleId) {
+        // 点赞通知：跳转到被点赞的文章；评论点赞额外定位到该评论
+        window.location.href = `/forum/post/${msg.relatedArticleId}${msg.relatedCommentId ? `?commentId=${msg.relatedCommentId}` : ""}`;
       } else if (msg.type === "article_review" && msg.relatedArticleId) {
         window.location.href = `/forum/post/${msg.relatedArticleId}`;
       } else if (msg.type === "beta_review") {
@@ -317,7 +341,9 @@ export default {
             ? "system"
             : activeTab.value === "reply"
               ? "reply"
-              : null;
+              : activeTab.value === "like"
+                ? "like"
+                : null;
         await messagesAPI.markAllRead(msgType);
         load();
         loadUnreadCount();
@@ -360,6 +386,7 @@ export default {
       totalPages,
       hasUnread,
       unreadCount,
+      unreadSubtitle,
       typeLabel,
       getIcon,
       formatDate,
@@ -407,6 +434,38 @@ export default {
 .messages-header h2 {
   margin: 0;
   font-size: 18px;
+}
+.messages-heading {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+.messages-heading-icon {
+  width: 48px;
+  min-height: 48px;
+  border-radius: 12px;
+  border: 1px solid #c8e6c9;
+  background: #e8f5e9;
+  color: #4caf50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+.messages-heading-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+}
+.messages-subtitle {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #999;
 }
 .close-btn {
   background: none;
@@ -519,6 +578,10 @@ export default {
 .tag-reply {
   background: #e3f2fd;
   color: #1976d2;
+}
+.tag-like {
+  background: #fce4ec;
+  color: #c2185b;
 }
 .tag-system_announcement,
 .tag-activity_announcement {

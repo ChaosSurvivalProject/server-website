@@ -107,12 +107,24 @@ pnpm build                # 产物 dist/，部署到 /admin/
   - **评论删除：作者侧物理删（不留痕）/ 后台软删（`status=2` 留治理痕迹）——有意不对称，别顺手统一成一种**（回收站 PRD §0.4-J / §6-D7，实现注释在 `forum.py` 模块头）。作者删顶层评论**连带其下全部回复物理删除（含他人回复）**，确认弹窗必须写明"该评论下的 N 条回复将一并删除"；后台删评论仍是软删。**禁言用户仍可删自己的内容**（删除不属"发言"，与"禁言期间点赞/收藏仍可用"同属例外）。
   - `GET /api/forum/my/articles?status=4` 是回收站列表的取数口（额外下发 `deletedAt` / `daysLeft` / `statusBeforeDelete`，**不含正文**）；**不做回收站正文预览**——要看内容先恢复（恢复零风险）。删除不清理 `uploads/forum/` 里的图片（图床冗余清理属第三阶段）。
   - **⚠️ 后台回收站筛选尚未实现**（回收站 PRD §5 第 9 项未落地，已登记 `TODO.md`）：`GET /api/forum/admin/articles` 的 `status` 参数与 `admin/articles/{id}/restore` 后端**都已支持 `4`**，但后台文章管理页的状态下拉只有 0/1/2/3，因此后台目前筛不出也操作不了回收站帖。
-- **第一阶段有意不做**（顺延第二/三阶段，已登记 `TODO.md`，勿当缺陷补齐）：站内信、关注/粉丝（`followerCount` 恒 0）、打赏、等级/头衔、评论审核队列与敏感词、文章版本记录、回复折叠、回复通知、统计定时任务、全文检索、图床冗余清理、富文本。对应位置只留 UI 占位（统一走 `showForumToast()` 提示"功能开发中"，**不跳转不请求**），配置键 `forum_config.reward*` 预留但无 UI。（**"评论作者自删"已由回收站 PRD 提前实现**，只剩评论**编辑**未定，见 `TODO.md`。）
+- **第一阶段有意不做**（顺延第二/三阶段，已登记 `TODO.md`，勿当缺陷补齐）：关注/粉丝（`followerCount` 恒 0）、打赏、等级/头衔、评论审核队列与敏感词、文章版本记录、回复折叠、统计定时任务、全文检索、图床冗余清理、富文本。对应位置只留 UI 占位（统一走 `showForumToast()` 提示"功能开发中"，**不跳转不请求**），配置键 `forum_config.reward*` 预留但无 UI。（**"评论作者自删"已由回收站 PRD 提前实现**，只剩评论**编辑**未定；**站内信（含回复/点赞/审核通知）已开发、待部署**，规约见下方「站内信模块规约」，见 `TODO.md`。）
 - **Banner 配图整幅铺满**：配了 `bannerImage` 就 `position:absolute; inset:0` 铺满整个横幅，`object-fit:cover` + `object-position:center`（溢出**居中裁剪**、**不拉伸**），z-index 依次为 图 0 → 压暗蒙版 1 → 文字 2 → 底部操作条 3。三条要一起写：只写 `cover` 会在偏心位置裁切，只写 `width/height:100%` 会拉伸变形。配图可能很亮，蒙版只做白字可读性保障（`background:linear-gradient(100deg, rgba(15,23,42,.62) …)`）；配图 404 时要用**响应式开关**（`artBroken`）而不是 `display:none`，才能把与它是兄弟节点的蒙版一起撤掉，否则纯渐变底上会蒙一层灰。
 - **徽章只有"管理员"一种**（依据 `users.role`）：常量化在 `frontend/src/utils/forumBadges.js`（后台同名表保持一致），**不要在多个组件里硬编码颜色**；依据文档示例的"炽热行者""VIP"等等级头衔属第二阶段，不得以假数据填充。
 - 论坛页面样式令牌与 Markdown 正文排版在 `frontend/src/assets/styles/forum.css`（全局，8 个公共组件共用）；类名一律 `fx-` 前缀，因为全站 `App.vue` 有像素风的全局 `.btn`，不加前缀会互相串味。
 - **全站统一导航栏**：任何路由都显示 `NavBar`（含论坛的详情 / 发帖 / 编辑 / 我的文章四页）。不要再引入 `meta.hideNav` 之类的按路由隐藏机制——2026-09-27 已按需求移除，页面内用「← 返回社区」提供上下文即可。
-- 端到端回归：`backend/forum_smoke_test.py`（`python3 forum_smoke_test.py`，用临时库 + `TestClient`，覆盖状态机/计数/权限/级联等 176 项断言）。改论坛后端先跑它。
+- 端到端回归：`backend/forum_smoke_test.py`（`python3 forum_smoke_test.py`，用临时库 + `TestClient`，覆盖状态机/计数/权限/级联、站内信点赞通知等 254 项断言）。改论坛后端先跑它。
+
+## 站内信模块规约
+
+实施依据：`docs/站内信/站内信功能PRD.md`（v1.1，含「收到点赞」Tab）。消息主表 `messages` + 用户状态表 `user_messages`；**定向消息**（reply / like / article_review / beta_review）创建时即插 `user_messages`（`is_read=0`），**广播消息**（system_announcement / activity_announcement）进入「系统通知」Tab 时才批量补插、点击后置已读。
+
+- **前台展示名叫「消息中心」，模块/接口/文档仍叫站内信**（2026-10-09 定）：用户可见的只有两处——`Messages.vue` 弹窗头部（圆角矩形浅绿底消息图标 `fa-regular fa-comment-dots`，`align-items: stretch` 让图标高度覆盖「消息中心」标题 + 未读副标题；副标题为全局未读口径「当前有 N 条未读消息 / 当前无未读消息」，与导航栏角标同源）与 `NavBar.vue` 铃铛按钮的 `title` / `aria-label`。后台管理端仍是「站内信管理」，`/api/messages/*` 路径与 `messages` / `user_messages` 表名不动——别把模块也改名，那会牵动 API 契约和后台菜单。
+
+- **点赞通知的触发点只有两个**（`backend/app/forum.py` 的 `toggle_article_like` / `toggle_comment_like`），且必须同时满足三条才发：`delta == 1`（新增点赞，取消不触发）、非作者自赞、同一点赞者对同一内容（`from_user_id + related_article_id + related_comment_id`）没有未删除的旧通知（去重，防「赞→取消→再赞」刷屏）。实现是 `messages.py::create_like_message()`，**forum 里只写触发、 messages 里只写一份创建逻辑**，与回复通知同口径：通知失败 try/except 兜底，绝不影响点赞主流程（禁言期间点赞仍可用，通知照发）。
+- **点赞通知内容是快照不是引用**：文章点赞存文章标题（带书名号《》），评论点赞存评论正文（回复类带 `回复 @{被回复者昵称}：` 前缀，与评论区展示口径一致）。文章后来被改名/删除都不影响已发通知——这与回复通知一致，别改成"跳转时实时查"。
+- **定向消息的已读/删除仅接收者本人可操作**（`crud.py::mark_message_read` / `delete_user_message` 均校验 `user_messages` 归属）：`messages.is_deleted` 是**全局标记**，不校验归属就等于任意登录用户凭 ID 删掉别人的收件箱内容；他人操作返回 404/400。广播消息不受此限（补插即已读是设计语义）。
+- **`mark_all_read` 的 `msg_type` 与 Tab 一一对应**（reply / like / system，缺省=全部定向）：新增 Tab 时必须同步补分支，否则「全部已读」会静默漏掉该类。前台 `Messages.vue` 的 tabs / load / loadAllTabUnread / handleClick / handleMarkAllRead 五处都要带 like，后台 `announcement/list.vue` 的类型筛选与 `typeLabel` 同步补「收到点赞」。
+- 点赞通知计入未读总数（定向未读口径天然覆盖，无需特判）；前台点击跳 `/forum/post/{articleId}`，评论点赞额外带 `?commentId=` 定位。
 
 
 ## 游戏服务器地址：单一数据源

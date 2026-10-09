@@ -419,7 +419,7 @@ class ServerRecord(Base):
 class Message(Base):
     """消息主表（站内信）。
 
-    定向消息（reply / article_review / beta_review）创建时即插入 user_messages；
+    定向消息（reply / like / article_review / beta_review）创建时即插入 user_messages；
     广播消息（system_announcement / activity_announcement）用户点击后才插入。
     """
 
@@ -428,7 +428,7 @@ class Message(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     type: Mapped[str] = mapped_column(
         String(32), nullable=False, index=True
-    )  # reply / system_announcement / activity_announcement / article_review / beta_review
+    )  # reply / like / system_announcement / activity_announcement / article_review / beta_review
     category: Mapped[Optional[str]] = mapped_column(
         String(32), nullable=True, index=True
     )  # system / activity / article_review / beta_review

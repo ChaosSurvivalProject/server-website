@@ -236,6 +236,92 @@ def main() -> int:
         check("他人在同一回复上 liked=false", [x for x in cl2["items"][0]["replies"]
               if x["id"] == c3["id"]][0]["liked"] is False)
 
+        print("\n[7b] 站内信：收到点赞通知（站内信 PRD v1.1 §7.3）")
+        # 前置状态：[5] Bob 赞过 Alice 的文章；[7] Alice 赞过 Bob 的回复 c3
+        alice_likes = client.get("/api/messages/likes", headers=H(alice)).json()["data"]
+        check("点赞列表只含 like 类型",
+              all(m["type"] == "like" for m in alice_likes["items"]),
+              str([m["type"] for m in alice_likes["items"]]))
+        art_like = [m for m in alice_likes["items"]
+                    if m["relatedArticleId"] == aid and m["fromUserId"] == 3]
+        check("文章被点赞 → 作者收到 1 条点赞通知", len(art_like) == 1, str(len(art_like)))
+        if art_like:
+            m = art_like[0]
+            check("标题：鲍勃 点赞了我的文章", m["title"] == "鲍勃 点赞了我的文章", m["title"])
+            check("内容：文章标题快照（带书名号）", m["content"] == "《红石密码门教程》", m["content"])
+            check("初始未读且未删除", m["isRead"] == 0 and m["isUserDeleted"] == 0, str(m))
+            check("关联字段齐全（article/comment/from/user）",
+                  m["relatedArticleId"] == aid and m["relatedCommentId"] is None
+                  and m["fromUserId"] == 3 and m["relatedUserId"] == 2, str(m))
+            check("非广播（定向消息）", m["isBroadcast"] == 0)
+        check("自己赞自己不通知（Alice 在 [5] 自赞 3 次无消息）",
+              all(x["fromUserId"] != 2 for x in alice_likes["items"]))
+        bob_likes = client.get("/api/messages/likes", headers=H(bob)).json()["data"]
+        cmt_like = [m for m in bob_likes["items"] if m["relatedCommentId"] == c3["id"]]
+        check("评论被点赞 → 评论作者收到通知", len(cmt_like) == 1, str(len(cmt_like)))
+        if cmt_like:
+            m = cmt_like[0]
+            check("标题：爱丽丝 点赞了我的评论", m["title"] == "爱丽丝 点赞了我的评论", m["title"])
+            check("内容：回复 @被回复者：正文 快照",
+                  m["content"] == "回复 @爱丽丝：回复的回复", m["content"])
+            check("关联评论 ID 落库", m["relatedCommentId"] == c3["id"], str(m["relatedCommentId"]))
+        # Alice 赞 Bob 的顶层评论 c1 → 内容不带前缀；再取消 → 不新增通知
+        client.post(f"/api/forum/comments/{c1['id']}/like", headers=H(alice))
+        after_like = client.get("/api/messages/likes", headers=H(bob)).json()["data"]
+        c1_msgs = [m for m in after_like["items"] if m["relatedCommentId"] == c1["id"]]
+        check("顶层评论被点赞 → 通知作者", len(c1_msgs) == 1, str(len(c1_msgs)))
+        if c1_msgs:
+            check("顶层评论内容快照不带 @ 前缀",
+                  c1_msgs[0]["content"] == c1["content"], c1_msgs[0]["content"])
+        client.post(f"/api/forum/comments/{c1['id']}/like", headers=H(alice))  # 取消点赞
+        after_unlike = client.get("/api/messages/likes", headers=H(bob)).json()["data"]
+        check("取消点赞不新增通知", after_unlike["total"] == after_like["total"],
+              f"{after_unlike['total']} vs {after_like['total']}")
+        # 自赞自己的评论不通知（Bob 自赞自己的顶层评论 c1），且不影响上面的计数
+        client.post(f"/api/forum/comments/{c1['id']}/like", headers=H(bob))
+        self_check = client.get("/api/messages/likes", headers=H(bob)).json()["data"]
+        check("自赞自己的评论不通知",
+              all(not (m["relatedCommentId"] == c1["id"] and m["fromUserId"] == 3)
+                  for m in self_check["items"]))
+        client.post(f"/api/forum/comments/{c1['id']}/like", headers=H(bob))  # 取消自赞，恢复原状
+        # 去重：同一点赞者对同一内容只保留一条（[7] 中 Alice 对 c3 赞→取消→再赞）
+        c3_msgs = [m for m in self_check["items"]
+                   if m["relatedCommentId"] == c3["id"] and m["fromUserId"] == 2]
+        check("反复赞/取消不刷重复通知（同人同内容只 1 条）", len(c3_msgs) == 1, str(len(c3_msgs)))
+        # 未读计数含点赞通知
+        unread_likes = [m for m in alice_likes["items"] if m["isRead"] == 0]
+        check("存在未读点赞通知", len(unread_likes) >= 1, str(len(unread_likes)))
+        uc = client.get("/api/messages/unread-count", headers=H(alice)).json()["data"]["count"]
+        check("未读计数 ≥ 未读点赞数（点赞计入未读）", uc >= len(unread_likes),
+              f"uc={uc} unread_likes={len(unread_likes)}")
+        # 标记单条已读
+        target = art_like[0]["id"] if art_like else None
+        if target:
+            r = client.post(f"/api/messages/{target}/read", headers=H(alice))
+            check("标记单条已读 200", r.status_code == 200, r.text)
+            after_read = client.get("/api/messages/likes", headers=H(alice)).json()["data"]["items"]
+            check("该条已变已读", all(m["isRead"] == 1 for m in after_read if m["id"] == target))
+            check("他人标我的已读 404（定向消息仅接收者本人可标）",
+                  client.post(f"/api/messages/{target}/read", headers=H(bob)).status_code == 404)
+        # 全部已读（仅点赞 Tab）
+        r = client.post("/api/messages/read-all", headers=H(alice), params={"msg_type": "like"})
+        check("全部已读（like）200", r.status_code == 200, r.text)
+        all_read = client.get("/api/messages/likes", headers=H(alice)).json()["data"]["items"]
+        check("点赞消息全部已读", all(m["isRead"] == 1 for m in all_read), str(all_read))
+        uc_after = client.get("/api/messages/unread-count", headers=H(alice)).json()["data"]["count"]
+        check("全部已读后未读数恰好减少（只动点赞，不碰回复/审核通知）",
+              uc_after == uc - len(unread_likes), f"{uc} -> {uc_after}, likes={len(unread_likes)}")
+        # 删除（软删）：本人可删、他人不可删、不可重复删
+        if target:
+            r = client.delete(f"/api/messages/{target}", headers=H(alice))
+            check("删除点赞通知 200", r.status_code == 200, r.text)
+            after_del = client.get("/api/messages/likes", headers=H(alice)).json()["data"]["items"]
+            check("删除后不再出现在列表", all(m["id"] != target for m in after_del))
+            check("重复删除 400", client.delete(f"/api/messages/{target}", headers=H(alice)
+                                                ).status_code == 400)
+            check("他人删我的消息 400（软删是全局标记，必须拦）",
+                  client.delete(f"/api/messages/{target}", headers=H(bob)).status_code == 400)
+
         print("\n[8] 越权与不可见性")
         check("非作者编辑回填 404",
               client.get(f"/api/forum/articles/{aid}/edit", headers=H(bob)).status_code == 404)

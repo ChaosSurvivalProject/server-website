@@ -381,7 +381,7 @@ export const messagesAPI = {
   getReplies: (page = 1, pageSize = 10) =>
     axiosInstance.get('/api/messages/replies', { params: { page, pageSize } }),
 
-  /** 收到点赞列表（本次占位，返回空数组） */
+  /** 收到点赞列表（文章/评论被点赞后定向通知作者） */
   getLikes: (page = 1, pageSize = 10) =>
     axiosInstance.get('/api/messages/likes', { params: { page, pageSize } }),
 

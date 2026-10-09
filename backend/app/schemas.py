@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, ConfigDict
 class MessageBase(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    type: Optional[str] = Field(None, description="消息类型：reply / system_announcement / activity_announcement / article_review / beta_review")
+    type: Optional[str] = Field(None, description="消息类型：reply / like / system_announcement / activity_announcement / article_review / beta_review")
     category: Optional[str] = Field(None, description="系统通知分类：system / activity / article_review / beta_review")
     title: str = Field(..., max_length=255, description="标题")
     content: Optional[str] = Field(None, alias="rawContent", description="Markdown 正文（可选）")
