@@ -53,9 +53,10 @@ server-website/
 │   ├── run.py                   # uvicorn 启动脚本
 │   ├── seed.py                  # 测试数据种子
 │   ├── Dockerfile
-│   ├── docker-compose.yml
 │   ├── requirements.txt
 │   └── data/                    # SQLite 数据库文件（gitignore；含密钥的 .env 亦已 gitignore）
+├── docker-compose.yml           # 根编排：xqly-website-backend + xqly-website-web（统一前端，见「Docker 部署」）
+├── web/                         # 统一前端镜像：web/Dockerfile（三前端多阶段构建）+ web/nginx.conf（路由）
 ├── wiki/                        # VitePress 文档站
 │   ├── .vitepress/config.mts    # 站点配置（base: /wiki）
 │   ├── for-new/                 # 萌新指南（进服教程、玩家条例、FAQ）
@@ -410,12 +411,20 @@ python3 seed.py
 
 ### Docker 部署
 
+compose 文件在**仓库根目录**（2026-10-31 从 `backend/` 迁出）：
+
 ```bash
-cd backend
 docker compose up -d --build
 ```
 
-镜像基于 `python:3.14-slim`，容器内通过 `run.py` 启动服务；宿主机 5000 端口映射到容器 5000，数据持久化在 `backend/data/`。
+起两个服务：
+
+| 服务 | 容器 | 说明 |
+|------|------|------|
+| `xqly-website-backend` | `xqly-website-backend` | FastAPI，宿主机只绑 `127.0.0.1:5000` |
+| `xqly-website-web` | `xqly-website-web` | 统一前端 nginx：`/` 主站 + `/admin/` 后台 + `/wiki/` 文档 + `/api` 反代，宿主机只绑 `127.0.0.1:8090` |
+
+本机访问 `http://127.0.0.1:8090/` 即整站（前端 + 后端经 nginx 反代联通）。数据持久化在 `backend/data/`；`backend/.env`（含 API Key）以只读卷挂入容器。生产部署说明见 `for-deploy/README.md`。
 
 ## 前端
 

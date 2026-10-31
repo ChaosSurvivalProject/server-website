@@ -314,7 +314,7 @@
 | 项 | 值 |
 | --- | --- |
 | 脚本 | `backend/forum_purge.py`（`--dry-run` 只统计不写库，输出格式对齐 `staff_expire.py`） |
-| crontab | `0 5 * * * /usr/bin/docker exec announcement-backend python backend/forum_purge.py >> /var/log/forum_purge.log 2>&1`（⚠️ 改 crontab 走 `crontab` 命令 + 先备份，见 `for-deploy/README.md`） |
+| crontab | `0 5 * * * /usr/bin/docker exec xqly-website-backend python backend/forum_purge.py >> /var/log/forum_purge.log 2>&1`（⚠️ 改 crontab 走 `crontab` 命令 + 先备份，见 `for-deploy/README.md`） |
 | 启动兜底 | `main.py` 的 `on_startup` 里 try/except 包一层执行一次（失败只告警，不阻断启动，与 `staff_module.expire_due` 同款） |
 | 共存逻辑 | `purge_due()` 与"作者彻底删除"共用同一个级联删除函数，**语义唯一** |
 

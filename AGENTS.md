@@ -17,7 +17,8 @@ cd backend
 pip install -r requirements.txt
 python3 run.py            # uvicorn --reload，开发用
 python3 seed.py           # 写入示例公告数据
-docker compose up -d --build   # Docker 部署（构建上下文为项目根目录，见下）
+cd ..                     # compose 文件在仓库根目录（2026-10-31 从 backend/ 迁出）
+docker compose up -d --build   # 起后端 + 统一前端（web，绑 127.0.0.1:8090），见下
 
 # 前端 (Vite, :5173)
 cd frontend
@@ -167,9 +168,9 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 **生产对外地址：`https://xqly.xt91tv.shop`**（2026-10-03 换服务器后启用，标准 443）。旧站是裸机 nginx + NAT 外部 23333 → 内部 80 且 nginx 在 80 上直接跑 SSL，**那套拓扑已废弃**；现在由 1panel 托管，nginx 是 1panel 的 OpenResty 容器（**host 网络**，监听 80/443），证书用 1panel「SSL」里导入的通配符证书下发给站点。
 
-- 仓库路径 `/opt/xqly-website`；后端容器 `announcement-backend`（`docker compose` 定义在仓库 `backend/docker-compose.yml`，**只绑 `127.0.0.1:5000`**——发布到 `0.0.0.0` 会被 Docker 的 iptables 规则绕过 ufw 直接把 API 暴露到公网）。
+- 仓库路径 `/opt/xqly-website`；后端容器 `xqly-website-backend`（`docker compose` 定义在仓库**根目录** `docker-compose.yml`，2026-10-31 从 `backend/` 迁出，**只绑 `127.0.0.1:5000`**——发布到 `0.0.0.0` 会被 Docker 的 iptables 规则绕过 ufw 直接把 API 暴露到公网）。同一 compose 还有可选的 `web` 服务（统一前端 nginx 容器 `xqly-website-web`，绑 `127.0.0.1:8090`，见下文「统一前端容器」）——**生产目前不用它**，前端产物仍按本机构建投放。
 - 站点是 1panel「静态网站」，站点根 `/opt/1panel/www/sites/xqly.xt91tv.shop/index`，三个前端产物都投放在这里（`admin/`、`wiki/` 为子目录，与 SPA 的 `index.html` 共存）。
-- **cookie/凭据类文件只在服务器上**：`backend/.env`（已 gitignore，含 API Key）以只读卷挂进容器（`./.env:/app/backend/.env:ro`），wiki 源码以 `../wiki:/app/wiki:ro` 挂入供 `kb_sync.py` 读取（`KB_WIKI_DIR=/app/wiki`）。
+- **cookie/凭据类文件只在服务器上**：`backend/.env`（已 gitignore，含 API Key）以只读卷挂进容器（`./backend/.env:/app/backend/.env:ro`），wiki 源码以 `./wiki:/app/wiki:ro` 挂入供 `kb_sync.py` 读取（`KB_WIKI_DIR=/app/wiki`；compose 里已显式注入该环境变量，防止本地 `.env` 里按宿主机路径写的 `KB_WIKI_DIR=../wiki` 污染容器）。
 
 **⚠️ 1panel 的「静态网站」模板不生成 `try_files` 兜底、也不生成 `include proxy/*.conf`**，这两样是上线时手工补进 `/opt/1panel/www/conf.d/xqly.xt91tv.shop.conf` 的。**在面板里改动该站点的网站设置会重新生成这个文件，手工补的东西会丢**（症状：深层路由 404 + `/api` 全部 502）——改完必须回服务器核对 `grep -n 'proxy/\*\.conf'`。自定义 location 全部放在 `/opt/1panel/www/sites/xqly.xt91tv.shop/proxy/xqly-app.conf`。
 
@@ -187,15 +188,24 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 **前端产物在本机构建后投放，服务器上不跑 Vite**：生产机内存只剩 ~1GB 且与 MySQL/Redis/halo/napcat 等同机，Vite 构建峰值会 OOM 连坐。构建命令与投放位置见 `for-deploy/README.md`「前端产物从哪来」。
 
-后端 Docker 部署注意：`docker-compose.yml` 位于 `backend/` 下，但**构建上下文是项目根目录**（`context: ..`），Dockerfile 里必须写 `COPY backend/requirements.txt .`（写 `requirements.txt` 会 `not found`，2026-10-03 修过）；根目录 `.dockerignore` 负责把 `node_modules`/`dist`/`.git` 挡在 context 之外。**任何 `docker-compose.yml` / `Dockerfile` 改动都要 `docker compose up -d --build` 重新构建**。
+后端 Docker 部署注意：`docker-compose.yml` 位于**仓库根目录**（2026-10-31 从 `backend/` 迁出），构建上下文即根目录（`context: .`），backend/Dockerfile 里必须写 `COPY backend/requirements.txt .`（写 `requirements.txt` 会 `not found`，2026-10-03 修过）；根目录 `.dockerignore` 负责把 `node_modules`/`dist`/`.git` 挡在 context 之外。**任何 `docker-compose.yml` / `Dockerfile` 改动都要 `docker compose up -d --build` 重新构建**。
+
+### 统一前端容器（web 服务，本地/自包含用）
+
+根 compose 的 `xqly-website-web` 服务由 `web/Dockerfile`（多阶段：三个前端各自 node 构建产物）+ `web/nginx.conf`（路由规则）组成，产物收进**一个 nginx 容器** `xqly-website-web`：`/` 主站、`/admin/` 后台、`/wiki/` 文档、`/api` 与 `/health`、`/announcement/uploads/` 反代 `xqly-website-backend:5000`，宿主机只绑 `127.0.0.1:8090`（8080 已被本机其他服务占用）。要点：
+
+- **`web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是同一套路由规则的两份载体**，改其一必须同步另一份（SSE 四件套、SPA fallback、legacy location 三处不能分叉）。
+- **生产不用 web 容器**：服务器内存 ~1GB，容器内跑 Vite 构建会 OOM，生产前端仍按本机构建后投放（见 `for-deploy/README.md`）。
+- 生产 crontab 的 `docker exec xqly-website-backend ...` 依赖 `container_name: xqly-website-backend`。**2026-10-31 容器名从 `announcement-backend` 改为 `xqly-website-backend`**：仓库留档 `for-deploy/crontab` 已同步改名，但**生产服务器上正在生效的 crontab 仍指向旧名**——下次生产部署必须按 `for-deploy/README.md`「改定时任务」流程重装 crontab（或临时保留旧容器名做过渡），否则三条定时任务静默失效（kb_sync 漏跑 wiki 新页面不进知识库）。生产服务器部署本仓库时要在 `/opt/xqly-website` 下 `docker compose up -d --build`（旧命令 `cd backend && docker compose up` 已失效）。数据卷路径已同步改为 `./backend/data` 与 `./backend/.env`——与旧 compose（在 `backend/` 下解析 `./data` / `./.env`）指向的**绝对路径相同**，生产直接 up 不会丢库。
+- 生产 `.env` 的 `KB_WIKI_DIR` 应写 `/app/wiki`；compose 已显式注入 `KB_WIKI_DIR=/app/wiki` 环境变量兜底（环境变量优先于 `.env` 文件值）。
 
 ### 生产定时任务（root crontab）
 
 生产**只有 crontab 一种定时机制**（无 celery / APScheduler / systemd timer），知识库 / 名片到期 / 论坛回收站超期清理三条链路都通过 `docker exec` 在容器内执行：
 
-- `0 3 * * *` → `/usr/bin/docker exec announcement-backend python backend/kb_sync.py --incremental >> /var/log/kb_sync.log 2>&1`（wiki 改动按 MD5 入库，自增 `index_version`，后端免重启）
-- `0 4 * * *` → `/usr/bin/docker exec announcement-backend python backend/staff_expire.py >> /var/log/staff_expire.log 2>&1`（**漏挂不影响核验正确性**，`valid_to` 权威 + 查询时懒更新兜底，只影响台账刷新时效）
-- `0 5 * * *` → `/usr/bin/docker exec announcement-backend python backend/forum_purge.py >> /var/log/forum_purge.log 2>&1`（物理清除超 30 天的回收站帖；**漏挂不影响正确性**，`deleted_at` 权威 + 恢复接口自校验 + 列表自过滤，只是数据多留几天）
+- `0 3 * * *` → `/usr/bin/docker exec xqly-website-backend python backend/kb_sync.py --incremental >> /var/log/kb_sync.log 2>&1`（wiki 改动按 MD5 入库，自增 `index_version`，后端免重启）
+- `0 4 * * *` → `/usr/bin/docker exec xqly-website-backend python backend/staff_expire.py >> /var/log/staff_expire.log 2>&1`（**漏挂不影响核验正确性**，`valid_to` 权威 + 查询时懒更新兜底，只影响台账刷新时效）
+- `0 5 * * *` → `/usr/bin/docker exec xqly-website-backend python backend/forum_purge.py >> /var/log/forum_purge.log 2>&1`（物理清除超 30 天的回收站帖；**漏挂不影响正确性**，`deleted_at` 权威 + 恢复接口自校验 + 列表自过滤，只是数据多留几天）
 
 条目里用 `/usr/bin/docker` 绝对路径（cron 用 `/bin/sh` 且不加载交互式环境，PATH 里未必有 docker）。改 crontab 前先 `crontab -l > /root/crontab.bak-YYYYMMDD` 备份，再 `crontab <文件>` 安装（**勿直接改 `/var/spool/cron/crontabs/root`**，务必走 `crontab` 命令）。三条任务**都是 0 变更空跑安全**（kb_sync 无变更不动 `index_version`、forum_purge 无超期帖不写库），漏跑不会写坏数据——但漏挂 `kb_sync` 会导致 wiki 新页面不进知识库，客服对未同步内容直接答不上来。**完整条目快照留档在 `for-deploy/crontab`，改法与验证命令见 `for-deploy/README.md`「改定时任务」节**。
 

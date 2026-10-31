@@ -14,7 +14,7 @@
 | 站点 | 1panel「静态网站」，域名 `xqly.xt91tv.shop`，站点根 `/opt/1panel/www/sites/xqly.xt91tv.shop/index` |
 | 站点 conf | `/opt/1panel/www/conf.d/xqly.xt91tv.shop.conf`（1panel 生成，宿主机路径；容器内是 `/usr/local/openresty/nginx/conf/conf.d/`） |
 | 自定义 location | `/opt/1panel/www/sites/xqly.xt91tv.shop/proxy/xqly-app.conf` |
-| 后端 | Docker 容器 `announcement-backend`，只绑 `127.0.0.1:5000`；定义在仓库 `backend/docker-compose.yml` |
+| 后端 | Docker 容器 `xqly-website-backend`，只绑 `127.0.0.1:5000`；定义在仓库根目录 `docker-compose.yml`（2026-10-31 从 `backend/` 迁出，同时新增 `web` 统一前端服务，见下文） |
 | 仓库 | `/opt/xqly-website`（前端三套产物已构建投放，见下） |
 | 证书 | 1panel「SSL」里导入的通配符证书 `*.xt91tv.shop`（Let's Encrypt，**2026-12-24 到期**），由面板下发给站点 `ssl/` 目录 |
 
@@ -24,7 +24,7 @@
 | --- | --- | --- |
 | `xqly.xt91tv.shop.conf` | `/opt/1panel/www/conf.d/xqly.xt91tv.shop.conf` | 1panel 生成的站点 server 块。**除末尾那行 `include .../proxy/*.conf;` 外全部由面板生成**，不要把它当成手工配置来维护 |
 | `xqly-app.conf` | `/opt/1panel/www/sites/xqly.xt91tv.shop/proxy/xqly-app.conf` | 手工维护的应用 location：静态资源缓存 + `/api/kb/` SSE 四件套 + `/api` 反代 + legacy 兼容路径 + `/admin`、`/wiki` 跳转 + `/wiki/` cleanUrls + **SPA fallback** |
-| `crontab` | root 用户 crontab（`crontab -l`） | 生产**唯一**的定时机制：`kb_sync.py --incremental`（03:00 知识库增量同步）+ `staff_expire.py`（04:00 名片到期回写）+ `forum_purge.py`（05:00 论坛回收站超期清理），三者都通过 `docker exec` 在容器内执行 |
+| `crontab` | root 用户 crontab（`crontab -l`） | 生产**唯一**的定时机制：`kb_sync.py --incremental`（03:00 知识库增量同步）+ `staff_expire.py`（04:00 名片到期回写）+ `forum_purge.py`（05:00 论坛回收站超期清理），三者都通过 `docker exec` 在容器内执行。**2026-10-31 起条目里的容器名为 `xqly-website-backend`（从 `announcement-backend` 改名），生产尚未重装本文件——下次生产部署必须重装，否则任务静默失效** |
 
 ## 与生产保持同步
 
@@ -62,6 +62,15 @@ ssh root@<生产机> 'docker exec 1Panel-openresty-TV94 nginx -t && docker exec 
 
 站点根目录里 `404.html` 是 1panel 建的，`admin/`、`wiki/` 是子目录——三者与 SPA 的 `index.html` 共存，靠 `xqly-app.conf` 里的 location 分流。
 
+## 自包含部署（根 docker-compose.yml 的 web 服务，可选）
+
+仓库根目录 `docker-compose.yml` 定义了 `xqly-website-web` 服务（`web/Dockerfile` + `web/nginx.conf`）：三个前端在镜像内多阶段构建、收进**一个 nginx 容器**（`xqly-website-web`），按与 `xqly-app.conf` 相同的规则分发 `/` 主站、`/admin/`、`/wiki/`，并反代 `/api` 到 `xqly-website-backend:5000`。宿主机只绑回环 `127.0.0.1:8090`，适合本地整栈联调或无 1panel 的自包含部署。
+
+两点注意：
+
+- **生产前端仍按上表在本机构建投放**，不跑 `web` 镜像（服务器内存 ~1GB，容器内 Vite 构建会 OOM）——`web` 是本地/自包含方案，不是生产的替代。
+- `web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是**同一套路由规则的两份载体**，改其一须同步另一份（SSE 四件套、SPA fallback、legacy location 三处尤其不能分叉）。
+
 ## 注意（改 conf 前必读）
 
 - **SPA fallback 勿删**：`location / { try_files $uri $uri/ /index.html; }` 撑住 history 路由（`/announcements`、`/forum/...`、扫码直达 `/staff/{身份码}`、`/team`）。1panel 模板不生成它，缺了整个前端只有首页能开。
@@ -91,9 +100,9 @@ ssh root@<生产机> 'crontab -l' | diff - for-deploy/crontab           # ④ �
 验证任务本身能跑通时，按 cron 的实际调用方式实跑一次（cron 用 `/bin/sh`，不加载交互式环境，所以条目里写的是 `docker` 绝对路径 `/usr/bin/docker`）：
 
 ```bash
-/usr/bin/docker exec announcement-backend python backend/kb_sync.py --check
-/usr/bin/docker exec announcement-backend python backend/staff_expire.py --dry-run
-/usr/bin/docker exec announcement-backend python backend/forum_purge.py --dry-run
+/usr/bin/docker exec xqly-website-backend python backend/kb_sync.py --check
+/usr/bin/docker exec xqly-website-backend python backend/staff_expire.py --dry-run
+/usr/bin/docker exec xqly-website-backend python backend/forum_purge.py --dry-run
 ```
 
 注意：

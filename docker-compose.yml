@@ -1,25 +1,77 @@
+# ============================================================================
+# 星穹旅驿官网 · 全栈编排（本文件位于项目根目录）
+#
+#   xqly-website-backend  FastAPI 后端（:5000，容器内网；对外只绑回环）
+#   xqly-website-web      统一前端 nginx：/ 主站 · /admin/ 后台 · /wiki/ 文档，
+#                         并反代 /api → xqly-website-backend:5000（web/Dockerfile）
+#
+# 启动：docker compose up -d --build
+# 入口：http://127.0.0.1:8090/（宿主机只绑回环，见 xqly-website-web.ports 注释）
+#
+# ⚠️ 与生产部署的关系：
+#   生产（1panel OpenResty host 网络）目前只跑 xqly-website-backend 一个容器，
+#   三个前端产物在本机构建后投放站点目录（for-deploy/README.md「前端产物从哪来」）。
+#   本文件的 web 服务用于自包含部署 / 本地整栈联调，路由规则与生产
+#   for-deploy/xqly-app.conf 保持一致，两处改动须同步维护。
+#   生产定时任务仍按 for-deploy/crontab 在宿主机 docker exec 执行，依赖
+#   container_name: xqly-website-backend，勿改名。
+# ============================================================================
 services:
-  announcement-backend:
+  xqly-website-backend:
     build:
-      # 构建上下文为项目根目录（Dockerfile 中 COPY backend/ 依赖该路径）
-      context: ..
+      # 构建上下文 = 项目根目录（本文件已从 backend/ 迁到根目录，原 context: .. 失效）。
+      # backend/Dockerfile 里的 COPY backend/requirements.txt / COPY backend/ 依赖该路径。
+      context: .
       dockerfile: backend/Dockerfile
-    container_name: announcement-backend
-    ports:
-      # 只绑回环：生产是 1panel 的 openresty（host 网络）反代 127.0.0.1:5000，
-      # 发布到 0.0.0.0 会被 Docker 的 iptables 规则绕过 ufw，把 API 直接暴露到公网
-      - "127.0.0.1:5000:5000"
+    container_name: xqly-website-backend
     environment:
       - ANNOUNCEMENT_DB=/app/data/announcements.db
       # 公告时间按北京时间存储/展示，容器默认 UTC 会再差 8 小时
       - TZ=Asia/Shanghai
       # 富文本图片上传目录（需指向挂载卷，随数据一起持久化）
       - ANNOUNCEMENT_UPLOAD_DIR=/app/data/uploads
+      # 容器内 wiki 挂载点固定为 /app/wiki。环境变量优先于 .env 文件值
+      # （config.py 启动期口径），可纠正本地 backend/.env 里 KB_WIKI_DIR=../wiki
+      # 这种按宿主机路径写的值；生产 .env 若已写 /app/wiki，此覆盖也无害。
+      - KB_WIKI_DIR=/app/wiki
     volumes:
-      - ./data:/app/data
+      # SQLite 与上传图片（gitignore，不入镜像，见根 .dockerignore 的 backend/data）
+      - ./backend/data:/app/data
       # 含 API Key 的配置（backend/.env 已 gitignore，不随镜像发布；
-      # 缺文件时 config.py 会静默降级，故部署前必须确保该文件存在）
-      - ./.env:/app/backend/.env:ro
+      # 缺文件时 config.py 会静默降级，故部署前必须确保该文件存在）。
+      # 生产改挂 /opt/xqly-website/backend/.env:/app/backend/.env:ro
+      - ./backend/.env:/app/backend/.env:ro
       # 知识库单一数据源：仓库 wiki/ 源码（kb_sync.py 按 MD5 增量入库，只读挂载）
-      - ../wiki:/app/wiki:ro
+      - ./wiki:/app/wiki:ro
+    ports:
+      # 默认只绑回环，便于宿主机直接调试接口、以及与生产 crontab 的
+      # docker exec 习惯一致（容器名/路径都不变）。生产若不需要宿主机端口，
+      # 删掉本段即可——web 服务经 compose 内网反代，不依赖此映射。
+      # ⚠️ 勿改绑 0.0.0.0：Docker 的 iptables 规则会绕过 ufw，把 API 直接暴露公网。
+      - "127.0.0.1:5000:5000"
+    healthcheck:
+      # 容器内探活（/health 为无依赖轻量路由）；web 服务按健康状态决定启动顺序
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  xqly-website-web:
+    build:
+      # 统一前端镜像：三个前端在 web/Dockerfile 多阶段构建里各自编译，
+      # 产物收进一个 nginx 并按生产拓扑分发（web/nginx.conf）。
+      context: .
+      dockerfile: web/Dockerfile
+    container_name: xqly-website-web
+    ports:
+      # 只绑回环：生产由 1panel OpenResty（host 网络）按域名反代到该端口；
+      # 勿改绑 0.0.0.0（会绕过 ufw 直接暴露公网）。本机联调直接访问
+      # http://127.0.0.1:8090/，需局域网访问时改绑本机内网 IP。
+      # 8080 已被宿主机其他服务占用，故用 8090。
+      - "127.0.0.1:8090:80"
+    depends_on:
+      xqly-website-backend:
+        condition: service_healthy
     restart: unless-stopped
