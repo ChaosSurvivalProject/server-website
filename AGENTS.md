@@ -196,18 +196,19 @@ pnpm build                # 产物 dist/，部署到 /admin/
 
 - **`web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是同一套路由规则的两份载体**，改其一必须同步另一份（SSE 四件套、SPA fallback、legacy location 三处不能分叉）。
 - **生产不用 web 容器**：服务器内存 ~1GB，容器内跑 Vite 构建会 OOM，生产前端仍按本机构建后投放（见 `for-deploy/README.md`）。
-- 生产 crontab 的 `docker exec xqly-website-backend ...` 依赖 `container_name: xqly-website-backend`。**2026-10-31 容器名从 `announcement-backend` 改为 `xqly-website-backend`**：仓库留档 `for-deploy/crontab` 已同步改名，但**生产服务器上正在生效的 crontab 仍指向旧名**——下次生产部署必须按 `for-deploy/README.md`「改定时任务」流程重装 crontab（或临时保留旧容器名做过渡），否则三条定时任务静默失效（kb_sync 漏跑 wiki 新页面不进知识库）。生产服务器部署本仓库时要在 `/opt/xqly-website` 下 `docker compose up -d --build`（旧命令 `cd backend && docker compose up` 已失效）。数据卷路径已同步改为 `./backend/data` 与 `./backend/.env`——与旧 compose（在 `backend/` 下解析 `./data` / `./.env`）指向的**绝对路径相同**，生产直接 up 不会丢库。
+- **2026-10-31 容器名从 `announcement-backend` 改为 `xqly-website-backend`**，2026-11-01 起定时任务已改为**镜像内 cron**（`backend/crontab` + `backend/docker-entrypoint.sh`），不再依赖宿主机 `docker exec` + 容器名，因此该改名不会再让定时任务失效。生产服务器部署本仓库时要在 `/opt/xqly-website` 下 `docker compose up -d --build`（旧命令 `cd backend && docker compose up` 已失效）；宿主机上遗留的三条旧 crontab 条目需按 `for-deploy/README.md`「改定时任务」清空。数据卷路径已同步改为 `./backend/data` 与 `./backend/.env`——与旧 compose（在 `backend/` 下解析 `./data` / `./.env`）指向的**绝对路径相同**，生产直接 up 不会丢库。
 - 生产 `.env` 的 `KB_WIKI_DIR` 应写 `/app/wiki`；compose 已显式注入 `KB_WIKI_DIR=/app/wiki` 环境变量兜底（环境变量优先于 `.env` 文件值）。
 
-### 生产定时任务（root crontab）
+### 生产定时任务（镜像内 cron）
 
-生产**只有 crontab 一种定时机制**（无 celery / APScheduler / systemd timer），知识库 / 名片到期 / 论坛回收站超期清理三条链路都通过 `docker exec` 在容器内执行：
+**2026-11-01 起三条任务已进后端镜像**，宿主机 root crontab 退役（原因：宿主机条目随容器改名静默失效——2026-10-31 容器名 `announcement-backend` → `xqly-website-backend` 即踩过，任务静默不跑且无报错）：
 
-- `0 3 * * *` → `/usr/bin/docker exec xqly-website-backend python backend/kb_sync.py --incremental >> /var/log/kb_sync.log 2>&1`（wiki 改动按 MD5 入库，自增 `index_version`，后端免重启）
-- `0 4 * * *` → `/usr/bin/docker exec xqly-website-backend python backend/staff_expire.py >> /var/log/staff_expire.log 2>&1`（**漏挂不影响核验正确性**，`valid_to` 权威 + 查询时懒更新兜底，只影响台账刷新时效）
-- `0 5 * * *` → `/usr/bin/docker exec xqly-website-backend python backend/forum_purge.py >> /var/log/forum_purge.log 2>&1`（物理清除超 30 天的回收站帖；**漏挂不影响正确性**，`deleted_at` 权威 + 恢复接口自校验 + 列表自过滤，只是数据多留几天）
-
-条目里用 `/usr/bin/docker` 绝对路径（cron 用 `/bin/sh` 且不加载交互式环境，PATH 里未必有 docker）。改 crontab 前先 `crontab -l > /root/crontab.bak-YYYYMMDD` 备份，再 `crontab <文件>` 安装（**勿直接改 `/var/spool/cron/crontabs/root`**，务必走 `crontab` 命令）。三条任务**都是 0 变更空跑安全**（kb_sync 无变更不动 `index_version`、forum_purge 无超期帖不写库），漏跑不会写坏数据——但漏挂 `kb_sync` 会导致 wiki 新页面不进知识库，客服对未同步内容直接答不上来。**完整条目快照留档在 `for-deploy/crontab`，改法与验证命令见 `for-deploy/README.md`「改定时任务」节**。
+- 任务定义 `backend/crontab` → 构建期落到镜像 `/etc/cron.d/xqly-jobs`；入口脚本 `backend/docker-entrypoint.sh` 先起 `cron` 再 `exec python backend/run.py`；日志进容器 stdout（`docker logs xqly-website-backend`）。
+- 三条任务与时刻不变：`0 3` kb_sync `--incremental`（wiki 按 MD5 增量入库，自增 `index_version`，后端免重启）、`0 4` staff_expire（`valid_to` 权威 + 查询时懒更新兜底）、`0 5` forum_purge（`deleted_at` 权威 + 恢复接口自校验 + 列表自过滤）。**三条都是 0 变更空跑安全，漏跑不影响正确性**（只影响时效），该口径未变。
+- **两个必守口径**（改 `backend/crontab` 前必读）：① `/etc/cron.d` 的行是 6 段 `分 时 日 月 周 用户名 命令`，漏用户名会被当成 `user=cd` 而静默不执行；② **cron 不继承容器 environment，也不看 `TZ` 环境变量**——业务路径（`ANNOUNCEMENT_DB` / `ANNOUNCEMENT_UPLOAD_DIR` / `KB_WIKI_DIR`）必须写进 crontab 且与 `docker-compose.yml` 的 `environment` 同步（否则任务读写 `/app/backend/data`（镜像内路径）而非挂载卷，表现为「跑完什么也没变」）；调度时区看镜像的 `/etc/localtime`（Dockerfile 已设 `Asia/Shanghai`）。
+- `CRON_ENABLED=0` 可关闭镜像内定时任务（本地只跑 API / 联调时用）。
+- **迁移注意**：新镜像上线后，生产上旧的宿主机 crontab 三条 `docker exec` 条目必须清空，否则与镜像内 cron 重复执行（三条都幂等，重复跑不会写坏数据但会白跑）。迁移与验证命令见 `for-deploy/README.md`「改定时任务」。
+- `for-deploy/crontab` 降级为历史快照（**已废弃**），不再是与线上字节一致的现行留档。
 
 ## for-deploy 留档目录
 

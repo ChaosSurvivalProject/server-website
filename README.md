@@ -48,10 +48,12 @@ server-website/
 │   │   ├── forum.py             # 社区论坛：/api/forum/* 全部路由（公开 / 登录用户 / 管理员三组）
 │   │   └── forum_core.py        # 社区论坛轻量核心（纯 SQLAlchemy，供 CLI 复用：RECYCLE_DAYS / purge_due / cascade_delete_article）
 │   ├── kb_sync.py               # wiki → 知识库 同步脚本（CLI，按 MD5 增量）
-│   ├── staff_expire.py          # 员工名片到期检查脚本（CLI，crontab 每日一次）
-│   ├── forum_purge.py           # 论坛回收站超期清理脚本（CLI，crontab 每日一次 + 启动兜底）
+│   ├── staff_expire.py          # 员工名片到期检查脚本（CLI，镜像内 cron 每日一次）
+│   ├── forum_purge.py           # 论坛回收站超期清理脚本（CLI，镜像内 cron 每日一次 + 启动兜底）
 │   ├── run.py                   # uvicorn 启动脚本
 │   ├── seed.py                  # 测试数据种子
+│   ├── crontab                  # 镜像内定时任务定义（→ /etc/cron.d/xqly-jobs）
+│   ├── docker-entrypoint.sh     # 容器入口：先起 cron 再 exec 主进程（CRON_ENABLED=0 可关）
 │   ├── Dockerfile
 │   ├── requirements.txt
 │   └── data/                    # SQLite 数据库文件（gitignore；含密钥的 .env 亦已 gitignore）

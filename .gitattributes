@@ -2,3 +2,8 @@
 # 若被 git 的 autocrlf 转成 CRLF，安装后 cron 会报 `bad minute`（见 for-deploy/README.md），
 # 且与线上 `crontab -l` 的 md5 比对会失败——因此禁止对该文件做行尾转换。
 for-deploy/crontab -text
+
+# 镜像内定时任务与容器入口脚本：CRLF 会让 cron 报 `bad minute`、
+# 让 shebang 变成 `/bin/sh\r`（bad interpreter），必须强制 LF。
+backend/crontab -text
+backend/docker-entrypoint.sh -text

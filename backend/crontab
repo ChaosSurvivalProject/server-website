@@ -1,0 +1,49 @@
+# ============================================================================
+# 星穹旅驿官网 · 后端镜像内定时任务（Debian cron 读取 /etc/cron.d）
+# 由 backend/docker-entrypoint.sh 在容器启动时拉起；本文件随镜像发布，
+# 定时逻辑因此跟着镜像 tag 版本化，不再依赖宿主机 root crontab + docker exec
+# （旧做法在容器改名后会静默失效：2026-10-31 容器名 announcement-backend →
+#  xqly-website-backend，生产 crontab 未同步即踩过，见 for-deploy/README.md）。
+#
+# ⚠️ /etc/cron.d 里的任务**不继承容器 environment**（只有 docker exec 才继承）：
+#    下面显式声明 PATH / TZ 与三个业务路径。改 docker-compose.yml 的
+#    environment（ANNOUNCEMENT_DB / ANNOUNCEMENT_UPLOAD_DIR / KB_WIKI_DIR）
+#    时**必须同步本文件**，两处值必须一致，否则任务会落到 /app/backend/data
+#    （镜像内路径，不是挂载卷）——表现为「跑完什么也没变」。
+#
+# ⚠️ 调度时区看镜像的 /etc/localtime（不是 TZ 环境变量）：Dockerfile 已把
+#    本地时区设为 Asia/Shanghai，所以下面的 03/04/05 点就是北京时间。
+#
+# 三条任务都是 0 变更空跑安全（kb_sync 无变更不动 index_version、其余无到期
+# 数据不写库），漏跑不会写坏数据，只影响时效（详见 AGENTS.md「生产定时任务」）。
+# 日志统一追加到 /proc/1/fd/1（= PID1 的 stdout，即 `docker logs`），
+# 不再落宿主机 /var/log/*.log。
+# ============================================================================
+
+SHELL=/bin/sh
+# cron 的默认 PATH 不含 /usr/local/bin，而 python:*-slim 的 python 装在那里
+PATH=/usr/local/bin:/usr/bin:/bin
+# 只影响任务进程的 env（Python 侧显式用 ZoneInfo，不依赖它）
+TZ=Asia/Shanghai
+# 不尝试投递邮件（输出已重定向到 docker logs）
+MAILTO=""
+
+# 与 docker-compose.yml 的 environment 保持一致
+ANNOUNCEMENT_DB=/app/data/announcements.db
+ANNOUNCEMENT_UPLOAD_DIR=/app/data/uploads
+KB_WIKI_DIR=/app/wiki
+
+# ⚠️ /etc/cron.d 的行是 6 段：分 时 日 月 周 **用户名** 命令。
+#    漏掉用户名会被解析成 user=cd 而静默不执行。
+
+# 员工名片到期回写（0 变更空跑安全；判定权威是 valid_to，
+# 公开核验接口查询时懒更新兜底，漏跑不影响核验正确性）
+0 4 * * * root cd /app && python backend/staff_expire.py >> /proc/1/fd/1 2>&1
+
+# 知识库增量同步：wiki 源码变更按 MD5 入库，自增 kb_settings.index_version
+# （服务端每轮对话轻量比对版本号后重建内存索引，无需重启后端容器）
+0 3 * * * root cd /app && python backend/kb_sync.py --incremental >> /proc/1/fd/1 2>&1
+
+# 论坛回收站超期清理（0 变更空跑安全；判定权威是 deleted_at，
+# 恢复接口自校验 + 列表自过滤，超期帖用户看不到也恢复不了）
+0 5 * * * root cd /app && python backend/forum_purge.py >> /proc/1/fd/1 2>&1

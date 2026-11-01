@@ -14,7 +14,7 @@
 
 - [ ] 真实玩家在线人数 / 版本（`mcstatus`，替换 TCP 探测占位字段）
 - [ ] 限流共享存储（Redis 等）：当前进程内滑动窗口仅支持单 worker，扩多 worker 前必须换
-- [ ] 知识库自动定时任务的 systemd timer / 部署脚本化（当前 crontab 即可，已于 2026-09-26 挂上）
+- [ ] 知识库自动定时任务的 systemd timer / 部署脚本化（**定时任务已于 2026-11-01 进后端镜像**：`backend/crontab` + entrypoint，不再依赖宿主机 crontab；本条只剩"部署脚本化"部分）
 - [ ] 检索效果看板：未命中率统计（从日志聚合），据此调 `KB_MIN_SCORE`
 - [ ] Embedding 模型/维度变更的引导式全量重建（当前手动 `kb_sync.py --all --force`）
 - [ ] 后台文档上传（PDF/DOCX 解析）、标签体系、对话历史落库与满意度反馈
