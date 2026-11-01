@@ -1,0 +1,104 @@
+# ============================================================================
+# Release Images —— GitHub Release 正式发布时构建并推送 Docker 镜像到 GHCR
+#
+# 触发：仅 release published（无 push 触发器，不随提交构建）。
+#   - 正式版（prerelease == false）：推送 <release-tag> + latest
+#   - 预发行版（prerelease == true）：只推送 <release-tag>，不覆盖 latest
+#
+# 镜像（GHCR，连字符命名；metadata-action 会自动将镜像名转为小写）：
+#   - ghcr.io/<owner>/<repo>-backend → backend/Dockerfile（FastAPI 后端）
+#   - ghcr.io/<owner>/<repo>-web     → web/Dockerfile（统一前端 nginx：
+#     主站 / /admin/ /wiki/ 三合一，反代 /api）
+#
+# 为什么用 <owner>/<repo>-backend 而不是 <owner>/<repo>/backend 多级包名：
+#   GitHub 官方对 GHCR 镜像名的标准表述是两段式 OWNER/IMAGE；多级嵌套路径
+#   （ghcr.io/owner/repo/backend）虽多数场景可用，但包与仓库的关联、可见性
+#   继承及部分周边工具对多级包名的行为不完全一致。为稳妥起见改用连字符
+#   命名，两个包名互不覆盖，且与 docker-compose.yml 服务一一对应。
+#
+# 与 docker-compose.yml 的关系：本工作流只构建并推送镜像，不起 compose
+#   服务、不改容器名（xqly-website-backend / xqly-website-web）、不依赖
+#   .env、宿主机端口、数据卷与 wiki 挂载。两个 Dockerfile 的构建上下文
+#   均为仓库根目录（与 compose 中 build.context: . 一致），因此这里同样
+#   用 context: .，Dockerfile 内 COPY backend/... 的路径才不会失效。
+#
+# 认证：仅用 GITHUB_TOKEN（packages: write），不用 PAT。经 Actions 推送
+#   的 GHCR 包默认继承仓库可见性与权限；首次发布后可在 GitHub → Packages
+#   核对包与仓库的关联。
+# ============================================================================
+name: Release Images
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  packages: write
+
+# 同一 Release 触发的两个矩阵任务排队执行（不取消），避免重复运行时
+# 对同一镜像 tag 的推送互相竞争；不同 Release 的 tag_name 不同，天然互不影响。
+concurrency:
+  group: release-images-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-push:
+    name: Build & push ${{ matrix.service }} image
+    runs-on: ubuntu-latest
+    strategy:
+      # 两个镜像相互独立，一个失败不中止另一个
+      fail-fast: false
+      matrix:
+        include:
+          - service: backend
+            dockerfile: backend/Dockerfile
+            image_suffix: backend
+          - service: web
+            dockerfile: web/Dockerfile
+            image_suffix: web
+    env:
+      # Release tag 原样作为镜像 tag（如 v1.2.3 → 镜像 tag v1.2.3，不剥离 v）
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          # 检出 Release 指向的 tag/commit，而非默认分支最新提交
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta (${{ matrix.service }})
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}-${{ matrix.image_suffix }}
+          # 显式关闭自动生成 latest，latest 完全由下方 raw tag 的 enable 表达式控制
+          flavor: |
+            latest=false
+          tags: |
+            type=raw,value=${{ env.RELEASE_TAG }}
+            # 仅正式版（prerelease == false）追加 latest；预发行版该 raw tag 被禁用
+            type=raw,value=latest,enable=${{ github.event.release.prerelease == false }}
+
+      - name: Build and push ${{ matrix.service }} image
+        uses: docker/build-push-action@v6
+        with:
+          # 构建上下文 = 仓库根目录（backend/Dockerfile 依赖 COPY backend/... 路径）
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # GitHub Actions 缓存（按 service 隔离 scope，避免两个任务缓存互相覆盖）
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
