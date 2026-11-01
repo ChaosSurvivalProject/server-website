@@ -7,3 +7,6 @@ for-deploy/crontab -text
 # 让 shebang 变成 `/bin/sh\r`（bad interpreter），必须强制 LF。
 backend/crontab -text
 backend/docker-entrypoint.sh -text
+
+# GitHub Actions 工作流：与上同理，避免在 Windows 检出编辑后被转成 CRLF
+.github/workflows/*.yml -text
