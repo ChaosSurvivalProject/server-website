@@ -1,577 +1,64 @@
 # 星穹旅驿 · 服务器网站
 
-星穹旅驿 Minecraft 服务器的官方网站，单仓库（monorepo）包含四个子项目：
+星穹旅驿 Minecraft 服务器的官方网站。单仓库（monorepo）包含四个**相互独立**的子项目（无根级 workspace，命令须在对应子目录内执行）：
 
 | 模块 | 说明 | 技术栈 |
 |------|------|--------|
-| `frontend/` | 官网前端（首页、公告） | Vue 3 + Vite + Vue Router + Axios + ECharts |
-| `backend/` | 官网后端（公告管理、用户认证、服务器状态） | FastAPI + SQLAlchemy (async) + SQLite (aiosqlite) + Pydantic v2 |
-| `wiki/` | 服务器文档站 | VitePress |
-| `admin-frontend/` | 后台管理前端（公告 / 服务器地址 / 用户 / 阵营内测申请管理） | Vue 3 + TypeScript + Element Plus + Pinia（[pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)） |
+| `frontend/` | 官网前端（首页、公告、社区论坛、员工名片验证） | Vue 3 + Vite + Vue Router + Axios + ECharts |
+| `backend/` | 官网后端（公告、认证、论坛、员工名片、服务器监控、知识库智能客服） | FastAPI + SQLAlchemy (async) + SQLite (aiosqlite) + Pydantic v2 |
+| `wiki/` | 服务器文档站（同时是知识库的单一数据源） | VitePress |
+| `admin-frontend/` | 后台管理前端（内容运营 / 社区管理 / 员工管理 / 智能客服 / 系统管理） | Vue 3 + TypeScript + Element Plus + Pinia（[pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)） |
 
-## 项目结构
+## 功能特性
 
-```
-server-website/
-├── frontend/                    # Vue 3 前端
-│   ├── src/
-│   │   ├── api/                 # axios 实例、接口封装、统一错误处理
-│   │   ├── assets/              # 图片、字体等静态资源
-│   │   ├── components/          # 通用组件（NavBar、ChatWidget、OnlineCounter、Leaderboard、TrendChart 等）
-│   │   ├── config/mc-config.js  # 站点配置统一读取层（值来自 .env 环境变量）
-│   │   ├── router/              # 路由定义
-│   │   ├── utils/               # 工具函数
-│   │   ├── views/               # 页面组件
-│   │   ├── App.vue              # 根组件（导航栏 + 路由视图 + 页脚）
-│   │   └── main.js              # 应用入口
-│   ├── .env                     # 站点配置默认值（Vite 环境变量，随仓库提交）
-│   ├── .env.development         # 开发模式覆盖（API 指向本地 FastAPI）
-│   ├── .env.production          # 生产模式覆盖（API 同源相对路径）
-│   ├── public/                  # 原样复制的静态资源
-│   ├── index.html
-│   └── vite.config.js
-├── backend/                     # FastAPI 后端
-│   ├── app/
-│   │   ├── main.py              # FastAPI 应用入口与公告路由
-│   │   ├── database.py          # SQLAlchemy 模型 & 异步引擎/会话（含知识库 4 表 + WAL + FTS5）
-│   │   ├── schemas.py           # Pydantic 模型（camelCase 别名）
-│   │   ├── crud.py              # 公告 CRUD 操作
-│   │   ├── faction_beta.py      # 阵营对战内测申请（用户提交 + 管理员审核）
-│   │   ├── monitor.py           # 服务器监控（DB 持久化注册表 + TCP 探测）
-│   │   ├── config.py            # 知识库配置读取（零依赖 .env 加载 → 模块级 KB 对象）
-│   │   ├── kb_ingest.py         # 知识库：Markdown 清洗/切片/Embedding（纯逻辑）
-│   │   ├── kb_index.py          # 知识库：内存向量索引（版本失效 + TopK，纯 stdlib）
-│   │   ├── kb_retrieve.py       # 知识库：向量 + FTS5 trigram + RRF 混合检索
-│   │   ├── kb_llm.py            # 知识库：OpenAI 兼容 chat 流式客户端（httpx）
-│   │   ├── kb.py                # 知识库：/api/kb/* 全部路由（SSE 问答 + 限流 + 管理接口）
-│   │   ├── staff.py             # 员工名片：/api/staff/* 全部路由（验证页 + 台账 + 到期回写 + 二维码 + CSV）
-│   │   ├── forum.py             # 社区论坛：/api/forum/* 全部路由（公开 / 登录用户 / 管理员三组）
-│   │   └── forum_core.py        # 社区论坛轻量核心（纯 SQLAlchemy，供 CLI 复用：RECYCLE_DAYS / purge_due / cascade_delete_article）
-│   ├── kb_sync.py               # wiki → 知识库 同步脚本（CLI，按 MD5 增量）
-│   ├── staff_expire.py          # 员工名片到期检查脚本（CLI，镜像内 cron 每日一次）
-│   ├── forum_purge.py           # 论坛回收站超期清理脚本（CLI，镜像内 cron 每日一次 + 启动兜底）
-│   ├── run.py                   # uvicorn 启动脚本
-│   ├── seed.py                  # 测试数据种子
-│   ├── crontab                  # 镜像内定时任务定义（→ /etc/cron.d/xqly-jobs）
-│   ├── docker-entrypoint.sh     # 容器入口：先起 cron 再 exec 主进程（CRON_ENABLED=0 可关）
-│   ├── Dockerfile
-│   ├── requirements.txt
-│   └── data/                    # SQLite 数据库文件（gitignore；含密钥的 .env 亦已 gitignore）
-├── docker-compose.yml           # 根编排：xqly-website-backend + xqly-website-web（统一前端，见「Docker 部署」）
-├── web/                         # 统一前端镜像：web/Dockerfile（三前端多阶段构建）+ web/nginx.conf（路由）
-├── wiki/                        # VitePress 文档站
-│   ├── .vitepress/config.mts    # 站点配置（base: /wiki）
-│   ├── for-new/                 # 萌新指南（进服教程、玩家条例、FAQ）
-│   ├── management/              # 服务器管理（管理员条例）
-│   ├── develop/                 # 服务器建设（发展路线、Issues）
-│   ├── index.md                 # 首页（hero 布局）
-│   └── package.json
-├── admin-frontend/              # 后台管理前端（pure-admin-thin，部署在 /admin/）
-│   ├── src/
-│   │   ├── api/                 # 接口封装（announcement / server / user / factionBeta / kb / staff / routes）
-│   │   ├── components/          # 通用组件（RePureTableBar、ReDialog、ReAuth 等 pure-admin 封装）
-│   │   ├── config/              # 平台配置读取层（Title 等，值来自 public/platform-config.json）
-│   │   ├── directives/          # 自定义指令（auth / perms / ripple / longpress 等）
-│   │   ├── layout/              # 后台框架（侧边菜单 + 顶栏 + 多标签页）
-│   │   ├── plugins/             # Element Plus / ECharts 全局注册
-│   │   ├── router/              # 路由与守卫（modules/home.ts 业务路由、remaining.ts 登录与错误页）
-│   │   ├── store/modules/       # Pinia 模块（user 存 token/role、permission、multiTags 等）
-│   │   ├── utils/http/          # PureHttp：axios 封装（JWT 注入、{code,message,data} 解包、错误提取）
-│   │   ├── views/               # 页面（login、announcement、server、faction-beta、kb、user、staff、error）
-│   │   └── main.ts              # 应用入口
-│   ├── .env / .env.development / .env.production   # 端口、base 路径、路由模式
-│   ├── public/platform-config.json                 # 平台标题等运行时配置
-│   ├── vite.config.ts           # dev proxy 把 API 前缀转发到后端 :5000
-│   └── package.json
-└── README.md
-```
+- 官网 + 公告系统：富文本 / Markdown 双格式公告；先审后发的社区论坛（两级评论、回收站、站内信通知）
+- 员工名片：二维码扫码验证页 + 管理员台账（撤销 / 续期 / 换码 / CSV 导出）
+- 智能客服：基于 wiki 知识库的检索增强问答（向量 + FTS5 混合检索、SSE 流式回答）
+- 服务器监控：游戏服务器地址后台可维护（DB 持久化），首页在线状态与排行榜
+- 服务器文档站：VitePress（挂载于 `/wiki`），萌新指南 / 服务器管理 / 服务器建设三分区
 
 ## 快速开始
 
 环境要求：Node.js 20.19+（Vite 7 要求）、Python 3.10+。
 
-### 后端
-
 ```bash
+# 后端 (FastAPI, :5000)
 cd backend
 pip install -r requirements.txt
-python3 run.py
-# 或: uvicorn app.main:app --reload --host 0.0.0.0 --port 5000
-```
+python3 run.py            # 开发模式（uvicorn --reload）；交互式 API 文档见 http://localhost:5000/docs
 
-服务启动在 `http://localhost:5000`，交互式 API 文档见 `http://localhost:5000/docs`。
-
-### 前端
-
-```bash
+# 前端 (Vite, :5173)
 cd frontend
 npm install
-npm run dev
+npm run dev               # http://localhost:5173，开发模式 API 直连本地后端 :5000
 ```
 
-开发服务器监听 `http://localhost:5173`（Vite 默认端口）。开发模式下 API 请求直接指向 `http://localhost:5000`（后端已开启 CORS）。
+其他子项目：`cd wiki && npm install && npm run dev`（VitePress，构建产物 `.vitepress/dist/`）；`cd admin-frontend && pnpm install && pnpm dev`（后台管理，dev 端口 3005，API 代理到后端 :5000）。
 
-### Wiki
+可选：`cd backend && python3 seed.py` 写入示例公告数据；在仓库根目录 `docker compose up -d --build` 起后端 + 统一前端容器（见 [docs/deployment.md](docs/deployment.md)）。完整安装 / 构建 / 环境变量说明见 [docs/development.md](docs/development.md)。
 
-```bash
-cd wiki
-npm install
-npm run dev      # 开发服务器
-npm run build    # 构建到 .vitepress/dist/
-npm run preview  # 本地预览构建产物
-```
+## 文档索引
 
-站点以 `/wiki` 为 base 部署（见 `.vitepress/config.mts`）。
-
-### 后台管理（admin-frontend）
-
-```bash
-cd admin-frontend
-pnpm install
-pnpm dev      # 开发服务器（端口取 .env.development 的 VITE_PORT，当前 3005，覆盖 .env 的 8848）
-pnpm build    # 构建到 dist/（base: /admin/，hash 路由）
-```
-
-开发模式下 API 请求经 `vite.config.ts` 的 proxy（`/api`）转发到后端 `http://localhost:5000`。登录账号即后端自动初始化的系统管理员（见「认证」一节）。
-
-## 后端 API
-
-### 公告
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/announcement/page` | 分页查询公告（参数: page, pageSize, isPublished） |
-| GET | `/api/announcement/admin/page` | 管理员分页查询（**需管理员**；含草稿，参数: page, pageSize） |
-| GET | `/api/announcement/detail/{id}` | 查询公告详情 |
-| GET | `/api/announcement/prev-next/{id}` | 上一篇/下一篇导航（仅已发布公告按 id 序，跳过草稿；返回 `brief={id,title,publishTime}`） |
-| POST | `/api/announcement/addWatchCount` | 阅读量 +1（body: `{announcementId}`） |
-| POST | `/api/announcement/create` | 创建公告（**需管理员**） |
-| PUT | `/api/announcement/update/{id}` | 更新公告（部分更新，**需管理员**） |
-| DELETE | `/api/announcement/delete/{id}` | 删除公告（**需管理员**） |
-| POST | `/api/announcement/upload/image` | 上传富文本图片（multipart `file`，≤5MB，png/jpg/jpeg/gif/webp，**需管理员**；返回 `data.url` 相对路径，可直接写入公告内容） |
-| GET | `/api/announcement/uploads/{...}` | 上传图片静态目录（按月份分目录存放） |
-
-- 公告正文对外字段为 `rawContent`（原始内容）+ `contentType`（内容格式，`'html'`=富文本 / `'markdown'`=Markdown；create/update 传参同名字段，缺省 `html`）。Markdown 渲染在前端完成，后端不做转换。
-
-### 认证
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/auth/captcha` | 获取注册用滑块拼图验证码（返回 `{captchaId, backgroundImage, pieceImage, sliderY}`，5 分钟有效；横向答案不下发仅存服务端） |
-| POST | `/api/auth/captcha/verify` | 校验滑块位置（body: `{captchaId, x}`，误差 ≤5px 通过并标记该 captchaId；失败即作废，一次性防爆破） |
-| POST | `/api/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId}`，captchaId 须已通过滑块校验，注册时消费；邮箱作为账号，昵称默认取邮箱前缀，角色为普通用户） |
-| POST | `/api/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, username, nickname, role}`；禁用/已删除用户无法登录） |
-| GET | `/api/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{username, nickname, email, role}`；禁用/已删除用户的旧 token 一律失效） |
-
-- JWT 默认 24 小时有效，环境变量 `JWT_EXPIRE_HOURS` 可调；签名密钥取环境变量 `JWT_SECRET`，未设置时自动生成并持久化到数据目录。
-- 系统管理员 `xqly-admin` 在后端首次启动时自动初始化，随机强密码写入数据目录 `admin_initial_password.txt`（仅首次初始化时写入，请妥善保管并及时删除）。
-
-### 用户管理（管理员）
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/auth/admin/users` | 分页查询用户（参数: page, pageSize, status 可选；status 1=正常, 0=禁用, 2=已删除，缺省查全部） |
-| POST | `/api/auth/admin/users` | 新增用户（body: `{username, nickname?, password, role, email?}`；账号 2-100 位字母/数字及 . _ % + -，昵称 ≤50 字符，密码 8-32 位含字母数字，role 仅 admin/user） |
-| PUT | `/api/auth/admin/users/{id}` | 编辑用户（body: `{nickname?, role?, email?, password?}`；**账号 username 不允许修改**；昵称/角色/邮箱可改，密码留空=不修改（忘记密码重置场景）；已删除用户禁止编辑） |
-| PUT | `/api/auth/admin/users/{id}/status` | 切换用户状态（body: `{status: 1\|0\|2}`；1=启用, 0=禁用, 2=删除（软删除，数据保留可恢复）） |
-| DELETE | `/api/auth/admin/users/{id}` | 软删除用户（status 置为已删除，无法登录，数据保留可恢复） |
-
-- 所有接口需 `Authorization: Bearer <JWT>` 且角色为 `admin`，无 token 返回 401，普通用户返回 403。
-- 用户 `status` 三态：`1=正常`、`0=禁用`（无法登录，可重新启用）、`2=已删除`（软删除，无法登录，数据保留可恢复）。
-- 用户表 `username`（账号）为登录标识，创建后不可修改；`nickname`（昵称）为展示名，可随时修改。
-- 存量数据库首次启动自动补 `users.status` / `users.nickname` 列（status 默认 1=正常，nickname 默认为空）。
-
-### 阵营对战内测申请
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/faction-beta/apply` | 提交内测申请（**需登录**；body: `{mcId, email, faction, experience, weeklyHours, motivation}`，每账号一份，被拒后可重新提交覆盖） |
-| GET | `/api/faction-beta/my` | 查询当前用户申请（**需登录**；未提交时 `data.application` 为 `null`） |
-| GET | `/api/faction-beta/admin/page` | 管理员分页查询（**需管理员**；参数: page, pageSize, status 可选过滤） |
-| PUT | `/api/faction-beta/admin/{id}/review` | 审核申请（**需管理员**；body: `{status: 1\|2, reviewNote?}`） |
-| DELETE | `/api/faction-beta/admin/{id}` | 删除申请（**需管理员**） |
-
-- 申请状态 `status`：`0=待审核, 1=已通过, 2=未通过`；字段 camelCase（`mcId` / `weeklyHours` / `reviewNote` / `reviewTime` 等）。
-- 表单选项（期望阵营 / PvP 经验 / 每周时长）以后端 `faction_beta.py` 白名单为唯一权威，前端选项需与其保持一致。
-
-### 服务器监控
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/monitor/servers` | 游戏服务器地址列表（前端展示的唯一数据源） |
-| GET | `/api/monitor/server-info/{serverId}` | 服务器在线状态（TCP 探测，供首页在线状态组件） |
-| GET | `/api/monitor/admin/servers` | 管理员获取全部服务器（**需管理员**） |
-| POST | `/api/monitor/admin/servers` | 新增服务器（**需管理员**） |
-| PUT | `/api/monitor/admin/servers/{id}` | 更新服务器（**需管理员**） |
-| DELETE | `/api/monitor/admin/servers/{id}` | 删除服务器（**需管理员**） |
-| POST | `/api/monitor/admin/servers/{id}/primary` | 设为主服务器（**需管理员**） |
-
-- 服务器地址持久化在 SQLite `servers` 表（**DB 为唯一权威，内存 `SERVERS` 字典为读缓存**）：启动时 `load_servers()` 读库填充内存，表为空时用默认注册表做种子；后台管理页的增删改先改内存再同步落库（先 commit 再返回，失败回滚内存），**重启不再丢失**（原"重启即重置"行为属 bug，已修复）。不能删除主服务器，设主 / 设 `isPrimary` 会自动清除其他服务器的主标记，全表始终至多一个主服务器。
-
-### 知识库 / 智能客服（P0）
-
-官网内置基于 wiki 文档的知识库智能客服：向量 + FTS5 trigram 混合检索、SSE 流式回答、思考过程与来源引用展示，答不了时引导进 QQ 群。设计规格见 `docs/智能客服/智能客服P0落地方案.md`。
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/kb/info` | 客服元信息（`enabled` / `title` / `greeting` / `faq` / `model`；未配置 API Key 时 `enabled:false`，前端不渲染悬浮球） |
-| POST | `/api/kb/chat` | **SSE 流式问答**（body: `{message, history?}`；`text/event-stream`，**全项目唯一不走 `{code, message, data}` 包络的接口**，帧协议见下方） |
-| GET | `/api/kb/admin/documents` | 文档分页列表（**需管理员**；参数: page, pageSize, sourceType 可选） |
-| POST | `/api/kb/admin/documents` | 手动新增知识（**需管理员**；body: `{title, content}`，同步切片 + Embedding） |
-| DELETE | `/api/kb/admin/documents/{id}` | 删除文档（**需管理员**；`wiki` 来源返回 400，提示走同步脚本） |
-| GET | `/api/kb/admin/documents/{id}/chunks` | 切片预览（**需管理员**） |
-| POST | `/api/kb/admin/documents/{id}/reindex` | 重建（**需管理员**；幂等：wiki 来源读源文件整篇重建，manual 来源重嵌入现有切片） |
-| GET | `/api/kb/admin/stats` | 统计（**需管理员**；文档数 / 切片数 / 索引版本 / 维度一致性 / 总字符数） |
-
-SSE 帧协议（UTF-8 JSON，空行分隔，`ensure_ascii=False`）：
-
-```
-data: {"sources":[{"id":12,"title":"进服教程 / Java 客户端","sourceType":"wiki","score":0.83}]}   ← 首帧固定（无命中为 []）
-data: {"reasoning":"..."}    ← 思考过程（思考模型才有），与 delta 可交错
-data: {"delta":"..."}        ← 回答正文增量
-data: {"fallback":true}      ← 可选：命中引导话术时附带
-data: {"error":"..."}        ← 可选：流开始后出错（流开始前走标准 HTTP 400/429/503 + 包络）
-data: [DONE]                 ← 一定发（try/finally 保证）
-```
-
-- 错误输入 / 限流 / 未开放等流前错误返回标准 HTTP 状态码 + `detail`；流中错误发 `{"error":...}` 帧（header 已发出无法改状态码）。
-- 限流（进程内滑动窗口，`=0` 关闭）：单 IP 每小时 `KB_RATE_LIMIT_PER_HOUR`（默认 20）+ 全局每分钟 `KB_RATE_LIMIT_GLOBAL_PER_MIN`（默认 5）+ 单 IP 并发 1；输入上限 `KB_MAX_INPUT_CHARS`（默认 300 字）超出 400。
-- 多轮对话由**客户端**携带 `history` 数组（服务端只取最后 `KB_MAX_HISTORY` 条），服务端无状态、不落库。
-- **wiki 是知识库单一数据源**：`source_type='wiki'` 的文档由同步脚本维护，后台只读；手动新增为 `manual` 来源。
-
-知识库同步脚本 `backend/kb_sync.py`（在服务器上执行，按文件 MD5 增量）：
-
-```bash
-cd backend
-python3 kb_sync.py --check           # 只看变更，不写库
-python3 kb_sync.py --all             # 全量同步（MD5 判重，未变更零成本跳过）
-python3 kb_sync.py --incremental     # 增量同步（wiki 改动后执行，可挂 crontab）
-python3 kb_sync.py --list            # 列出库内文档与切片数
-# 可选参数：--no-prune 不删除已消失的文件；--force 模型/维度不一致时强制写入
-```
-
-同步会自增 `kb_settings.index_version`，**服务端下次对话自动重建内存索引，无需重启**（设计点，勿改成"重启生效"）。服务与脚本可同时运行（双侧均已开 WAL + busy_timeout，不会 `database is locked`）。
-
-知识库配置（`backend/.env`，**已 gitignore，含 API Key 勿提交**）：总开关 `KB_ENABLED`；对话模型 `KB_CHAT_BASE_URL` / `KB_CHAT_API_KEY` / `KB_CHAT_MODEL`（OpenAI 兼容）+ 可选 `KB_CHAT_EXTRA_BODY`（厂商私有参数原样 merge）；Embedding `KB_EMBED_BASE_URL` / `KB_EMBED_API_KEY` / `KB_EMBED_MODEL` / `KB_EMBED_DIM`；检索 `KB_TOP_K` / `KB_MIN_SCORE` / `KB_MAX_CHUNKS` 等；文案 `KB_TITLE` / `KB_GREETING` / `KB_FALLBACK_HINT`。改 `.env` 需重启后端生效。启动自检：密钥缺失 → 客服自动关闭（`/kb/info` 返回 `enabled:false`，`/kb/chat` 503）；库内向量维度/模型与配置不一致 → 关闭向量检索降级为仅 FTS，`/kb/admin/stats` 标记"需重建索引"。
-
-### 员工名片
-
-工作人员名片系统（只读公开核验页 + 管理员台账）：名片上印二维码 → 扫码打开 `/staff/{身份码}` 验证页 → 后台可撤销/续期/换码。实施规格见 `docs/员工管理/员工名片模块需求规格.md`，落地设计见 `docs/员工管理/员工名片模块评审与落地方案.md`。
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/staff/public/{code}` | 验证页数据（匿名；四态 `valid` / `revoked` / `expired` / `not_found`，白名单模型不含 remark 与完整身份码；"格式非法 / 不存在 / 超长"返回逐字节一致的 `not_found`） |
-| GET | `/api/staff/public/team` | 管理组总览（匿名；仅现任且在有效期内的公开字段） |
-| GET | `/api/staff/admin/page` | 台账分页（**需管理员**；参数: page, pageSize, status=`active\|expiring\|expired\|revoked`, keyword） |
-| GET | `/api/staff/admin/stats` | 顶部统计条（**需管理员**；全部 / 现任 / 即将到期≤30天 / 已过期 / 已撤销） |
-| POST | `/api/staff/admin` | 新增工作人员（**需管理员**；自动生成 12 位身份码 + 一年有效期） |
-| PUT | `/api/staff/admin/{id}` | 编辑公开信息（**需管理员**；公开字段变更时 `cardVersion` 自动递增） |
-| POST | `/api/staff/admin/{id}/regenerate-code` | 重生成身份码（**需管理员**；旧码立即失效，适用于码泄露等） |
-| POST | `/api/staff/admin/{id}/revoke` | 撤销（**需管理员**；body: `{reason}`，仅接受 `离职/转岗/暂停/码异常`） |
-| POST | `/api/staff/admin/{id}/restore` | 恢复已撤销人员（**需管理员**；强制换新身份码，旧码立即失效） |
-| POST | `/api/staff/admin/{id}/renew` | 续期一年（**需管理员**；因到期失效的记录自动恢复 active、二维码不变；人工撤销的记录返回 400 须先恢复） |
-| GET | `/api/staff/admin/{id}/qrcode` | 二维码 PNG（**需管理员**；410×410，URL 由后端 `STAFF_PUBLIC_BASE_URL` 统一拼接） |
-| GET | `/api/staff/admin/export` | 导出名单 CSV（**需管理员**；⚠️ 这是"不返回完整身份码列表"的唯一豁免点——公开接口一律只给展示码后四位，勿把本豁免当漏洞"修掉"） |
-
-- **状态模型**：`status` 只存 `active` / `revoked` 两态；过期判定权威是 `valid_to`（`now > valid_to` 即过期），命中时把 `active` **回写**为 `revoked`（`revoked_reason='expired'`，仅系统写入、后台下拉不可见）。回写有两条触发路径、共用同一函数 `expire_due()`：公开验证接口查询时懒更新（幂等）+ `backend/staff_expire.py` CLI（crontab 每日一次，服务启动时也跑一次）——**crontab 漏挂不影响核验正确性**，只影响台账刷新时效。
-- **身份码**：12 位全小写（`23456789abcdefghijkmnpqrstuvwxyz`，去掉易混的 `0 1 l o`），`secrets` 安全随机 + 查重重试；对外任何公开响应都不下发完整码（页面正文只显示后四位 `••••xxxx`）。
-- **二维码**：后端 `qrcode` 库生成，纠错 M、留白 4 模块、`box_size=10`（410×410px）；**禁止硬编码 `version=`**（49 字节 URL 实测 v4 / 33×33，由库自动选版）；URL 只含域名 + 路径 + 随机码，无隐私字段。
-- 头像复用 `POST /api/announcement/upload/image` 上传接口（png/jpg/gif/webp、≤5MB）。
-- 到期检查脚本（仿 `kb_sync.py`，可挂 crontab）：
-
-```bash
-cd backend
-python3 staff_expire.py             # 全表到期回写，输出刷新行数
-python3 staff_expire.py --dry-run   # 只统计，不写库
-```
-
-### 社区（论坛）
-
-社区论坛第一阶段（MVP）：匿名可浏览 → 登录可发帖/点赞/收藏/评论（**两级楼中楼**）→ 管理员审核与运营。实施唯一依据 `docs/论坛/论坛模块第一阶段PRD.md`（v1.4）+ 交互原型 `docs/论坛/prototype/index.html`；帖子删除与回收站见 `docs/论坛/论坛删除与回收站PRD.md`（v1.3，**局部取代**第一阶段 PRD 的 §8-D16 与 §12.1 中「评论作者自删」半条）。落点 `backend/app/forum.py`（回收站轻量核心 `backend/app/forum_core.py`，超期清理 CLI `backend/forum_purge.py`）。**「先审后发」**：新帖 `status=0 待审核`，管理员通过后才公开。
-
-**公开接口（匿名可调）**
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/forum/categories` | 板块列表（过滤 `isHidden`，含 2 个系统板块，带已发布文章数） |
-| GET | `/api/forum/tags/hot` | 热门标签（`isHot` 优先 + `useCount` 倒序；参数 `limit`） |
-| GET | `/api/forum/stats` | 社区统计 `{articleCount, viewCount, tagCount}`（`status=1` 实时聚合） |
-| GET | `/api/forum/config` | 前台配置（Banner 三项 + `defaultSort` + `searchPlaceholder`；打赏预留键不下发） |
-| GET | `/api/forum/articles` | 文章列表（参数 `page`,`pageSize`,`category`,`sort`,`q`,`tag`；`category=home`=全部 / `recommend`=置顶∪加精按浏览量；`sort=latest\|views\|comments`；**置顶帖在任意排序档中都恒排最前**） |
-| GET | `/api/forum/articles/{id}` | 详情（未公开文章对非作者非管理员按 404 处理；**回收站帖对所有人 404，含作者本人**；**不计数浏览量**） |
-| GET | `/api/forum/articles/{id}/comments` | 评论列表（`page`,`pageSize`；**只对顶层评论分页**，每条内嵌 `replies`；已登录附每条 `liked`） |
-| GET | `/api/forum/articles/{id}/author-posts` | 作者其他已发布文章（最多 5 条） |
-| POST | `/api/forum/articles/{id}/view` | 浏览量 +1（需登录；原子自增，重复刷新重复计为已接受行为） |
-| GET | `/api/forum/users/{userId}/stats` | 某人的公开论坛三项数据（作者卡用；不下发任何私有字段） |
-
-**登录用户接口**
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/forum/articles` | 发布文章（`status=0`；body `{categoryId,title,content,coverUrl?,tags[]}`；受禁言拦截） |
-| GET | `/api/forum/articles/{id}/edit` | 编辑回填（**仅作者本人**；越权/不存在一律 404；`remove_by='admin'` 的已下架帖 400） |
-| PUT | `/api/forum/articles/{id}` | 作者编辑重提（**仅作者本人**；`status` 一律回 0、清空 `reviewNote`/`publishTime`/`removeBy`、`resubmitCount+1`，**浏览/点赞/收藏/评论全部保留**） |
-| DELETE | `/api/forum/articles/{id}` | 作者删除 → **进回收站**（`status=4` + `deleted_at`，保留 30 天；**不再产生 `status=3`**，后者只剩管理员下架一个来源） |
-| POST | `/api/forum/articles/{id}/restore` | 从回收站恢复 → `status_before_delete`（0/1/2，不重审）；**超 30 天返 410** |
-| DELETE | `/api/forum/articles/{id}/purge` | 回收站内**彻底删除**（物理 + 级联，不可恢复；前端一律二次确认） |
-| DELETE | `/api/forum/comments/{id}` | 作者删自己的评论/回复（**物理删除不留痕**；删顶层连带其下全部回复） |
-| GET | `/api/forum/my/articles` | 我的文章（各状态 + `reviewNote`/`removeBy`/`resubmitCount`；`status=4` 时额外下发 `deletedAt`/`daysLeft`/`statusBeforeDelete`，回收站页面据此取数） |
-| GET | `/api/forum/my/stats` | 侧边栏用户卡 `{postCount, likeCount, followerCount}`（`followerCount` 恒 0） |
-| POST | `/api/forum/articles/{id}/like` | 文章点赞切换（幂等）→ `{liked, likeCount}` |
-| POST | `/api/forum/articles/{id}/favorite` | 文章收藏切换（幂等）→ `{favorited, favoriteCount}` |
-| POST | `/api/forum/articles/{id}/comments` | 发表评论 / 发表回复（body `{content, parentId?, replyToUserId?}`；`parentId` **只指向顶层评论**，指向回复返 400） |
-| POST | `/api/forum/comments/{id}/like` | 评论点赞切换（顶层与回复通用） |
-| POST | `/api/forum/upload/image` | 图片上传（登录用户；落盘 `uploads/forum/YYYYMM/`，URL 仍是 `/api/announcement/uploads/forum/...`） |
-
-**管理员接口（`require_admin`）**
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/api/forum/admin/articles` | 检索分页（`keyword`,`author`,`categoryId`,`tagId`,`status`） |
-| GET | `/api/forum/admin/articles/{id}` | 文章全量详情（正文源码 + 标签名 + 审核备注） |
-| PUT | `/api/forum/admin/articles/{id}/review` | 审核（`{status: 1\|2, reviewNote?}`；驳回理由必填；通过时重写 `publishTime`） |
-| POST | `/api/forum/admin/articles/{id}/top` `/feature` | 置顶 / 加精切换（幂等） |
-| POST | `/api/forum/admin/articles/{id}/offline` | 下架（`{reason?}`；写 `remove_by='admin'`，作者此后**不能**编辑重提） |
-| POST | `/api/forum/admin/articles/{id}/restore` | 恢复上架（`remove_by=''`，`publish_time` 重写，**不重新审核**）；`status=4` 时为**回收站恢复** → `status_before_delete`（超 30 天 410） |
-| PUT | `/api/forum/admin/articles/{id}` | 改板块/标签/封面/标题（**状态不变**，不重新审核；**正文只读**） |
-| DELETE | `/api/forum/admin/articles/{id}` | 硬删除（级联评论/点赞/收藏/标签关联；回收站帖同样走这里） |
-| GET | `/api/forum/admin/articles/{id}/comments` | 评论抽屉（含已删除标记） |
-| DELETE | `/api/forum/admin/comments/{id}` | 删评论（**软删 `status=2` 留治理痕迹**；删顶层连带其全部回复并清 `comment_likes`）——与作者侧物理删**有意不对称** |
-| GET/POST/PUT/DELETE | `/api/forum/admin/categories[/{id}]` | 板块管理（系统板块不可删/改名/隐藏；有已发布文章的板块删除 400） |
-| GET/POST/PUT/DELETE | `/api/forum/admin/tags[/{id}]` | 标签管理（重命名 / 置热 / 删除） |
-| POST | `/api/forum/admin/tags/{id}/merge` | 标签合并（`{targetTagId}`；引用全部迁移、删源、重算 `use_count`） |
-| GET/PUT | `/api/forum/admin/config` | 社区配置读写（白名单键；打赏 `reward*` 为预留键，第一阶段无 UI） |
-| GET | `/api/forum/admin/covers` | 封面图库（只读列表；冗余清理归第三阶段） |
-| GET | `/api/forum/admin/user-stats/{userId}` | 用户论坛数据（发帖/获赞/粉丝 + 最近 5 篇） |
-| PUT | `/api/auth/admin/users/{id}/mute` | 禁言/解禁（body `{muteUntil}`，空串=解禁；与 `status` 三态**正交**） |
-
-- **状态机**（`forum_articles.status`）：`0 待审核 → 1 已发布 / 2 已驳回`；`1 → 3 已下架`（**仅管理员**）`→ 1 恢复`；`0/1/2 ──作者删除──▶ 4 回收站`；`4 ──恢复（作者或管理员）──▶ status_before_delete`；`4 ──彻底删除/后台硬删/超期清理──▶ 物理删除`（级联，不可恢复）。任意可编辑态（0/1/2/3 且 `remove_by='author'`）经**作者编辑保存 → 0**（`resubmit_count+1`）；**回收站帖必须先恢复才能编辑**。已驳回的文章必须由作者重提回 0 才能再审。
-- **回收站三列**（`deleted_at` / `status_before_delete` / `publish_time_before_delete`，`migrate_forum_article_recycle_columns()` 幂等补列）：`deleted_at` 是 **30 天保留期的唯一权威**（恢复接口自校验 + 列表自过滤 + `forum_purge.py` 清理共用）；恢复时回填删前 `publish_time`，否则「删除→恢复」两次点击即可零成本刷榜。超期清理主路径是 crontab 每日 05:00 跑 `forum_purge.py`，`main.py` 启动兜底一次——**漏挂 crontab 不影响正确性**（超期帖用户看不到也恢复不了，只是数据多留几天）。
-- **`remove_by` 决定作者能否编辑重提**：`''` 未移除 / `'author'` 作者自删（已在回收站，须先恢复）/ `'admin'` 管理员下架（**不可重提**，返 400，否则等于绕过下架）。
-- **标签 `use_count` = 被 `status=1` 文章引用的数量**，只挂在状态转移这一个点上；浏览/点赞/收藏/评论计数一律原子 SQL 自增。
-- **`comment_count` = 顶层评论数 + 回复数**（回复也算评论）；评论纯文本存储，不接受 Markdown/HTML。
-- **禁言语义**：能登录浏览，但**不能发帖/评论/上传**（点赞收藏不受影响）；命中返回 403 + `detail="账号已被禁言，至 <时间>"`。**删自己的帖子/评论属例外，禁言期间仍可用**。
-- **后台回收站筛选尚未实现**：`GET /api/forum/admin/articles` 的 `status` 参数已支持 `4`、`admin/articles/{id}/restore` 也已支持回收站帖，但后台文章管理页的下拉只有 0/1/2/3（见 `TODO.md`）。
-- 端到端回归脚本：`cd backend && python3 forum_smoke_test.py`（临时库 + `TestClient`，覆盖状态机/计数/回收站/权限/级联等断言）。
-
-### 其他
-
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/health` | 健康检查 |
-| GET | `/api/kb/info` | 智能客服元信息（见「知识库 / 智能客服」） |
-| POST | `/api/kb/chat` | 智能客服流式问答（SSE，唯一不走包络） |
-
-**约定**
-
-- 响应统一为 `{code, message, data}` 结构，`code=0` 表示成功；**唯一例外是 `POST /kb/chat`（SSE 流无法包络）**。
-- 公告字段使用 camelCase（`publishTime` / `isPublished` / `readCount` / `createTime` / `updateTime`），由 Pydantic 字段别名映射。
-- 游戏服务器地址统一由后端维护：持久化在 `servers` 表，后台「服务器地址管理」页增删改，内存 `SERVERS` 字典（`backend/app/monitor.py`）只是读缓存；前端一律经 `/monitor/servers` 获取，禁止硬编码。
-- 管理员接口使用 `Authorization: Bearer <JWT>` 鉴权：无 token 返回 401，普通用户返回 403。
-
-### 数据库
-
-使用 SQLite：
-
-- 默认路径：`backend/data/announcements.db`（启动时自动建表）
-- 可通过环境变量 `ANNOUNCEMENT_DB` 自定义
-- **连接池用 `NullPool`（每请求一条连接），不要改回 `StaticPool`**：单连接会让并发请求共享同一个事务，导致社区论坛的原子计数（点赞/评论/标签 `use_count`）与关系表对不上。连接级 PRAGMA（`busy_timeout` / `synchronous`）挂在 engine 的 `connect` 事件上，`journal_mode=WAL` 在 `init_db()` 设一次。详见 AGENTS.md「社区（论坛）模块规约」。
-
-公告正文支持两种格式（`contentType` 字段区分，存量数据自动归为 `html`）：
-
-- `html`：富文本编辑器（wangEditor）产出的 HTML，入库前由后端 `nh3` 白名单消毒（仅放行常用标签 + `style` 内联样式）。
-- `markdown`：Markdown 源码，原样入库（nh3 会破坏 Markdown 语法），由前端渲染——主站用 `marked` + `DOMPurify` 消毒后展示，后台编辑器为 md-editor-v3（双编辑器共存，按格式自动切换）。
-
-社区（论坛）模块的 9 张表由 `Base.metadata.create_all` 自动建，存量表补列由 4 个幂等迁移函数在 `init_db()` 里完成（`migrate_user_extra_columns()` / `migrate_announcement_content_columns()` / `migrate_user_mute_column()` / `migrate_forum_article_recycle_columns()`，失败只记 warning、不阻断启动）。其中回收站迁移会补 `forum_articles` 三列，并把旧语义的作者自删帖（`status=3 AND remove_by='author'`）刷成 `status=4` + `deleted_at=update_time`：
-
-| 表 | 用途 |
-|----|------|
-| `forum_categories` | 板块（2 个系统板块 `home`/`recommend` 不可删改名隐藏） |
-| `forum_tags` | 标签（`use_count` = 被已发布文章引用数） |
-| `forum_articles` | 文章（`status` 0待审核/1已发布/2已驳回/3已下架(管理员)/4回收站；`remove_by` + `resubmit_count` + 回收站三列 `deleted_at`/`status_before_delete`/`publish_time_before_delete`） |
-| `forum_comments` | 评论（`parent_id` 只指向顶层评论；两级楼中楼） |
-| `forum_article_likes` / `forum_article_favorites` / `forum_comment_likes` | 点赞与收藏关系（`(x, user_id)` 联合唯一，切换语义） |
-| `forum_article_tags` | 文章—标签关联（不用逗号串，否则合并/重命名/删除会写坏数据） |
-| `forum_config` | 社区键值配置（Banner / 排序 / 搜索文案 + 打赏预留键） |
-
-首次启动自动写入**8 个预置板块**与 8 个配置键默认值（`forum.ensure_seeded()`，幂等：按 `code`/`key` 判存，不会覆盖管理员改过的值）。
-
-### 图片上传
-
-富文本图片默认存放于 `backend/data/uploads/`（按月份分目录，随机文件名），应用启动时自动创建，经 `/api/announcement/uploads/` 静态目录对外提供（2026-09-25 起接口统一 /api 前缀；`/announcement/uploads/` 旧路径保留别名，兼容历史正文内嵌的旧图片 URL）：
-
-- 可通过环境变量 `ANNOUNCEMENT_UPLOAD_DIR` 自定义（Docker 部署已在 docker-compose.yml 中指向挂载卷 `/app/data/uploads`）
-- 生产 Nginx 将 `/api` 反代到 FastAPI，该子路径无需额外配置；`/announcement/uploads/` 旧路径保留兼容反代
-- **社区图片复用同一挂载点**（因此**零 nginx 改动**）：论坛上传落盘到 `uploads/forum/YYYYMM/`，对外 URL 为 `/api/announcement/uploads/forum/YYYYMM/<uuid>.<ext>`。校验与落盘逻辑抽在 `backend/app/uploads.py`，公告与论坛共用一份口径（白名单 png/jpg/jpeg/gif/webp + `image/*` + ≤5MB + 随机文件名）
-
-### 种子数据
-
-```bash
-cd backend
-python3 seed.py
-```
-
-### Docker 部署
-
-compose 文件在**仓库根目录**（2026-10-31 从 `backend/` 迁出）：
-
-```bash
-docker compose up -d --build
-```
-
-起两个服务：
-
-| 服务 | 容器 | 说明 |
-|------|------|------|
-| `xqly-website-backend` | `xqly-website-backend` | FastAPI，宿主机只绑 `127.0.0.1:5000` |
-| `xqly-website-web` | `xqly-website-web` | 统一前端 nginx：`/` 主站 + `/admin/` 后台 + `/wiki/` 文档 + `/api` 反代，宿主机只绑 `127.0.0.1:8090` |
-
-本机访问 `http://127.0.0.1:8090/` 即整站（前端 + 后端经 nginx 反代联通）。数据持久化在 `backend/data/`；`backend/.env`（含 API Key）以只读卷挂入容器。生产部署说明见 `for-deploy/README.md`。
-
-## 前端
-
-### 页面与路由
-
-| 路径 | 页面 | 说明 |
-|------|------|------|
-| `/` | Home | 首页：hero 横幅、服务器特色、加入服务器（地址来自 `/monitor/servers`）、论坛展示、在线状态 |
-| `/announcements` | Announcements | 公告列表（分页） |
-| `/announcements/:id` | AnnouncementDetail | 公告详情（自动累加阅读量） |
-| `/faction-beta` | FactionBetaApply | 阵营对战玩法内测资格申请（需登录后填写，展示审核状态） |
-| `/staff/:code` | StaffVerify | 工作人员名片验证页（扫码直达；四态横幅 + 防伪提示，正文不显示完整身份码） |
-| `/team` | TeamOverview | 管理组总览（公开的现任名录 + 官方入口 + 安全提示） |
-| `/forum` | forum/CommunityHome | 社区首页（双栏 7:3；Banner + 板块标签 + 排序/搜索 + 帖子列表 + 右侧三卡；筛选态全部走 `route.query`） |
-| `/forum/post/:id` | forum/PostDetail | 文章详情（顶部「← 返回社区」+ 全局导航栏；Markdown 渲染 + 点赞/收藏/分享 + 两级评论区 + 作者卡） |
-| `/forum/new` | forum/PostEditor | 发布文章（与编辑页复用同一组件；md-editor-v3 分屏编辑器；本地草稿防丢失） |
-| `/forum/edit/:id` | forum/PostEditor | 编辑文章（`mode=edit`；**仅作者本人**，保存后回待审核重走审核） |
-| `/forum/my` | forum/MyPosts | 我的文章（各状态 + 驳回理由 + 编辑重提 + 删除进回收站 + 入口「查看已删除文章」） |
-| `/forum/recycle` | forum/RecycleBin | 回收站（保留期与剩余天数、逐条恢复 / 彻底删除；不可恢复的删除一律二次确认） |
-| `/login` | AuthView（登录） | 登录页（用户名/邮箱 + 密码） |
-| `/register` | AuthView（注册） | 注册页（邮箱 + 密码 + 确认密码 + 滑块拼图人机验证） |
-
-### Markdown 渲染（`src/utils/markdown.js`）
-
-全站**唯一**的 Markdown 渲染入口（marked + DOMPurify + highlight.js）。代码块底色统一浅色 `#f6f8fa`（基准 = 公告详情），主站与后台的规则分别在 `frontend/src/assets/styles/markdown.css` 与 `admin-frontend/src/assets/styles/markdown.css`，**改代码块观感只改这两个文件**：公告正文与社区文章正文都走它。导出 `renderMarkdownContent(content)`（纯 Markdown，社区用）与 `renderAnnouncementContent(content, contentType)`（按格式分支，公告详情页用），另有 `splitMarkdownBlocks(text)`（智能客服流式渲染用）。**不要另写一套渲染管线**。
-
-### 关键组件
-
-- `NavBar` — 顶部导航栏
-- `ChatWidget` — 智能客服悬浮组件（流式打字机、思考过程折叠、来源引用、QQ 群引导；块级 keyed 流式渲染）
-- `OnlineCounter` — 服务器在线状态（轮询 `/monitor/server-info/{id}`）
-- `Leaderboard` / `TrendChart` — 排行榜与趋势图（ECharts）
-- `ContentCard` / `ImageCarousel` / `SectionNav` / `CopyButton` / `BackToTop` / `Modal` — 展示与交互组件
-- `components/forum/` — 社区组件（props 驱动，后续阶段只扩 props 不改结构）：`PostCard`（帖子卡片）/ `CategoryTabs`（板块标签栏）/ `CommunityBanner`（Banner + 排序/搜索）/ `SidebarUserCard` + `SidebarStats` + `SidebarHotTags`（右侧三卡）/ `CommentSection`（两级评论区，自取数据）/ `AuthorCard`（作者卡）/ `Pager`（翻页）/ `UserBadge`（徽章）/ `ConfirmDialog`（二次确认）/ `ForumToast`（占位功能轻提示）
-- `utils/forumFormat.js`（相对时间 / 北京时间解析 / HTML 转义）、`utils/forumBadges.js`（徽章与状态常量表）、`utils/forumToast.js`（轻提示单例 + 未登录跳转）
-
-### API 层（`src/api/`）
-
-- `axiosInstance.js` — axios 实例，baseURL 来自环境变量 `VITE_BASE_API_URL`（经 `mc-config.js` 统一读取）；响应拦截器统一解包 `{code, message, data}`，失败时弹出错误提示；请求拦截器自动携带 JWT，401 时清除登录态并跳转 `/login`
-- `api.js` — 接口封装：`authAPI` / `announcementAPI` / `factionBetaAPI` / `forumAPI`（社区）/ `staffAPI`（验证页与总览页的公开只读接口，silent 模式） / `serverMonitorAPI` / `serverConfigAPI` / `chatAPI`（`chatAPI.streamChat` 因 SSE 流式改用 `fetch` + `ReadableStream`，其余走 axios）
-- `errorHandler.js` — 统一错误弹窗工具
-
-### 环境配置（`frontend/.env*` 文件）
-
-站点配置通过 Vite 环境变量提供：`.env` 存放所有模式共用的默认值，`.env.development` / `.env.production` 按构建模式覆盖，本地个性化覆盖写 `.env.local`（已被 gitignore）。`src/config/mc-config.js` 是统一读取层，组件不要直接读 `import.meta.env`。
-
-| 变量 | 说明 | dev 默认 | prod 默认 |
-|------|------|----------|-----------|
-| `VITE_BASE_API_URL` | API 基础地址 | `http://localhost:5000` | 留空（同源相对路径，由 Nginx 反代到后端） |
-| `VITE_SERVER_ID` | 监控接口路由参数（对应后端 `SERVERS` 主服务器 id） | `1` | `1` |
-| `VITE_JAVA_VERSIONS` / `VITE_BEDROCK_VERSIONS` | 支持的游戏版本文案 | 见 `.env` | 见 `.env` |
-| `VITE_QQ_GROUP_ID` / `VITE_QQ_GROUP_CODE_IMG_URL` / `VITE_QQ_GROUP_INVITE_LINK_URL` | QQ 群信息 | 见 `.env` | 见 `.env` |
-| `VITE_ADMIN_URL` | 后台管理入口地址 | `/admin` | `/admin` |
-| `VITE_CHAT_WIDGET_ENABLED` | 智能客服悬浮球前端开关（后端 `/kb/info` enabled 为二级开关，两级都开才渲染） | `true` | `true` |
-| `VITE_CHAT_WIDGET_TITLE` / `VITE_CHAT_WIDGET_GREETING` / `VITE_CHAT_WIDGET_FAQ` | 客服标题 / 欢迎语 / 首屏示例问题（`\|` 分隔） | 见 `.env` | 见 `.env` |
-| `VITE_SERVER_NAME` | 服务器名称（名片验证页 / 总览页展示） | `星穹旅驿` | 同左 |
-| `VITE_STAFF_OFFICIAL_URL` | 验证页展示的官方网址（二维码前缀在后端 `STAFF_PUBLIC_BASE_URL`，前端不拼 URL） | 见 `.env` | 同左 |
-| `VITE_STAFF_DISCORD_URL` | 官方 Discord 入口（留空则验证页不展示该项） | 留空 | 同左 |
-| `VITE_STAFF_ANTI_FRAUD_TEXT` | 防伪提示文案（需求 §9.3，`\|` 分行） | 见 `.env` | 同左 |
-
-环境变量在构建期静态替换，修改后需重启 dev server 或重新构建才生效。
-
-## 生产部署
-
-前后端同域部署，由 Nginx 统一入口：
-
-- `frontend` 构建产物（`npm run build` → `dist/`）作为静态站点托管
-- `/api` 反向代理到本机 FastAPI（5000 端口，后端所有接口统一挂 /api 前缀）；其中 `/api/kb/` 的反代需为 SSE 追加：`proxy_http_version 1.1`、`proxy_set_header Connection ''`、`proxy_buffering off`、`proxy_cache off`、`gzip off`、`proxy_read_timeout 300s`（与后端响应头 `X-Accel-Buffering: no` 两个都要，否则流式被缓冲成一次性返回）
-- `wiki` 构建产物挂在 `/wiki/` 路径下（VitePress `base: '/wiki'`）
-- `admin-frontend` 构建产物挂在 `/admin/` 路径下（pure-admin-thin，`base: '/admin/'`）
-
-## 后台管理（admin-frontend）
-
-独立的后台管理前端，基于 [pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)（Vue 3 + TypeScript + Element Plus + Pinia + TailwindCSS 4 + Vite），生产部署在 `/admin/` 路径下，**hash 路由模式**。
-
-### 页面与路由
-
-业务路由在 `src/router/modules/home.ts` 中静态注册（登录/错误页在 `remaining.ts`），根路由 `/` 登录后重定向到 `/announcement/list`。后端未实现 `/get-async-routes` 动态菜单接口，动态路由为空，仅静态路由生效。
-
-侧边菜单**一级即功能模块**，模块内的页面是它的子路由：
-
-| 一级菜单 | 包含页面 |
+| 文档 | 内容 |
 |------|------|
-| 内容运营 | 公告管理（含编辑）、阵营内测申请 |
-| 社区管理 | 文章管理、板块管理、标签管理、社区配置 |
-| 员工管理 | 工作人员名片、名片制作 |
-| 智能客服 | 知识库 |
-| 系统管理 | 服务器地址管理（含编辑）、用户管理 |
+| [docs/architecture.md](docs/architecture.md) | 项目结构：完整目录树与各文件职责 |
+| [docs/development.md](docs/development.md) | 开发指南：四子项目安装 / 运行 / 构建、种子数据、主站环境变量 |
+| [docs/api-reference.md](docs/api-reference.md) | 后端 API 参考：全部接口表、SSE 帧协议、知识库同步脚本 |
+| [docs/database.md](docs/database.md) | 数据库：SQLite 连接（NullPool）、双格式正文、论坛表结构 |
+| [docs/frontend.md](docs/frontend.md) | 主站前端：页面路由、Markdown 渲染管线、关键组件与 API 层 |
+| [docs/admin-frontend.md](docs/admin-frontend.md) | 后台管理前端：菜单结构、页面路由、HTTP 层、环境配置 |
+| [docs/deployment.md](docs/deployment.md) | 部署：Docker Compose 与生产 Nginx 同域分发 |
+| [docs/agents/](docs/agents/) | AI 协作规约原文（[AGENTS.md](AGENTS.md) 各小节的完整版） |
+| [AGENTS.md](AGENTS.md) | AI 编码助手规约骨架：硬性禁区 + 常用命令 |
+| [for-deploy/README.md](for-deploy/README.md) | 生产部署留档说明（nginx conf 快照、定时任务迁移） |
+| [TODO.md](TODO.md) | 已知遗留与后续计划 |
+| `docs/论坛/`、`docs/员工管理/`、`docs/智能客服/`、`docs/站内信/` | 各模块 PRD 与方案文档 |
 
-布局根路由 `/` 只作 Layout 外壳（`showLink: false` + `children: []`）不占菜单一级。注意 `formatTwoStageRoutes()` 会把三级及以上路由**拍平成二级**，所以模块记录本身没有组件、**必须写 `redirect`** 指向本模块第一个页面（否则手输 `#/content` 会落在无组件的记录上、渲染空白）；模块下只有 1 个页面时（如智能客服）要在该页 `meta` 上写 `showParent: true`，否则会被拍成单个菜单项、模块名丢失。**新增后台页面挂到对应模块的 `children` 下即可，不要新增一级菜单。**
+## 参与 / 支持
 
-| 路由（hash） | 页面 | 说明 |
-|------|------|------|
-| `/login` | 登录页 | 用户名 + 密码（JWT；无验证码） |
-| `/announcement/list` | 公告管理 | 公告列表（分页，含草稿；新建/编辑/删除） |
-| `/announcement/edit` | 公告编辑 | 新建或编辑公告（标题、正文、发布人、发布时间、发布状态；正文按 `contentType` 切换 wangEditor 富文本 / md-editor-v3 Markdown，富文本图片经 `/announcement/upload/image` 上传） |
-| `/server/list` | 服务器地址管理 | 服务器列表（新增/编辑/删除/设为主服务器；持久化在 `servers` 表，重启不丢失，见「服务器监控」） |
-| `/server/edit` | 服务器编辑 | 新建或编辑服务器（名称、地址、端口、是否主服务器） |
-| `/faction-beta/list` | 阵营内测申请 | 申请列表（状态过滤、详情弹窗、通过/拒绝、删除） |
-| `/kb/list` | 知识库 | 统计条（文档/切片/索引版本/维度状态）+ 文档列表（来源过滤、切片预览抽屉、重建索引、删除；wiki 来源只读由 `kb_sync.py` 维护）+ 粘贴新增 |
-| `/user/list` | 用户管理 | 用户列表（新增/编辑/启用/禁用/软删除/恢复、状态过滤、**禁言/解禁**、**论坛数据**；编辑模式密码留空=不修改） |
-| `/staff/list` | 工作人员名片 | 台账列表（状态过滤/关键词搜索、新增/编辑、撤销（选原因）/恢复/续期/重生成码、二维码下载、CSV 导出、顶部统计条、即将到期行高亮） |
-| `/staff/card` | 名片制作 | 统一名片模板出图页（选人 + 横/竖版切换；PNG/JPG 走本地 `html2canvas`，PDF 走浏览器打印；二维码纯白底 200px、头像像素渲染、正面含名片版本与防伪提示） |
-| `/forum/article/list` | 文章管理 | 五维检索（标题/作者/板块/标签/状态）+ 通过/驳回/置顶/加精/下架/恢复/硬删 + 改属性抽屉（**状态不变**）+ 正文预览抽屉（**只读**）+ 评论抽屉（可删单条，删顶层连带其回复）+ 封面图库（只读 + 复制 URL） |
-| `/forum/category/list` | 板块管理 | 板块增删改查（名称/颜色/排序/隐藏；**系统板块不可删、不可改名、不可隐藏**；有已发布文章的板块删除被拦） |
-| `/forum/tag/list` | 标签管理 | 标签库（来源筛选，默认「用户自动创建」= 清理入口）+ 重命名 + 置热 + 合并 + 删除 |
-| `/forum/config` | 社区配置 | Banner 三字段（含插画上传）+ 排序默认项 + 搜索占位文案 + 三项只读统计（与首页统计卡同接口）+ 打赏预留键只读展示 |
-| `/access-denied` `/server-error` | 403 / 500 | 全屏错误页 |
+- 开发规约与提交流程见 [AGENTS.md](AGENTS.md)；提交信息使用 Conventional Commits 前缀，描述用中文。
+- 玩家社区：QQ 群 942235691（站点内同源展示，见 `frontend/.env`）。
 
-用户管理页（`/user/list`）额外承载社区两项能力：**禁言/解禁**（时长预设 1/3/7/30 天或永久；与「禁用」正交——禁用是不能登录，禁言是能登录但不能发帖评论）与**论坛数据**弹窗（发帖/获赞/粉丝 + 最近 5 篇）。
+## 许可证
 
-浏览器 URL 带部署前缀与 hash：开发 `http://localhost:3005/#/announcement/list`，生产 `http://<host>/admin/#/announcement/list`。
-
-### HTTP 层（`src/utils/http/`）与 API 模块（`src/api/`）
-
-- `utils/http/index.ts`（PureHttp）— axios 封装：`baseURL` 留空（同源相对路径，dev 由 Vite proxy、prod 由 Nginx 反代到后端）；请求拦截器对 `/api/auth/login`、`/api/auth/register`、`/api/auth/captcha` 白名单放行，其余自动携带 `Authorization: Bearer <token>`；响应拦截器统一解包 `{code, message, data}`（`code=0` 直接返回 `data`），业务错误与 HTTP 非 2xx 都把 FastAPI `detail` 或包络 `message` 提取到 `error.message`——页面 catch 里直接 `ElMessage.error(e.message)`，不要重复解析错误体；401（HTTP 401 或包络 401/1001）自动清除登录态并跳回登录页
-- `api/` — `announcement.ts` / `server.ts` / `user.ts` / `factionBeta.ts` / `kb.ts` / `staff.ts` 分别封装对应 admin 接口，TS 类型与后端契约一致；**新增或修改后端接口时必须同步主站契约参照 `frontend/src/api/api.js` 与本目录**（见 AGENTS.md 契约规约）
-- 传 `FormData`（文件上传）时必须显式加 `Content-Type: multipart/form-data` 请求头，否则 axios 会把 FormData 序列化成 JSON，后端解析不到字段直接 422
-
-### 登录与鉴权
-
-- 登录走 `/auth/login`，token 与用户信息（含 `role`）存 localStorage（`utils/auth.ts`）；路由守卫（`router/index.ts`）对未登录访问一律重定向 `/login`，已登录访问 `/login` 保持当前页
-- 后端所有 admin 接口要求 `role=admin`，普通用户 token 调用返回 403
-
-### 环境配置（`admin-frontend/.env*`）
-
-| 变量 | 说明 | dev（`.env.development`） | prod（`.env.production`） |
-|------|------|--------------------------|---------------------------|
-| `VITE_PORT` | dev server 端口（`.env` 默认 8848，被覆盖） | `3005` | — |
-| `VITE_PUBLIC_PATH` | 构建基础路径 | `/` | `/admin/` |
-| `VITE_ROUTER_HISTORY` | 路由模式 | `hash` | `hash` |
-| `VITE_CDN` / `VITE_COMPRESSION` | CDN 依赖 / 构建压缩 | — | `false` / `none` |
-
-页面标题等运行时配置在 `public/platform-config.json`（`Title` 等，经 `src/config/index.ts` 读取）。
-
-### 开发与部署
-
-```bash
-cd admin-frontend
-pnpm install
-pnpm dev        # 开发服务器（:3005，API 经 vite proxy 转发到后端 :5000）
-pnpm build      # 构建到 dist/（base: /admin/）
-pnpm typecheck  # tsc + vue-tsc 类型检查
-```
-
-- 开发模式：Vite dev server（:3005），`vite.config.ts` 的 proxy 把 `/api` 转发到后端 FastAPI（:5000）
-- 生产模式：`pnpm build` → `dist/`，由 Nginx 挂在 `/admin/` 路径下；hash 路由刷新无需 `try_files` 兜底，API 请求为同源相对路径，命中 Nginx 既有反代规则
-- 管理员入口：主站已登录管理员点击头像下拉菜单 → 「后台管理」（仅管理员角色可见，URL 来自 `frontend` 的 `VITE_ADMIN_URL`，默认 `/admin`）
+本项目基于 [Apache License 2.0](LICENSE) 开源。
