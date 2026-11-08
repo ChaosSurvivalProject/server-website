@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Integer, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import Integer, LargeBinary, String, Text, UniqueConstraint, select
 from sqlalchemy import event
 from sqlalchemy.pool import NullPool
 
@@ -652,6 +652,167 @@ class ForumConfig(Base):
     value: Mapped[str] = mapped_column(String(255), nullable=False, default="")
 
 
+# ── 资源中心模块（docs/资源中心/资源中心一阶段MVP需求.md） ──────────
+# 五张表：dict_items（类型/平台/游戏版本/侧别/渠道/标签字典）+ resources +
+# resource_versions + version_assets + download_events。
+# 布尔语义一律 int（项目规约 §9-5）；时间列一律 String(30) 北京时间 ISO 字符串；
+# 下载计数口径是「下载跳转次数」（记录的是本站下载按钮跳转点击，不是 GitHub 实际下载量）。
+
+
+class DictItem(Base):
+    """资源中心字典表：资源类型 / 平台 / 游戏版本 / 侧别 / 发布渠道 / 标签。
+
+    type 取值（RES_DICT_TYPES 同源）：resource_type / platform / game_version /
+    side / release_channel / tag。后台可增改（MVP 无删除入口，enabled=0 即"删"）。
+    """
+
+    __tablename__ = "dict_items"
+    __table_args__ = (UniqueConstraint("type", "key", name="uq_dict_type_key"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(64), nullable=False)  # 筛选 URL 参数值用
+    label: Mapped[str] = mapped_column(String(64), nullable=False)  # 展示名
+    sort: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 1=启用 0=停用
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class Resource(Base):
+    """资源主表（模组/插件等）。status 四态 + deleted_at 软删除。
+
+    side / status 为字符串枚举（与 versions 的 channel 一致对外下发）；
+    平台 / 游戏版本 / 标签走关联表（resource_platforms / resource_game_versions /
+    resource_tags），用于列表筛选——不用逗号串，否则筛选要全表扫描且无法去重统计。
+    """
+
+    __tablename__ = "resources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(32), nullable=False, default="mod")  # dict resource_type.key
+    summary: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    description_md: Mapped[str] = mapped_column(Text, nullable=False, default="")  # Markdown 详情，原样入库前端渲染
+    icon_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    cover_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    side: Mapped[str] = mapped_column(String(16), nullable=False, default="both")  # client/server/both
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft", index=True)  # draft/published/hidden/archived
+    featured: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 1=推荐
+    sort_weight: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    github_repo_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    issues_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    docs_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 后台操作人 username
+    download_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 冗余计数=download_events 行数（见 resource_center.py 维护口径）
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    deleted_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")  # 软删除时间，空=未删
+
+
+class ResourcePlatform(Base):
+    """资源—平台关联（列表筛选用，(resource_id, key) 联合唯一防重复）。"""
+
+    __tablename__ = "resource_platforms"
+    __table_args__ = (UniqueConstraint("resource_id", "platform_key", name="uq_resource_platform"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    resource_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    platform_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class ResourceGameVersion(Base):
+    """资源—游戏版本关联（列表筛选用）。"""
+
+    __tablename__ = "resource_game_versions"
+    __table_args__ = (UniqueConstraint("resource_id", "game_version_key", name="uq_resource_game_version"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    resource_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    game_version_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class ResourceTag(Base):
+    """资源—标签关联（标签 key 来自 dict_items type=tag）。"""
+
+    __tablename__ = "resource_tags"
+    __table_args__ = (UniqueConstraint("resource_id", "tag_key", name="uq_resource_tag"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    resource_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    tag_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class ResourceVersion(Base):
+    """资源版本表。同一资源下 version 唯一；is_latest_stable 每资源最多一个
+    （唯一权威维护口径在 resource_center.py 的 _set_latest_stable）。
+
+    game_versions / platforms 存 JSON 数组（详情页展示用）；列表筛选走资源级关联表。
+    """
+
+    __tablename__ = "resource_versions"
+    __table_args__ = (UniqueConstraint("resource_id", "version", name="uq_resource_version"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    resource_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    release_tag: Mapped[str] = mapped_column(String(128), nullable=False, default="")
+    channel: Mapped[str] = mapped_column(String(16), nullable=False, default="stable")  # stable/beta/alpha
+    published_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")  # 发布日期（北京时间 ISO）
+    game_versions: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # JSON 数组，元素=dict game_version.key
+    platforms: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # JSON 数组
+    side: Mapped[str] = mapped_column(String(16), nullable=False, default="both")
+    changelog_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="visible", index=True)  # visible/hidden/archived
+    is_latest_stable: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 1=最新稳定版（每资源≤1）
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    deleted_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")
+
+
+class VersionAsset(Base):
+    """版本下载资产：一个版本可挂多个文件。url 必须是 https://github.com/ 开头的
+    Release 资产链接（写入时校验）；下载一律经 /download/asset/{id} 端点跳转，
+    前台不得直接暴露 GitHub URL（防绕过计数与开放重定向由端点侧保证）。"""
+
+    __tablename__ = "version_assets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    version_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False, default="main")  # main/additional
+    sort: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    is_primary: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 1=主资产（每版本≤1，无则取 sort 第一个可见资产）
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="visible")  # visible/hidden
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    deleted_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")
+
+
+class DownloadEvent(Base):
+    """下载跳转事件（一次有效跳转一行）。
+
+    不存原始 IP（隐私口径见需求 §2）：ip_hash = sha256(ip + RESOURCE_IP_SALT)[:16]，
+    只用于「同 IP+资产 24h 去重展示计数」与限流统计，不可反推。
+    """
+
+    __tablename__ = "download_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    resource_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    version_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    asset_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    created_at: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    ip_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    user_agent: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # 可选，截断存储
+    referer: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+
+
 # FTS5 可用性标志（init_db 时探测；个别发行版的 SQLite 未编译 FTS5 时降级为仅向量检索）
 fts_available = True
 
@@ -682,8 +843,88 @@ async def init_db():
     migrate_user_extra_columns()
     migrate_user_mute_column()
     migrate_forum_article_recycle_columns()
+    # 资源中心：预置字典种子（幂等，按 type+key 判存，不覆盖后台改过的值）
+    await seed_resource_dict_items()
     # 站内信：announcements 表迁移到 messages 表（仅对存量库执行，新库跳过）
     await migrate_announcements_to_messages()
+
+
+# ── 资源中心预置字典 ──────────────────────────────────────────────
+# 与 forum.SEED_CATEGORIES 同思路：首次启动写入默认字典项，幂等跳过已存在的
+# （按 type+key 判存），后台改过的 label/sort 不会被覆盖。side / release_channel
+# 是固定枚举也一并入字典，后台与前台统一从 /api/resources/filters 取选项。
+RES_DICT_DEFAULTS: list[tuple[str, str, str, int]] = [
+    # (type, key, label, sort)
+    ("resource_type", "mod", "模组", 0),
+    ("resource_type", "plugin", "插件", 1),
+    ("resource_type", "datapack", "数据包", 2),
+    ("resource_type", "config", "配置", 3),
+    ("resource_type", "other", "其他", 4),
+    ("platform", "fabric", "Fabric", 0),
+    ("platform", "forge", "Forge", 1),
+    ("platform", "neoforge", "NeoForge", 2),
+    ("platform", "paper", "Paper", 3),
+    ("platform", "purpur", "Purpur", 4),
+    ("platform", "spigot", "Spigot", 5),
+    ("platform", "bukkit", "Bukkit", 6),
+    ("platform", "velocity", "Velocity", 7),
+    ("platform", "bungeecord", "BungeeCord", 8),
+    ("game_version", "26.3", "26.3", 0),
+    ("game_version", "26.2", "26.2", 1),
+    ("game_version", "26.1", "26.1", 2),
+    ("game_version", "1.21", "1.21", 3),
+    ("game_version", "1.20", "1.20", 4),
+    ("game_version", "1.19", "1.19", 5),
+    ("game_version", "1.18", "1.18", 6),
+    ("side", "client", "客户端", 0),
+    ("side", "server", "服务端", 1),
+    ("side", "both", "双端", 2),
+    ("release_channel", "stable", "Stable", 0),
+    ("release_channel", "beta", "Beta", 1),
+    ("release_channel", "alpha", "Alpha", 2),
+]
+
+# 标签字典预留给后台自建（tag 无预置项，避免拍脑袋定标签体系）
+
+_resource_dict_seeded = False
+
+
+async def seed_resource_dict_items() -> None:
+    """写入资源中心预置字典（幂等；失败不阻断启动，可后台手工补）。"""
+    global _resource_dict_seeded
+    if _resource_dict_seeded:
+        return
+    _resource_dict_seeded = True
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%dT%H:%M:%S")
+        async with async_session_maker() as session:
+            r = await session.execute(select(DictItem.type, DictItem.key))
+            existing = {(t, k) for t, k in r.all()}
+            added = 0
+            for dtype, key, label, sort in RES_DICT_DEFAULTS:
+                if (dtype, key) in existing:
+                    continue
+                session.add(
+                    DictItem(
+                        type=dtype,
+                        key=key,
+                        label=label,
+                        sort=sort,
+                        enabled=1,
+                        create_time=now,
+                        update_time=now,
+                    )
+                )
+                added += 1
+            if added:
+                await session.commit()
+                logger.info("资源中心字典种子：已写入 %s 项", added)
+    except Exception:
+        logger.warning("资源中心字典种子写入失败", exc_info=True)
+        _resource_dict_seeded = False
 
 
 # ── 站内信存量数据迁移 ────────────────────────────────────────────────

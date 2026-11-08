@@ -9,6 +9,8 @@ Endpoints:
   /api/kb/*                          智能客服（/api/kb/chat SSE 唯一不走包络）
   /api/staff/*                       工作人员名片（公开 + 管理员）
   /api/forum/*                       社区论坛（公开 + 登录用户 + 管理员）
+  /api/resources/*                   资源中心（公开只读 + 管理员 CRUD/统计）
+  /download/asset/{id}               下载跳转端点（记录事件后 302 到 GitHub Release 资产）
 """
 import logging
 import os
@@ -26,6 +28,7 @@ from . import kb as kb_module
 from . import staff as staff_module
 from . import forum as forum_module
 from . import messages as messages_module
+from . import resource_center as resource_center_module
 from .auth import bootstrap
 from .auth.deps import require_admin
 from .auth.router import router as auth_router
@@ -81,6 +84,26 @@ app.include_router(forum_module.router, prefix="/api")
 # 站内信（/api/messages/* + /api/messages/admin/*）
 app.include_router(messages_module.router, prefix="/api")
 app.include_router(messages_module.admin_router, prefix="/api")
+
+# 资源中心（/api/resources/* 公开 + 管理员；/download/asset/{id} 下载跳转端点
+# 不挂 /api——它是浏览器地址栏直达的跳转 URL，与页面路由同一层级，nginx 单独反代）
+app.include_router(resource_center_module.router, prefix="/api")
+app.include_router(resource_center_module.download_router)
+
+
+# 通用图片上传（管理员）：资源图标/封面、员工头像、论坛 Banner/封面等后台模块共用。
+# 站内信迁移（commit 20c8d84）时误删了本路由，导致上述后台页面统一 404；此处恢复。
+# 落盘与校验复用 app/uploads.py 的 save_image（与 /api/forum/upload/image 同一份口径），
+# 对外 URL 为 /api/announcement/uploads/YYYYMM/<uuid>.<ext>，与该静态挂载点一致。
+@api_router.post("/announcement/upload/image")
+async def upload_admin_image(
+    file: UploadFile = File(...),
+    _admin=Depends(require_admin),
+):
+    """管理员图片上传，返回可写入正文/字段的相对 URL（与部署域无关）。"""
+    url = await save_image(file)
+    return {"code": 0, "message": "success", "data": {"url": url}}
+
 
 app.include_router(api_router)
 

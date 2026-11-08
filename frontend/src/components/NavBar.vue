@@ -111,10 +111,13 @@
 
       <!-- 桌面端菜单(右侧展示) -->
       <div class="nav-right desktop-menu">
-        <router-link to="/" class="nav-icon"
+        <router-link to="/" class="nav-icon" :class="{ 'nav-current': isSection('') }"
           ><i class="fa-solid fa-house"></i>首页</router-link
         >
-        <router-link to="/forum" class="nav-icon"
+        <router-link to="/resources" class="nav-icon" :class="{ 'nav-current': isSection('/resources') }"
+          ><i class="fa-solid fa-cube"></i>资源中心</router-link
+        >
+        <router-link to="/forum" class="nav-icon" :class="{ 'nav-current': isSection('/forum') }"
           ><i class="fa-solid fa-users"></i>社区</router-link
         >
       </div>
@@ -123,12 +126,17 @@
       <div class="mobile-menu" v-show="mobileMenuOpen">
         <ul class="mobile-nav-links">
           <li>
-            <router-link to="/" @click="closeMenu()"
+            <router-link to="/" :class="{ active: isSection('') }" @click="closeMenu()"
               ><i class="fa-solid fa-house"></i>首页</router-link
             >
           </li>
           <li>
-            <router-link to="/forum" @click="closeMenu()"
+            <router-link to="/resources" :class="{ active: isSection('/resources') }" @click="closeMenu()"
+              ><i class="fa-solid fa-cube"></i>资源中心</router-link
+            >
+          </li>
+          <li>
+            <router-link to="/forum" :class="{ active: isSection('/forum') }" @click="closeMenu()"
               ><i class="fa-solid fa-users"></i>社区</router-link
             >
           </li>
@@ -208,6 +216,17 @@ export default {
     },
   },
   methods: {
+    /**
+     * 当前路由是否落在某个板块（导航高亮判定）。
+     * vue-router 的 linkActiveClass 只按「matched 记录包含」匹配，而 /resources 与
+     * /resources/:slug 是平级路由，详情页不会点亮列表项——这里按路径前缀自行判定：
+     * section='' 只匹配根路径（首页），'/resources'、'/forum' 匹配前缀段。
+     */
+    isSection(section) {
+      const path = this.$route.path;
+      if (section === "") return path === "/";
+      return path === section || path.startsWith(section + "/");
+    },
     scrollToSection(id) {
       const element = document.getElementById(id);
       if (element) {
@@ -416,8 +435,11 @@ nav {
   background-color: rgba(255, 255, 255, 0.12);
 }
 
-/* 导航激活状态样式（当前页菜单项：白边框 + 深一档的绿色药丸底，文字/图标保持白色不动） */
-.nav-icon.active {
+/* 导航激活状态样式（当前页菜单项：白边框 + 深一档的绿色药丸底，文字/图标保持白色不动）。
+   .active 由 vue-router 自动加（linkActiveClass）；.nav-current 由 isSection() 前缀判定
+   手动加——平级路由（/resources 与 /resources/:slug）不会命中 active，两者样式保持一致。 */
+.nav-icon.active,
+.nav-icon.nav-current {
   color: white;
   font-weight: bold;
   border-color: white;
@@ -682,7 +704,8 @@ nav {
   cursor: pointer;
 }
 
-.mobile-nav-links a.active {
+/* 移动端同款：.active 由 vue-router 加，:is() 覆盖 isSection() 手动加的 nav-current */
+.mobile-nav-links a:is(.active, .nav-current) {
   color: white;
   font-weight: bold;
   background-color: rgba(255, 255, 255, 0.1);

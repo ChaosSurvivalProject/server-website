@@ -220,6 +220,51 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 - **后台回收站筛选尚未实现**：`GET /api/forum/admin/articles` 的 `status` 参数已支持 `4`、`admin/articles/{id}/restore` 也已支持回收站帖，但后台文章管理页的下拉只有 0/1/2/3（见 `TODO.md`）。
 - 端到端回归脚本：`cd backend && python3 forum_smoke_test.py`（临时库 + `TestClient`，覆盖状态机/计数/回收站/权限/级联等断言）。
 
+## 资源中心
+
+资源中心一阶段 MVP：后台手动维护资源/版本/下载资产元数据，前台展示列表与详情，下载一律经本站端点 302 跳转到后台录入的 GitHub Release 资产链接。实施依据 `docs/资源中心/资源中心一阶段MVP需求.md`；落点 `backend/app/resource_center.py`（请求模型 `app/pydantic_models.py`，五表 `app/database.py`：`dict_items` / `resources`（+三张关联表）/ `resource_versions` / `version_assets` / `download_events`）。**计数口径是「下载跳转次数」**——本站记录的是下载按钮跳转点击次数，文件由 GitHub 托管，不是 GitHub 实际下载量；**不做** GitHub 自动同步 / 文件代理 / SHA-256 校验 / 下载量同步 / 用户系统（PRD「明确不做」）。
+
+**公开接口（匿名可调）**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/resources` | 资源列表（参数 `q`,`type`,`platform`,`game_version`,`side`,`channel`,`tag`,`sort`,`page`,`pageSize`；多值参数逗号分隔；`sort=updated_desc\|name_asc\|downloads_desc`；featured 恒排最前；多对多筛选走子查询 IN **无重复行**） |
+| GET | `/api/resources/filters` | 筛选项字典（enabled 项按 type 分组：`resource_type`/`platform`/`game_version`/`side`/`release_channel`/`tag`；后台下拉与前台筛选共用一个来源） |
+| GET | `/api/resources/{slug}` | 资源详情（只含 published；含版本列表（最新稳定版在前）+ 每版本可见资产 + `downloadCount`（按事件实时聚合）+ `downloadCountNote` 口径说明） |
+
+**下载跳转端点（不挂 /api）**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/download/asset/{assetId}` | 记录跳转事件后 **302** 到后台录入的 GitHub URL。资产/版本/资源任一隐藏、下架、非 published、软删 → **410**；不存在 → **404**；同 IP 超过 30 次/分 → **429**。**不接受任何 URL 参数**（跳转目标只取库内 `asset.url`，防开放重定向）；事件存 IP 哈希（sha256 截 16 位）+ UA/Referer 截断，不存原始 IP |
+
+**管理员接口（`require_admin`）**
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/resources/admin/page` | 资源管理分页（`keyword`,`status`=`draft\|published\|hidden\|archived\|deleted`；`deleted` 查回收站；带版本/资产计数） |
+| GET | `/api/resources/admin/{id}` | 资源编辑回填（全字段 + 三组关联 key 数组） |
+| POST | `/api/resources/admin` | 新建资源（slug 全局唯一、3-64 位小写字母/数字/连字符；`platforms`/`gameVersions`/`tags` 是字典 key 数组，未知 key 400） |
+| PUT | `/api/resources/admin/{id}` | 编辑资源（部分更新；关联数组传了即全量重写） |
+| POST | `/api/resources/admin/{id}/status` | 状态切换（`{status}`） |
+| DELETE | `/api/resources/admin/{id}` | 软删除（`deleted_at`；数据保留可追溯） |
+| POST | `/api/resources/admin/{id}/restore` | 从回收站恢复 |
+| GET | `/api/resources/admin/{id}/versions` | 版本列表（含隐藏；每版本内嵌资产数组） |
+| POST | `/api/resources/admin/{id}/versions` | 新建版本（同资源版本号唯一；`isLatestStable` 可直接勾选） |
+| PUT | `/api/resources/admin/versions/{vid}` | 编辑版本（`isLatestStable=true` 触发唯一转移；非 stable 渠道 400） |
+| DELETE | `/api/resources/admin/versions/{vid}` | 软删除版本（其资产随版本不可下载） |
+| GET | `/api/resources/admin/versions/{vid}/assets` | 资产列表（含隐藏） |
+| POST | `/api/resources/admin/versions/{vid}/assets` | 新建资产（URL 必须 `https://github.com/` 开头，否则 400；第一个 main 资产自动成为主资产） |
+| PUT | `/api/resources/admin/assets/{aid}` | 编辑资产（`isPrimary=true` 同版本唯一转移；隐藏即时不可下载） |
+| DELETE | `/api/resources/admin/assets/{aid}` | 软删除资产（主下载回落 sort 第一个可见资产） |
+| GET | `/api/resources/admin/stats` | 下载跳转统计（`start`/`end`=`YYYY-MM-DD` 可选时间范围；返回 `total` + `byResource`/`byVersion`/`byAsset`（带名称）+ `daily` 曲线 + `note` 口径说明） |
+
+- **唯一性口径**：slug 全局唯一（`_ensure_slug_free`）；同资源版本号唯一；「最新稳定版」每资源最多一个（唯一转移点 `_set_latest_stable`，先清后立同事务）；「主资产」每版本最多一个（`_set_primary_asset` 同款）。
+- **冗余计数**：`resources.download_count` 与 `download_events` 插入**同事务**原子 UPDATE（与论坛 like_count 同思路，NullPool 每请求独立连接不会失配）；列表/排序读冗余列避免 N+1，详情与后台统计按事件实时聚合，两者可互相对账。
+- **可见性三级联动**：下载端点实时校验「资产 visible + 版本 visible + 资源 published + 三方未软删」，版本/资源隐藏即时生效，无需物化处理资产。
+- **字典表**：预置 24 项种子（类型/平台/游戏版本/侧别/渠道，幂等按 `type+key` 判存，不覆盖后台改过的值）；tag 无预置项由后台自建；停用用 `enabled=0`（MVP 无删除入口）。
+- 端到端回归脚本：`cd backend && python3 resource_center_smoke_test.py`（临时库 + `TestClient`，66 项断言：CRUD/唯一性/可见性/302 与事件/防重定向/限速/筛选排序/软删/统计）。
+
 ## 其他
 
 | 方法 | 路径 | 说明 |

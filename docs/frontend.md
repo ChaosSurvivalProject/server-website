@@ -18,6 +18,8 @@
 | `/forum/edit/:id` | forum/PostEditor | 编辑文章（`mode=edit`；**仅作者本人**，保存后回待审核重走审核） |
 | `/forum/my` | forum/MyPosts | 我的文章（各状态 + 驳回理由 + 编辑重提 + 删除进回收站 + 入口「查看已删除文章」） |
 | `/forum/recycle` | forum/RecycleBin | 回收站（保留期与剩余天数、逐条恢复 / 彻底删除；不可恢复的删除一律二次确认） |
+| `/resources` | resources/ResourceList | 资源中心列表（左筛选栏 + 搜索/排序 + 响应式网格 + 加载更多；筛选态全部走 `route.query` 可分享；移动端筛选收敛为抽屉） |
+| `/resources/:slug` | resources/ResourceDetail | 资源详情（双栏：介绍 Markdown + 版本列表；右侧下载面板指向 `/download/asset/{id}`；「下载文件由 GitHub 托管」提示 + 下载跳转次数口径说明） |
 | `/login` | AuthView（登录） | 登录页（用户名/邮箱 + 密码） |
 | `/register` | AuthView（注册） | 注册页（邮箱 + 密码 + 确认密码 + 滑块拼图人机验证） |
 

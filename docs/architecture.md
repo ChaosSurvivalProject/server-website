@@ -37,6 +37,8 @@ server-website/
 │   │   ├── kb.py                # 知识库：/api/kb/* 全部路由（SSE 问答 + 限流 + 管理接口）
 │   │   ├── staff.py             # 员工名片：/api/staff/* 全部路由（验证页 + 台账 + 到期回写 + 二维码 + CSV）
 │   │   ├── forum.py             # 社区论坛：/api/forum/* 全部路由（公开 / 登录用户 / 管理员三组）
+│   │   ├── resource_center.py   # 资源中心：/api/resources/* + /download/asset/{id}（公开只读 / 管理员 / 下载 302 跳转）
+│   │   ├── pydantic_models.py   # 资源中心请求模型（camelCase 别名）
 │   │   └── forum_core.py        # 社区论坛轻量核心（纯 SQLAlchemy，供 CLI 复用：RECYCLE_DAYS / purge_due / cascade_delete_article）
 │   ├── kb_sync.py               # wiki → 知识库 同步脚本（CLI，按 MD5 增量）
 │   ├── staff_expire.py          # 员工名片到期检查脚本（CLI，镜像内 cron 每日一次）
@@ -59,7 +61,7 @@ server-website/
 │   └── package.json
 ├── admin-frontend/              # 后台管理前端（pure-admin-thin，部署在 /admin/）
 │   ├── src/
-│   │   ├── api/                 # 接口封装（announcement / server / user / factionBeta / kb / staff / routes）
+│   │   ├── api/                 # 接口封装（announcement / server / user / factionBeta / kb / staff / resourceCenter / routes）
 │   │   ├── components/          # 通用组件（RePureTableBar、ReDialog、ReAuth 等 pure-admin 封装）
 │   │   ├── config/              # 平台配置读取层（Title 等，值来自 public/platform-config.json）
 │   │   ├── directives/          # 自定义指令（auth / perms / ripple / longpress 等）
@@ -68,7 +70,7 @@ server-website/
 │   │   ├── router/              # 路由与守卫（modules/home.ts 业务路由、remaining.ts 登录与错误页）
 │   │   ├── store/modules/       # Pinia 模块（user 存 token/role、permission、multiTags 等）
 │   │   ├── utils/http/          # PureHttp：axios 封装（JWT 注入、{code,message,data} 解包、错误提取）
-│   │   ├── views/               # 页面（login、announcement、server、faction-beta、kb、user、staff、error）
+│   │   ├── views/               # 页面（login、announcement、server、faction-beta、kb、user、staff、resource、error）
 │   │   └── main.ts              # 应用入口
 │   ├── .env / .env.development / .env.production   # 端口、base 路径、路由模式
 │   ├── public/platform-config.json                 # 平台标题等运行时配置

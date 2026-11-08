@@ -402,6 +402,43 @@ export const messagesAPI = {
     axiosInstance.delete(`/api/messages/${messageId}`),
 };
 
+// 资源中心 API（前台只读 + 下载跳转计数口径说明）
+// 契约参照 backend/app/resource_center.py（模块只声明 prefix="/resources"，
+// /api 由 main.py 全局挂载；下载端点 /download/asset/{id} 不挂 /api，是地址栏直达的 302 跳转）。
+// 管理端接口在 admin-frontend/src/api/resourceCenter.ts 同步维护。
+export const resourcesAPI = {
+  /**
+   * 资源列表（只含已发布）
+   * @param {{q?: string, type?: string, platform?: string|Array, game_version?: string|Array,
+   *   side?: string, channel?: string, tag?: string|Array, sort?: string,
+   *   page?: number, pageSize?: number}} params
+   *   sort: updated_desc | name_asc | downloads_desc
+   * @returns {Promise} - data: {items, page, pageSize, totalPages, total, hasNext, hasPrev}
+   *   items: [{id, slug, name, resourceType, summary, iconUrl, coverUrl, side, featured,
+   *            downloadCount, platforms[], gameVersions[], tags[], updateTime}]
+   */
+  getResources: (params = {}) => axiosInstance.get('/api/resources', { params }),
+
+  /**
+   * 筛选项字典（enabled 项按 type 分组；筛选栏与后台下拉共用一个来源）
+   * @returns {Promise} - data: {resource_type: [{key,label}], platform: [], game_version: [],
+   *   side: [], release_channel: [], tag: []}
+   */
+  getFilters: () => axiosInstance.get('/api/resources/filters', { silent: true }),
+
+  /**
+   * 资源详情（只含已发布；未公开/已删 404）
+   * @param {string} slug
+   * @returns {Promise} - data: 列表字段 + {descriptionMd, githubRepoUrl, issuesUrl, docsUrl,
+   *   versions: [{id, version, releaseTag, channel, publishedAt, gameVersions[], platforms[],
+   *              side, isLatestStable, changelogMd, assets: [{id, filename, purpose, isPrimary}]}],
+   *   downloadCount, downloadCountNote}
+   *   ⚠️ 下载入口一律指向 `/download/asset/{assetId}`（本站跳转端点），
+   *   不得直接用资产 url 发 <a href>——计数与白名单都在端点上。
+   */
+  getResource: (slug) => axiosInstance.get(`/api/resources/${encodeURIComponent(slug)}`, { silent: true })
+};
+
 // 导出所有API
 export default {
   auth: authAPI,
@@ -412,4 +449,5 @@ export default {
   chat: chatAPI,
   forum: forumAPI,
   messages: messagesAPI,
+  resources: resourcesAPI,
 };

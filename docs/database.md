@@ -26,3 +26,14 @@
 | `forum_config` | 社区键值配置（Banner / 排序 / 搜索文案 + 打赏预留键） |
 
 首次启动自动写入**8 个预置板块**与 8 个配置键默认值（`forum.ensure_seeded()`，幂等：按 `code`/`key` 判存，不会覆盖管理员改过的值）。
+
+资源中心模块的 7 张表同样由 `Base.metadata.create_all` 自动建（资源中心一阶段 MVP，2026-11-08）：
+
+| 表 | 用途 |
+|----|------|
+| `dict_items` | 字典（资源类型/平台/游戏版本/侧别/渠道/标签；预置 24 项种子幂等写入，`(type, key)` 唯一，停用用 `enabled=0`） |
+| `resources` | 资源主表（`slug` 唯一；`status` draft/published/hidden/archived 字符串枚举；`deleted_at` 软删；`download_count` 冗余计数与事件同事务维护） |
+| `resource_platforms` / `resource_game_versions` / `resource_tags` | 资源—字典 key 关联（联合唯一，列表筛选用，子查询 IN 天然去重） |
+| `resource_versions` | 版本（`(resource_id, version)` 唯一；`is_latest_stable` 每资源≤1，唯一转移点 `_set_latest_stable`；`game_versions`/`platforms` 存 JSON 数组） |
+| `version_assets` | 下载资产（URL 必须 `https://github.com/` 开头；`is_primary` 每版本≤1） |
+| `download_events` | 下载跳转事件（一次有效跳转一行；**不存原始 IP**，只存 sha256 截 16 位 `ip_hash`） |

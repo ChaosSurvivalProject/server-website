@@ -4,14 +4,15 @@
 
 | 模块 | 说明 | 技术栈 |
 |------|------|--------|
-| `frontend/` | 官网前端（首页、公告、社区论坛、员工名片验证） | Vue 3 + Vite + Vue Router + Axios + ECharts |
-| `backend/` | 官网后端（公告、认证、论坛、员工名片、服务器监控、知识库智能客服） | FastAPI + SQLAlchemy (async) + SQLite (aiosqlite) + Pydantic v2 |
+| `frontend/` | 官网前端（首页、公告、社区论坛、资源中心、员工名片验证） | Vue 3 + Vite + Vue Router + Axios + ECharts |
+| `backend/` | 官网后端（公告、认证、论坛、资源中心、员工名片、服务器监控、知识库智能客服） | FastAPI + SQLAlchemy (async) + SQLite (aiosqlite) + Pydantic v2 |
 | `wiki/` | 服务器文档站（同时是知识库的单一数据源） | VitePress |
-| `admin-frontend/` | 后台管理前端（内容运营 / 社区管理 / 员工管理 / 智能客服 / 系统管理） | Vue 3 + TypeScript + Element Plus + Pinia（[pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)） |
+| `admin-frontend/` | 后台管理前端（内容运营 / 社区管理 / 员工管理 / 资源中心 / 智能客服 / 系统管理） | Vue 3 + TypeScript + Element Plus + Pinia（[pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)） |
 
 ## 功能特性
 
 - 官网 + 公告系统：富文本 / Markdown 双格式公告；先审后发的社区论坛（两级评论、回收站、站内信通知）
+- 资源中心：后台手动维护资源 / 版本 / 下载资产元数据，前台列表筛选 + 详情页，下载经 `/download/asset/{id}` 302 跳转 GitHub 并记录「下载跳转次数」（非 GitHub 实际下载量）
 - 员工名片：二维码扫码验证页 + 管理员台账（撤销 / 续期 / 换码 / CSV 导出）
 - 智能客服：基于 wiki 知识库的检索增强问答（向量 + FTS5 混合检索、SSE 流式回答）
 - 服务器监控：游戏服务器地址后台可维护（DB 持久化），首页在线状态与排行榜

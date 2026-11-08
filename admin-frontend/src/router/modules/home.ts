@@ -159,6 +159,40 @@ export default [
       }
     ]
   },
+  // ── 资源中心（资源中心一阶段 MVP） ──
+  {
+    path: "/resource",
+    name: "ResourceGroup",
+    redirect: "/resource/list",
+    meta: {
+      title: "资源中心",
+      icon: "ep/box",
+      rank: 4,
+      showLink: true
+    },
+    children: [
+      {
+        path: "/resource/list",
+        name: "ResourceList",
+        component: () => import("@/views/resource/list.vue"),
+        meta: {
+          title: "资源管理",
+          icon: "ep/files",
+          showLink: true
+        }
+      },
+      {
+        path: "/resource/stats",
+        name: "ResourceStats",
+        component: () => import("@/views/resource/stats.vue"),
+        meta: {
+          title: "下载跳转统计",
+          icon: "ep/data-analysis",
+          showLink: true
+        }
+      }
+    ]
+  },
   // ── 智能客服 ──
   {
     path: "/kb",
@@ -167,7 +201,7 @@ export default [
     meta: {
       title: "智能客服",
       icon: "ep/service",
-      rank: 4,
+      rank: 5,
       showLink: true
     },
     children: [
@@ -193,7 +227,7 @@ export default [
     meta: {
       title: "系统管理",
       icon: "ep/setting",
-      rank: 5,
+      rank: 6,
       showLink: true
     },
     children: [

@@ -65,6 +65,19 @@ const routes = [
     component: () => import('../views/forum/RecycleBin.vue')
   },
   {
+    path: '/resources',
+    name: 'Resources',
+    // 资源中心列表页（搜索 / 筛选 / 排序写进 URL query，可分享可回退）
+    component: () => import('../views/resources/ResourceList.vue')
+  },
+  {
+    path: '/resources/:slug',
+    name: 'ResourceDetail',
+    // 资源详情页（双栏布局：介绍与版本列表 + 右侧下载面板）
+    component: () => import('../views/resources/ResourceDetail.vue'),
+    props: true
+  },
+  {
     path: '/login',
     name: 'Login',
     // 登录/注册共用 AuthView，通过 initialMode 区分
