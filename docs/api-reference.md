@@ -74,6 +74,22 @@
 
 - 服务器地址持久化在 SQLite `servers` 表（**DB 为唯一权威，内存 `SERVERS` 字典为读缓存**）：启动时 `load_servers()` 读库填充内存，表为空时用默认注册表做种子；后台管理页的增删改先改内存再同步落库（先 commit 再返回，失败回滚内存），**重启不再丢失**（原"重启即重置"行为属 bug，已修复）。不能删除主服务器，设主 / 设 `isPrimary` 会自动清除其他服务器的主标记，全表始终至多一个主服务器。
 
+## 网站配置（首页个性化）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/site-config` | 公开：首页渲染读取（未配置键回默认值） |
+| GET | `/api/site-config/admin` | 管理员：后台表单回显（全部键 + 字段定义）（**需管理员**） |
+| PUT | `/api/site-config/admin` | 管理员：整包保存 `{settings: {键: 值}}`（**需管理员**） |
+
+- 存储在 SQLite `site_settings` KV 表；键集合由 `backend/app/site_config.py` 的 `FIELD_DEFS` 定义（banner.* / hero.* / video.* / faction.* / forum.* / footer.* 六个分区），不做自由键。
+- 公开响应按分区分组（`banner.enabled` / `faction.enabled` / `footer.enabled` 为布尔，其余为字符串）；**DB 无该键时回默认值**，前端另有内置默认值兜底（`Home.vue` 的 `HOME_DEFAULT_CONFIG`、`App.vue` 的 `FOOTER_DEFAULT_CONFIG`），接口失败不开天窗。
+- 富文本字段（`hero.title` / `hero.subtitle` / `hero.description`）支持 `[[绿色]]` `{{紫色}}` 高亮标记，后端校验成对闭合，前端 `frontend/src/utils/highlight.js` 解析成 span（不走 v-html）。
+- 图片字段存 `/api/announcement/uploads/...` 相对 URL（复用公告上传接口）；置空则前端回退打包内默认图。
+- 行式列表字段（`hero.features` / `footer.sponsorDesc` / `footer.copyright` 每行一条；`footer.columns` 每行 `栏目名|链接文字|链接地址`）后端存原文，前端解析成数组。
+- 布尔语义存 `"0"/"1"`（项目规约 int 布尔）。
+- 后台「网站配置」页支持整包导出/导入 JSON：导出 `{exportedAt, settings}` 下载为文件；导入兼容 `{settings: {...}}` 与裸 `{键: 值}`，未知键在预览中标记忽略，确认后与当前值合并整包保存。
+
 ## 知识库 / 智能客服（P0）
 
 官网内置基于 wiki 文档的知识库智能客服：向量 + FTS5 trigram 混合检索、SSE 流式回答、思考过程与来源引用展示，答不了时引导进 QQ 群。设计规格见 `docs/智能客服/智能客服P0落地方案.md`。

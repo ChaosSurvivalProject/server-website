@@ -61,6 +61,17 @@ export const serverConfigAPI = {
   }
 };
 
+// 站点配置API（系统管理-网站配置；首页个性化元素，未配置键由后端回默认值）
+export const siteConfigAPI = {
+  /**
+   * 公开：首页渲染读取
+   * @returns {Promise} - data: {banner: {enabled, text, linkText, linkUrl}, hero: {...}, video: {...}, faction: {...}, forum: {carouselImages}}
+   */
+  getConfig: () => {
+    return axiosInstance.get('/api/site-config', { silent: true });
+  }
+};
+
 // 服务器监控相关API
 export const serverMonitorAPI = {
   /**

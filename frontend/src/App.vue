@@ -6,43 +6,43 @@
       <!-- 路由视图，用于渲染不同页面 -->
       <router-view />
     </div>
-    <!-- 页脚 -->
-    <footer>
+    <!-- 页脚：内容由「系统管理-网站配置」footer.* 提供（Home.vue 加载站点配置后经
+         site-footer-config 事件推送过来）；配置未加载/加载失败时用内置默认值兜底，
+         enabled=false 时整个页脚隐藏 -->
+    <footer v-if="footerConfig.enabled">
       <div class="container">
         <div class="footer-row">
           <div class="footer-nav-col">
-            <span class="footer-nav-title">本项目由快跑云集团扶持</span>
-            <p><a href="https://www.fastrun.com.cn/" target="_blank" rel="noopener"><img :src="fastRunLogo" alt="快跑云" class="footer-logo"></a></p>
-            <p>快跑云集团 · 基础AIDC服务商</p>
-            <p>定义下一代AIDC算力基线</p>
+            <span class="footer-nav-title">{{ footerConfig.sponsorTitle }}</span>
+            <p>
+              <a v-if="footerConfig.sponsorLink" :href="footerConfig.sponsorLink" target="_blank" rel="noopener">
+                <img v-if="footerLogoImage" :src="footerLogoImage" alt="赞助商" class="footer-logo">
+              </a>
+            </p>
+            <p v-for="(line, i) in footerConfig.sponsorDesc" :key="`sd${i}`">{{ line }}</p>
           </div>
-          <div class="footer-nav-col">
-            <span class="footer-nav-title">服务器信息</span>
-            <a href="/" class="footer-nav-link">首页</a>
-            <a href="/announcements" class="footer-nav-link">服务器公告</a>
-          </div>
-          <div class="footer-nav-col">
-            <span class="footer-nav-title">社区</span>
-            <a href="/forum" class="footer-nav-link">进入社区</a>
-            <a href="/forum/new" class="footer-nav-link">发布文章</a>
-          </div>
-          <div class="footer-nav-col">
-            <span class="footer-nav-title">活动信息</span>
-            <a href="/faction-beta" class="footer-nav-link">阵营内测</a>
-          </div>
-          <div class="footer-nav-col">
-            <span class="footer-nav-title">联系我们</span>
-            <a href="mailto:3896301937@qq.com" class="footer-nav-link">联系服主</a>
-            <a href="https://jq.qq.com/?_wv=1027194278" class="footer-nav-link">加入我们</a>
+          <div
+            v-for="(col, ci) in footerColumns"
+            :key="`fc${ci}`"
+            class="footer-nav-col"
+          >
+            <span class="footer-nav-title">{{ col.title }}</span>
+            <a
+              v-for="(link, li) in col.links"
+              :key="`fl${ci}-${li}`"
+              :href="link.url"
+              :target="link.url.startsWith('/') ? undefined : '_blank'"
+              :rel="link.url.startsWith('/') ? undefined : 'noopener'"
+              class="footer-nav-link"
+              >{{ link.text }}</a
+            >
           </div>
         </div>
         <div class="footer-info">
-          <p>
-            <span style="font-weight: bold">©</span> 2025-2026 星穹旅驿 Minecraft服务器
-            | 本服务器与Mojang及Microsoft无关
+          <p v-for="(line, i) in footerConfig.copyright" :key="`cp${i}`">
+            <span v-if="i === 0" style="font-weight: bold">©</span>
+            {{ line }}
           </p>
-          <p>联系我们: 3896301937@qq.com</p>
-          <p>加入QQ群: 942235691</p>
         </div>
       </div>
     </footer>
@@ -61,9 +61,34 @@ import BackToTop from "./components/BackToTop.vue";
 import ChatWidget from "./components/ChatWidget.vue";
 import ForumToast from "./components/forum/ForumToast.vue";
 import fastRunLogo from "./assets/images/download/logo-white.png";
-import { authAPI } from "./api/api.js";
+import { authAPI, siteConfigAPI } from "./api/api.js";
 import { getToken, setAuth } from "./utils/auth.js";
 import McConfig from "./config/mc-config.js";
+
+// 页脚内置默认值：与后端 site_config.DEFAULTS / Home.vue HOME_DEFAULT_CONFIG 同一口径，
+// 站点配置未加载（如直接刷新非首页路由、接口失败）时兜底，页面不开天窗。
+const FOOTER_DEFAULT_CONFIG = {
+  enabled: true,
+  sponsorTitle: "本项目由快跑云集团扶持",
+  sponsorLogo: "",
+  sponsorDesc: ["快跑云集团 · 基础AIDC服务商", "定义下一代AIDC算力基线"],
+  sponsorLink: "https://www.fastrun.com.cn/",
+  columns: [
+    { title: "服务器信息", text: "首页", url: "/" },
+    { title: "服务器信息", text: "服务器公告", url: "/announcements" },
+    { title: "社区", text: "进入社区", url: "/forum" },
+    { title: "社区", text: "发布文章", url: "/forum/new" },
+    { title: "活动信息", text: "阵营内测", url: "/faction-beta" },
+    { title: "联系我们", text: "联系服主", url: "mailto:3896301937@qq.com" },
+    { title: "联系我们", text: "加入我们", url: "https://jq.qq.com/?_wv=1027194278" },
+  ],
+  copyright: [
+    "2025-2026 星穹旅驿 Minecraft服务器",
+    "| 本服务器与Mojang及Microsoft无关",
+    "联系我们: 3896301937@qq.com",
+    "加入QQ群: 942235691",
+  ],
+};
 
 export default {
   name: "App",
@@ -73,11 +98,45 @@ export default {
     ChatWidget,
     ForumToast,
   },
+  data() {
+    return {
+      // 页脚配置：先落默认值，Home.vue 拉到站点配置后经事件推送覆盖
+      footerConfig: JSON.parse(JSON.stringify(FOOTER_DEFAULT_CONFIG)),
+    };
+  },
+  computed: {
+    /**
+     * 链接栏目按栏目名分组（保持出现顺序），供页脚 v-for 渲染
+     */
+    footerColumns() {
+      const cols = [];
+      const index = {};
+      for (const item of this.footerConfig.columns || []) {
+        if (!index[item.title]) {
+          index[item.title] = { title: item.title, links: [] };
+          cols.push(index[item.title]);
+        }
+        index[item.title].links.push({ text: item.text, url: item.url });
+      }
+      return cols;
+    },
+    /**
+     * 赞助商 Logo：配置了 URL 用配置，否则用打包内默认图
+     */
+    footerLogoImage() {
+      return this.footerConfig.sponsorLogo || fastRunLogo;
+    },
+  },
   setup() {
     // Options API 下模板绑定的静态资源/配置必须经 setup 显式返回
     return { fastRunLogo, chatWidgetEnabled: McConfig.chatWidget.enabled };
   },
   mounted() {
+    // 页脚配置监听：Home.vue 拉到站点配置后推送（事件方式解耦，非首页路由刷新时用默认值）
+    this._footerHandler = (e) => {
+      if (e.detail) this.footerConfig = e.detail;
+    };
+    window.addEventListener("site-footer-config", this._footerHandler);
     // 恢复登录态：本地存有 token 时向后端校验并刷新用户信息，
     // token 已失效则由 axios 拦截器统一清除并跳转登录页
     if (getToken()) {
@@ -95,6 +154,9 @@ export default {
           // 校验失败无需额外处理（拦截器已清理登录态）
         });
     }
+  },
+  beforeUnmount() {
+    window.removeEventListener("site-footer-config", this._footerHandler);
   },
 };
 </script>

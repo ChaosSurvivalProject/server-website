@@ -260,6 +260,16 @@ export default [
           icon: "ep/user",
           showLink: true
         }
+      },
+      {
+        path: "/site/config",
+        name: "SiteConfig",
+        component: () => import("@/views/site/config.vue"),
+        meta: {
+          title: "网站配置",
+          icon: "ep/document",
+          showLink: true
+        }
       }
     ]
   }

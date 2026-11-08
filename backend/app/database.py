@@ -412,6 +412,20 @@ class ServerRecord(Base):
     update_time: Mapped[str] = mapped_column(String(30), nullable=False)
 
 
+class SiteSetting(Base):
+    """站点设置键值表（系统管理-网站配置；首页个性化元素的可配置存储）。
+
+    与 kb_settings 同款 KV 形态：key 唯一，value 存 JSON 字符串或纯文本。
+    键集合由代码定义（app/site_config.py 的 FIELD_DEFS），后台整包读写、不做自由键。
+    """
+
+    __tablename__ = "site_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
 # ── 站内信模块（docs/站内信/站内信功能PRD.md） ──────────────────────
 # messages：消息主表；user_messages：用户消息状态表；tasks：通用任务表。
 

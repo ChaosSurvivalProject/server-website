@@ -34,6 +34,7 @@ from .auth.deps import require_admin
 from .auth.router import router as auth_router
 from .auth.users_admin import router as auth_admin_users_router
 from .faction_beta import router as faction_beta_router
+from .site_config import router as site_config_router
 from .uploads import UPLOAD_DIR, save_image
 
 logger = logging.getLogger("uvicorn.error")
@@ -89,6 +90,9 @@ app.include_router(messages_module.admin_router, prefix="/api")
 # 不挂 /api——它是浏览器地址栏直达的跳转 URL，与页面路由同一层级，nginx 单独反代）
 app.include_router(resource_center_module.router, prefix="/api")
 app.include_router(resource_center_module.download_router)
+
+# 站点配置（系统管理-网站配置；首页个性化元素可配置化，/api/site-config 公开 + 管理端）
+app.include_router(site_config_router, prefix="/api")
 
 
 # 通用图片上传（管理员）：资源图标/封面、员工头像、论坛 Banner/封面等后台模块共用。

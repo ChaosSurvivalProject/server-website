@@ -1,12 +1,13 @@
 <template>
   <div class="home-container">
     <!-- 阵营内测提示横幅：替代原「阵营内测」顶部菜单项，展示于首页内容区最上方（常驻显示，不可关闭）；
-         外层整条白底与下方 home-hero 的白色背景衔接，避免页面灰底在横幅两侧露出 -->
-    <div class="faction-banner-wrap">
+         外层整条白底与下方 home-hero 的白色背景衔接，避免页面灰底在横幅两侧露出；
+         文案/链接由「系统管理-网站配置」banner.* 提供，enabled=false 时整条隐藏 -->
+    <div v-if="siteConfig.banner.enabled" class="faction-banner-wrap">
       <div class="faction-banner">
         <span class="faction-banner-text">
-          🔔 全新阵营对战玩法内测开启，名额有限 · 申请时间 2026-09-21 ~ 2026-10-07
-          <router-link to="/faction-beta" class="faction-banner-link">申请内测</router-link>
+          {{ siteConfig.banner.text }}
+          <router-link :to="siteConfig.banner.linkUrl" class="faction-banner-link">{{ siteConfig.banner.linkText }}</router-link>
         </span>
       </div>
     </div>
@@ -16,39 +17,46 @@
       <div class="hero-content">
         <div class="hero-left">
           <div class="hero-badge animate-fade-in" style="animation-delay: 0.1s">
-            <span class="hero-icon">@2025-2026</span>
-            <span class="hero-badge-text">星穹旅驿团队</span>
+            <span class="hero-icon">{{ siteConfig.hero.badgeIcon }}</span>
+            <span class="hero-badge-text">{{ siteConfig.hero.badgeText }}</span>
           </div>
           <h1
             class="hero-title animate-slide-in-left"
             style="animation-delay: 0.3s"
           >
-            欢迎来到 <span style="color: #4caf50">星穹旅驿</span>
+            <template v-for="(part, i) in heroTitleParts" :key="`ht${i}`">
+              <span v-if="part.color" :style="{ color: part.color }">{{ part.text }}</span>
+              <template v-else>{{ part.text }}</template>
+            </template>
           </h1>
           <p
             class="hero-subtitle animate-slide-in-left"
             style="animation-delay: 0.5s"
           >
-            在这里，体验<span style="color: #4caf50">阵营对抗</span>乱世生存
+            <template v-for="(part, i) in heroSubtitleParts" :key="`hs${i}`">
+              <span v-if="part.color" :style="{ color: part.color }">{{ part.text }}</span>
+              <template v-else>{{ part.text }}</template>
+            </template>
           </p>
           <div
             class="hero-features animate-fade-in"
             style="animation-delay: 0.7s"
           >
-            <span class="feature-tag">阵营对抗</span>
-            <span class="feature-tag">多端互通</span>
-            <span class="feature-tag">友好社区</span>
-            <span class="feature-tag">超多插件玩法</span>
+            <span
+              v-for="feature in siteConfig.hero.features"
+              :key="feature"
+              class="feature-tag"
+              >{{ feature }}</span
+            >
           </div>
           <p
             class="hero-description animate-fade-in"
             style="animation-delay: 0.9s"
           >
-            星穹旅驿是一个以阵营对抗为核心的乱世生存服务器。大崩裂之后，星穹界长夜与残阳交替：
-            <span style="color: #4caf50">黎明誓约</span>立志重建秩序、点燃曙光灯塔，
-            <span style="color: #7c3aed">暮夜同盟</span>则拥抱长夜、信奉强者为尊。
-            选择你的立场，在这场不会终结的拉锯战中，把世界改成你想要的样子。
-            基于 Geyser + Velocity + Paper 1.21.11 核心技术，实现 Java/基岩多端互通。
+            <template v-for="(part, i) in heroDescriptionParts" :key="`hd${i}`">
+              <span v-if="part.color" :style="{ color: part.color }">{{ part.text }}</span>
+              <template v-else>{{ part.text }}</template>
+            </template>
           </p>
 
           <!-- 按钮区域 -->
@@ -69,28 +77,28 @@
             </a>
           </div>
 
-          <!-- 统计数据 -->
+          <!-- 统计数据：数值/名称由「系统管理-网站配置」hero.statN* 提供 -->
           <div
             class="hero-stats animate-slide-in-up"
             style="animation-delay: 1.3s"
           >
             <div class="stat-item">
-              <div class="stat-number">{{ formattedPlayers }}</div>
-              <div class="stat-label">注册玩家</div>
+              <div class="stat-number">{{ heroStat1Number }}</div>
+              <div class="stat-label">{{ siteConfig.hero.stat1Label }}</div>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item">
-              <div class="stat-number">24/7</div>
-              <div class="stat-label">稳定运行</div>
+              <div class="stat-number">{{ siteConfig.hero.stat2Number }}</div>
+              <div class="stat-label">{{ siteConfig.hero.stat2Label }}</div>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item">
-              <div class="stat-number">30+</div>
-              <div class="stat-label">插件玩法</div>
+              <div class="stat-number">{{ siteConfig.hero.stat3Number }}</div>
+              <div class="stat-label">{{ siteConfig.hero.stat3Label }}</div>
             </div>
             <div class="stat-item">
-              <div class="stat-number">6</div>
-              <div class="stat-label">管理团队人数</div>
+              <div class="stat-number">{{ siteConfig.hero.stat4Number }}</div>
+              <div class="stat-label">{{ siteConfig.hero.stat4Label }}</div>
             </div>
           </div>
         </div>
@@ -110,7 +118,7 @@
             @click="openBilibiliVideo"
           >
             <img
-              :src="videoBg"
+              :src="videoCoverImage"
               alt="星穹旅驿服务器宣传视频"
               class="hero-image"
             />
@@ -130,7 +138,7 @@
                   <polygon points="5 3 19 12 5 21 5 3"></polygon>
                 </svg>
               </div>
-              <div class="hero-video-title">星穹旅驿服务器宣传视频</div>
+              <div class="hero-video-title">{{ siteConfig.video.title }}</div>
             </div>
           </div>
         </div>
@@ -138,8 +146,9 @@
     </div>
     <!-- 内容区域 -->
     <div class="home-content">
-      <!-- 阵营对抗 -->
-      <section class="faction-showcase" id="factions">
+    <!-- 阵营海报区：名称/口号/号召语/海报图由「系统管理-网站配置」faction.* 提供，
+         enabled=false 时整个区块隐藏 -->
+    <section v-if="siteConfig.faction.enabled" class="faction-showcase" id="factions">
         <h2 class="home-content-title">
           选择 <span style="color: #4caf50">你的阵营</span>
         </h2>
@@ -152,30 +161,30 @@
         <div class="faction-cards">
           <div class="faction-poster faction-poster-dawn">
             <img
-              :src="factionDawnImg"
+              :src="dawnPosterImage"
               alt="黎明誓约阵营宣传海报"
               class="faction-poster-img"
             />
             <div class="faction-poster-info">
               <h3 class="faction-poster-name">
-                <i class="fa-solid fa-sun"></i> 黎明誓约
+                <i class="fa-solid fa-sun"></i> {{ siteConfig.faction.dawnName }}
               </h3>
-              <p class="faction-poster-slogan">以光为界，守土求生；火种不熄，黎明必至。</p>
-              <p class="faction-poster-call">加入黎明誓约——你愿意成为火种吗？</p>
+              <p class="faction-poster-slogan">{{ siteConfig.faction.dawnSlogan }}</p>
+              <p class="faction-poster-call">{{ siteConfig.faction.dawnCall }}</p>
             </div>
           </div>
           <div class="faction-poster faction-poster-dusk">
             <img
-              :src="factionDuskImg"
+              :src="duskPosterImage"
               alt="暮夜同盟阵营宣传海报"
               class="faction-poster-img"
             />
             <div class="faction-poster-info">
               <h3 class="faction-poster-name">
-                <i class="fa-solid fa-moon"></i> 暮夜同盟
+                <i class="fa-solid fa-moon"></i> {{ siteConfig.faction.duskName }}
               </h3>
-              <p class="faction-poster-slogan">长夜将至，强者为尊；既然乱世，就燃得更旺。</p>
-              <p class="faction-poster-call">加入暮夜同盟——你愿意在长夜中狩猎吗？</p>
+              <p class="faction-poster-slogan">{{ siteConfig.faction.duskSlogan }}</p>
+              <p class="faction-poster-call">{{ siteConfig.faction.duskCall }}</p>
             </div>
           </div>
         </div>
@@ -456,7 +465,7 @@
           进入社区讨论 →
         </router-link>
         <div class="player-forum-carousel">
-          <ImageCarousel :images="bbsImages" :interval="4000" style="width: 800px;" />
+          <ImageCarousel :images="bbsCarouselImages" :interval="4000" style="width: 800px;" />
         </div>
       </section>
 
@@ -503,7 +512,75 @@ import factionDawnImg from "../assets/images/faction-dawn.jpg";
 import factionDuskImg from "../assets/images/faction-dusk.jpg";
 
 import McConfig from "../config/mc-config.js";
-import { serverConfigAPI } from "../api/api.js";
+import { serverConfigAPI, siteConfigAPI } from "../api/api.js";
+import { parseHighlight } from "../utils/highlight.js";
+
+// 首页个性化默认值：与后端 site_config.DEFAULTS 同一口径的兜底副本——
+// 接口失败/未部署时不开天窗（页面行为与配置功能上线前一致）。
+const HOME_DEFAULT_CONFIG = {
+  banner: {
+    enabled: true,
+    text: "🔔 全新阵营对战玩法内测开启，名额有限 · 申请时间 2026-09-21 ~ 2026-10-07",
+    linkText: "申请内测",
+    linkUrl: "/faction-beta",
+  },
+  hero: {
+    badgeIcon: "@2025-2026",
+    badgeText: "星穹旅驿团队",
+    title: "欢迎来到 [[星穹旅驿]]",
+    subtitle: "在这里，体验[[阵营对抗]]乱世生存",
+    features: ["阵营对抗", "多端互通", "友好社区", "超多插件玩法"],
+    description:
+      "星穹旅驿是一个以阵营对抗为核心的乱世生存服务器。大崩裂之后，星穹界长夜与残阳交替：[[黎明誓约]]立志重建秩序、点燃曙光灯塔，{{暮夜同盟}}则拥抱长夜、信奉强者为尊。选择你的立场，在这场不会终结的拉锯战中，把世界改成你想要的样子。基于 Geyser + Velocity + Paper 1.21.11 核心技术，实现 Java/基岩多端互通。",
+    stat1Number: "114514",
+    stat1Label: "注册玩家",
+    stat2Number: "24/7",
+    stat2Label: "稳定运行",
+    stat3Number: "30+",
+    stat3Label: "插件玩法",
+    stat4Number: "6",
+    stat4Label: "管理团队人数",
+  },
+  video: {
+    title: "星穹旅驿服务器宣传视频",
+    url: "https://www.bilibili.com/video/BV1aN6CBgEL3",
+    cover: "",
+  },
+  faction: {
+    enabled: true,
+    dawnName: "黎明誓约",
+    dawnSlogan: "以光为界，守土求生；火种不熄，黎明必至。",
+    dawnCall: "加入黎明誓约——你愿意成为火种吗？",
+    dawnImage: "",
+    duskName: "暮夜同盟",
+    duskSlogan: "长夜将至，强者为尊；既然乱世，就燃得更旺。",
+    duskCall: "加入暮夜同盟——你愿意在长夜中狩猎吗？",
+    duskImage: "",
+  },
+  forum: { carouselImages: "" },
+  footer: {
+    enabled: true,
+    sponsorTitle: "本项目由快跑云集团扶持",
+    sponsorLogo: "",
+    sponsorDesc: ["快跑云集团 · 基础AIDC服务商", "定义下一代AIDC算力基线"],
+    sponsorLink: "https://www.fastrun.com.cn/",
+    columns: [
+      { title: "服务器信息", text: "首页", url: "/" },
+      { title: "服务器信息", text: "服务器公告", url: "/announcements" },
+      { title: "社区", text: "进入社区", url: "/forum" },
+      { title: "社区", text: "发布文章", url: "/forum/new" },
+      { title: "活动信息", text: "阵营内测", url: "/faction-beta" },
+      { title: "联系我们", text: "联系服主", url: "mailto:3896301937@qq.com" },
+      { title: "联系我们", text: "加入我们", url: "https://jq.qq.com/?_wv=1027194278" },
+    ],
+    copyright: [
+      "2025-2026 星穹旅驿 Minecraft服务器",
+      "| 本服务器与Mojang及Microsoft无关",
+      "联系我们: 3896301937@qq.com",
+      "加入QQ群: 942235691",
+    ],
+  },
+};
 
 export default {
   name: "Home",
@@ -517,8 +594,8 @@ export default {
   },
   data() {
     return {
-      // 注册玩家目标人数
-      registeredPlayers: 114514,
+      // 站点配置（系统管理-网站配置）：挂载后异步拉取覆盖；先落默认值保证首屏不空
+      siteConfig: JSON.parse(JSON.stringify(HOME_DEFAULT_CONFIG)),
       // 当前显示的数字，从 0 开始累加
       displayedPlayers: 0,
       // requestAnimationFrame 句柄，用于组件销毁时取消动画
@@ -535,7 +612,8 @@ export default {
       // 阵营宣传海报（import 引入保证打包）
       factionDawnImg,
       factionDuskImg,
-      bbsImages: [
+      // 社区轮播默认图（import 引入保证打包；siteConfig.forum.carouselImages 非空时被替换）
+      defaultBbsImages: [
         {
           src: bbs1,
           alt: "玩家论坛图片1"
@@ -553,6 +631,54 @@ export default {
   },
   computed: {
     /**
+     * 注册玩家目标人数：来自站点配置 stat1Number（仅当为纯数字时走数字累加动画，
+     * 含 "24/7"、"30+" 这类非数字文案时直接静态展示）
+     */
+    registeredPlayers() {
+      const v = this.siteConfig.hero.stat1Number;
+      return /^\d+$/.test(v) ? Number(v) : null;
+    },
+    /**
+     * hero 主标题/副标题/介绍：解析 [[绿]] {{紫}} 高亮标记为 {text, color} 段数组，
+     * 模板 v-for 渲染 span（不走 v-html，无注入风险）
+     */
+    heroTitleParts() {
+      return parseHighlight(this.siteConfig.hero.title);
+    },
+    heroSubtitleParts() {
+      return parseHighlight(this.siteConfig.hero.subtitle);
+    },
+    heroDescriptionParts() {
+      return parseHighlight(this.siteConfig.hero.description);
+    },
+    /**
+     * 社区轮播图：配置了每行一个 URL 时用配置，否则用打包内默认图
+     */
+    bbsCarouselImages() {
+      const urls = (this.siteConfig.forum.carouselImages || "")
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (!urls.length) return this.defaultBbsImages;
+      return urls.map((src, i) => ({ src, alt: `玩家社区图片${i + 1}` }));
+    },
+    /**
+     * 阵营海报图：配置了 URL 用配置（上传接口返回的是相对路径，axios baseURL 已带 /api 需区分处理——
+     * 上传 URL 本身以 /api/ 开头，可直接作 src），否则回退打包内默认海报
+     */
+    dawnPosterImage() {
+      return this.siteConfig.faction.dawnImage || this.factionDawnImg;
+    },
+    duskPosterImage() {
+      return this.siteConfig.faction.duskImage || this.factionDuskImg;
+    },
+    /**
+     * 宣传视频封面：同上，空则回退打包内默认封面
+     */
+    videoCoverImage() {
+      return this.siteConfig.video.cover || this.videoBg;
+    },
+    /**
      * 注册玩家人数：添加千分位符显示（如 114,514）
      */
     formattedPlayers() {
@@ -565,6 +691,14 @@ export default {
       return this.serverAddress ? `${this.serverAddress}:${this.serverPort}` : "";
     },
     /**
+     * 统计1展示值：纯数字时走累加动画（千分位），否则静态展示原文案
+     */
+    heroStat1Number() {
+      return this.registeredPlayers === null
+        ? this.siteConfig.hero.stat1Number
+        : this.formattedPlayers;
+    },
+    /**
      * 第三方 MOTD 状态卡片地址（地址加载完成前不渲染 iframe）
      */
     motdUrl() {
@@ -573,10 +707,12 @@ export default {
     },
   },
   mounted() {
-    // 进入页面时，注册玩家人数从 0 开始累加
+    // 进入页面时，注册玩家人数从 0 开始累加（目标值默认配置，配置加载后如有变化重新累加）
     this.startCountUp();
     // 拉取由后端维护的游戏服务器地址
     this.fetchServerConfig();
+    // 拉取站点配置（系统管理-网站配置）
+    this.fetchSiteConfig();
   },
   beforeUnmount() {
     // 组件销毁时取消动画，避免内存泄漏
@@ -604,9 +740,67 @@ export default {
       }
     },
     /**
+     * 从后端获取站点配置（系统管理-网站配置）；失败保持默认值不开天窗
+     */
+    async fetchSiteConfig() {
+      try {
+        const data = await siteConfigAPI.getConfig();
+        this.applySiteConfig(data);
+      } catch (err) {
+        console.error("获取站点配置失败:", err);
+      }
+    },
+    /**
+     * 应用站点配置：按区合并到默认值（后端新增字段缺失时仍有兜底），数字统计变化时重跑累加动画
+     */
+    applySiteConfig(data) {
+      const cfg = { ...JSON.parse(JSON.stringify(HOME_DEFAULT_CONFIG)), ...data };
+      // hero.features 后端存的是每行一个的字符串，这里转数组
+      if (typeof cfg.hero.features === "string") {
+        cfg.hero.features = cfg.hero.features
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean);
+      }
+      // footer：后端存行式文本，这里解析成结构化数组
+      // columns 每行「栏目名|链接文字|链接地址」；sponsorDesc/copyright 每行一条
+      if (typeof cfg.footer.columns === "string") {
+        cfg.footer.columns = cfg.footer.columns
+          .split("\n")
+          .map((s) => s.trim())
+          .filter(Boolean)
+          .map((line) => {
+            const [title = "", text = "", url = ""] = line.split("|").map((p) => p.trim());
+            return { title, text, url };
+          })
+          .filter((c) => c.title && c.url);
+      }
+      for (const key of ["sponsorDesc", "copyright"]) {
+        if (typeof cfg.footer[key] === "string") {
+          cfg.footer[key] = cfg.footer[key]
+            .split("\n")
+            .map((s) => s.trim())
+            .filter(Boolean);
+        }
+      }
+      this.siteConfig = cfg;
+      // 目标人数变化时重新累加（如配置把 114514 改成别的纯数字）
+      if (this.registeredPlayers !== null && this.displayedPlayers !== this.registeredPlayers) {
+        this.startCountUp();
+      }
+      // 页脚配置同步到全局（footer 在 App.vue 渲染，经 provide/inject 传递）
+      this.$root.$footerConfig = cfg.footer;
+      window.dispatchEvent(new CustomEvent("site-footer-config", { detail: cfg.footer }));
+    },
+    /**
      * 数字从 0 累加到目标值，使用缓动函数使动画更自然
      */
     startCountUp() {
+      // stat1Number 非纯数字（如 "24/7"）时跳过动画，直接静态展示文案
+      if (this.registeredPlayers === null) {
+        this.displayedPlayers = 0;
+        return;
+      }
       const target = this.registeredPlayers;
       const duration = 2000; // 动画时长（毫秒）
       const startTime = performance.now();
@@ -641,7 +835,7 @@ export default {
       window.open(this.qqGroup.inviteLinkUrl, "_blank");
     },
     openBilibiliVideo() {
-      window.open("https://www.bilibili.com/video/BV1aN6CBgEL3", "_blank");
+      window.open(this.siteConfig.video.url, "_blank");
     },
   },
 };
