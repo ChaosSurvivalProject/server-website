@@ -40,6 +40,8 @@ export type ResourceItem = {
   githubRepoUrl?: string;
   issuesUrl?: string;
   docsUrl?: string;
+  /** 自定义外链（Modrinth/爱发电等），详情页信息栏展示；后端只接受 http(s) URL，≤10 条 */
+  customLinks?: { label: string; url: string }[];
   downloadCount: number;
   platforms: string[];
   gameVersions: string[];

@@ -469,6 +469,45 @@
         </div>
       </section>
 
+      <!-- 最新 / 精选资源（资源中心 P1：复用公开列表接口，精选优先、最新补位；仅在有已发布资源时渲染） -->
+      <section v-if="homeResources.length" class="home-resources" id="resources">
+        <h2 class="home-content-title">
+          最新 <span style="color: #4caf50">资源</span>
+        </h2>
+        <p class="home-content-subtitle" style="margin-bottom: 24px">
+          本组织自研的模组、插件等资源，文件由 GitHub 托管
+        </p>
+        <div class="home-res-grid">
+          <router-link
+            v-for="r in homeResources"
+            :key="r.id"
+            :to="`/resources/${r.slug}`"
+            class="home-res-card"
+          >
+            <div class="home-res-cover">
+              <img v-if="r.coverUrl" :src="r.coverUrl" :alt="r.name" loading="lazy" />
+              <div v-else class="home-res-cover-ph"><i class="fa-solid fa-cube"></i></div>
+              <span v-if="r.featured" class="home-res-badge">推荐</span>
+            </div>
+            <div class="home-res-body">
+              <div class="home-res-name">
+                <img v-if="r.iconUrl" :src="r.iconUrl" :alt="r.name" loading="lazy" />
+                <i v-else class="fa-solid fa-cube"></i>
+                <span>{{ r.name }}</span>
+              </div>
+              <p class="home-res-summary">{{ r.summary || "暂无简介" }}</p>
+              <div class="home-res-meta">
+                <span><i class="fa-solid fa-download"></i> {{ formatCount(r.downloadCount) }}</span>
+                <span>{{ formatRelativeTime(r.updateTime) }}</span>
+              </div>
+            </div>
+          </router-link>
+        </div>
+        <div class="home-res-more">
+          <router-link to="/resources" class="forum-link">进入资源中心 →</router-link>
+        </div>
+      </section>
+
       <!-- 服务器地址卡片 -->
       <section class="server-address" id="status">
         <h2 class="home-content-title">
@@ -512,8 +551,9 @@ import factionDawnImg from "../assets/images/faction-dawn.jpg";
 import factionDuskImg from "../assets/images/faction-dusk.jpg";
 
 import McConfig from "../config/mc-config.js";
-import { serverConfigAPI, siteConfigAPI } from "../api/api.js";
+import { serverConfigAPI, siteConfigAPI, resourcesAPI } from "../api/api.js";
 import { parseHighlight } from "../utils/highlight.js";
+import { formatCount, formatRelativeTime } from "../utils/forumFormat.js";
 
 // 首页个性化默认值：与后端 site_config.DEFAULTS 同一口径的兜底副本——
 // 接口失败/未部署时不开天窗（页面行为与配置功能上线前一致）。
@@ -596,6 +636,8 @@ export default {
     return {
       // 站点配置（系统管理-网站配置）：挂载后异步拉取覆盖；先落默认值保证首屏不空
       siteConfig: JSON.parse(JSON.stringify(HOME_DEFAULT_CONFIG)),
+      // 首页「最新资源」卡片：精选优先、最新补位，最多 3 张；接口失败保持空数组不渲染区块
+      homeResources: [],
       // 当前显示的数字，从 0 开始累加
       displayedPlayers: 0,
       // requestAnimationFrame 句柄，用于组件销毁时取消动画
@@ -713,6 +755,8 @@ export default {
     this.fetchServerConfig();
     // 拉取站点配置（系统管理-网站配置）
     this.fetchSiteConfig();
+    // 拉取首页「最新 / 精选资源」卡片数据
+    this.fetchHomeResources();
   },
   beforeUnmount() {
     // 组件销毁时取消动画，避免内存泄漏
@@ -748,6 +792,26 @@ export default {
         this.applySiteConfig(data);
       } catch (err) {
         console.error("获取站点配置失败:", err);
+      }
+    },
+    /**
+     * 首页「最新 / 精选资源」卡片（资源中心 P1）：复用公开列表接口
+     * GET /api/resources?sort=updated_desc，取前 6 个再按「精选优先、最新补位」
+     * 排出前 3 张卡片；失败静默（区块不渲染），不打扰首屏。
+     */
+    async fetchHomeResources() {
+      try {
+        const data = await resourcesAPI.getResources({
+          sort: "updated_desc",
+          page: 1,
+          pageSize: 6,
+        });
+        const items = data.items || [];
+        const featured = items.filter((r) => r.featured);
+        const rest = items.filter((r) => !r.featured);
+        this.homeResources = [...featured, ...rest].slice(0, 3);
+      } catch (err) {
+        console.error("获取首页资源卡片失败:", err);
       }
     },
     /**
@@ -1254,6 +1318,120 @@ export default {
   border-radius: 12px;
   overflow: hidden;
   text-align: center;
+}
+
+/* ── 首页「最新资源」卡片（资源中心 P1）：与详情页卡片同视觉语言 ── */
+.home-resources {
+  padding: 0 20px;
+  margin: 40px 20px 0;
+  text-align: center;
+}
+.home-res-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.home-res-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--fx-card, #fff);
+  border: 1px solid var(--fx-line, #e0e0e0);
+  border-radius: 12px;
+  overflow: hidden;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.home-res-card:hover {
+  transform: translateY(-3px);
+  border-color: #a5d6a7;
+  box-shadow: 0 6px 18px rgba(76, 175, 80, 0.15);
+}
+.home-res-cover {
+  position: relative;
+  aspect-ratio: 16 / 7;
+  background: #f0f4f0;
+}
+.home-res-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.home-res-cover-ph {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  color: #a5d6a7;
+}
+.home-res-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: #4caf50;
+  color: #fff;
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 10px;
+}
+.home-res-body {
+  padding: 12px 14px 14px;
+  text-align: left;
+}
+.home-res-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+.home-res-name img {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.home-res-name i {
+  color: #4caf50;
+}
+.home-res-summary {
+  margin: 8px 0;
+  font-size: 13px;
+  color: #909399;
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-height: 2.9em;
+}
+.home-res-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #b0b3b8;
+}
+.home-res-meta i {
+  margin-right: 4px;
+}
+.home-res-more {
+  margin-bottom: 10px;
+}
+@media (max-width: 1024px) {
+  .home-res-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 640px) {
+  .home-res-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .player-forum-carousel {

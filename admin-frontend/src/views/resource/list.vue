@@ -233,6 +233,7 @@ const form = reactive({
   githubRepoUrl: "",
   issuesUrl: "",
   docsUrl: "",
+  customLinks: [] as { label: string; url: string }[],
   platforms: [] as string[],
   gameVersions: [] as string[],
   tags: [] as string[]
@@ -254,6 +255,7 @@ const resetForm = () => {
     githubRepoUrl: "",
     issuesUrl: "",
     docsUrl: "",
+    customLinks: [],
     platforms: [],
     gameVersions: [],
     tags: []
@@ -362,6 +364,10 @@ const openEdit = async (row: ResourceItem) => {
       githubRepoUrl: (item as any).githubRepoUrl || "",
       issuesUrl: (item as any).issuesUrl || "",
       docsUrl: (item as any).docsUrl || "",
+      customLinks: ((item as any).customLinks || []).map((l: any) => ({
+        label: String(l?.label || ""),
+        url: String(l?.url || "")
+      })),
       platforms: item.platforms || [],
       gameVersions: item.gameVersions || [],
       tags: item.tags || []
@@ -379,6 +385,14 @@ const validateBasic = () => {
   if (!/^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/.test(form.slug.trim()))
     return "slug 需为 3-64 位小写字母/数字/连字符，以字母或数字开头结尾";
   if (form.summary.length > 255) return "一句话简介不能超过 255 字";
+  for (const [i, l] of form.customLinks.entries()) {
+    if (!l.label.trim()) return `自定义链接第 ${i + 1} 条：请填写展示名`;
+    if (l.label.trim().length > 30) return `自定义链接第 ${i + 1} 条：展示名不能超过 30 字`;
+    const url = l.url.trim();
+    if (!url) return `自定义链接第 ${i + 1} 条：请填写链接地址`;
+    if (!/^https?:\/\//.test(url)) return `自定义链接第 ${i + 1} 条：链接需以 http:// 或 https:// 开头`;
+    if (url.length > 512) return `自定义链接第 ${i + 1} 条：链接过长（≤512 字符）`;
+  }
   return "";
 };
 
@@ -404,6 +418,9 @@ const handleSaveBasic = async () => {
       githubRepoUrl: form.githubRepoUrl.trim(),
       issuesUrl: form.issuesUrl.trim(),
       docsUrl: form.docsUrl.trim(),
+      customLinks: form.customLinks
+        .map(l => ({ label: l.label.trim(), url: l.url.trim() }))
+        .filter(l => l.label && l.url),
       platforms: form.platforms,
       gameVersions: form.gameVersions,
       tags: form.tags
@@ -576,7 +593,43 @@ const openAssetCreate = (v: VersionItem) => {
     isPrimary: false,
     status: "visible" as AssetStatus
   });
+  parsedRelease.value = null;
   assetDialogVisible.value = true;
+};
+
+// ── GitHub Release URL 辅助解析（TODO P1）：粘贴 Release 资产链接后解析出
+//    仓库 / tag / 附件文件名，人工确认预填，不是自动同步——
+//    URL 形如 https://github.com/{owner}/{repo}/releases/download/{tag}/{filename}
+//    （legacy 形如 .../releases/download/{tag}/{filename} 相同；tag 可能含 . 不含 /）
+const parsedRelease = ref<{ repo: string; tag: string; filename: string } | null>(null);
+
+const parseReleaseUrl = (raw: string) => {
+  const url = (raw || "").trim();
+  const m = url.match(/^https:\/\/github\.com\/([\w.-]+)\/([\w.-]+)\/releases\/download\/([^/]+)\/([^/?#]+)/);
+  if (!m) {
+    parsedRelease.value = null;
+    return;
+  }
+  const [, owner, repo, tag, filename] = m;
+  const decoded = { repo: `${owner}/${repo}`, tag, filename: decodeURIComponent(filename) };
+  parsedRelease.value = decoded;
+  // 只在字段为空或与上次解析值一致时覆盖（用户手改过则不顶掉）：文件名默认带出
+  if (!assetForm.filename.trim() || assetForm.filename.trim() === lastParsedFilename.value) {
+    assetForm.filename = decoded.filename;
+  }
+  lastParsedFilename.value = decoded.filename;
+};
+
+const lastParsedFilename = ref("");
+
+const applyParsedTagToVersion = () => {
+  if (!parsedRelease.value) return false;
+  // 仅新建版本且 tag 为空时带出（人工确认后保存，不静默覆盖已有值）
+  if (versionEditId.value === null && !versionForm.releaseTag.trim()) {
+    versionForm.releaseTag = parsedRelease.value.tag;
+    return true;
+  }
+  return false;
 };
 
 const openAssetEdit = (v: VersionItem, a: AssetItem) => {
@@ -981,6 +1034,31 @@ onMounted(() => {
             <el-form-item label="文档链接">
               <el-input v-model.trim="form.docsUrl" placeholder="选填" />
             </el-form-item>
+            <el-form-item label="自定义链接">
+              <div class="custom-links-editor">
+                <div v-for="(link, idx) in form.customLinks" :key="idx" class="custom-link-row">
+                  <el-input
+                    v-model.trim="link.label"
+                    maxlength="30"
+                    placeholder="展示名，如：Modrinth"
+                    class="custom-link-label"
+                  />
+                  <el-input
+                    v-model.trim="link.url"
+                    placeholder="https://modrinth.com/... （http/https 开头）"
+                    class="custom-link-url"
+                  />
+                  <el-button text type="danger" @click="form.customLinks.splice(idx, 1)">移除</el-button>
+                </div>
+                <el-button
+                  size="small"
+                  :icon="Plus"
+                  :disabled="form.customLinks.length >= 10"
+                  @click="form.customLinks.push({ label: '', url: '' })"
+                >添加链接{{ form.customLinks.length ? `（${form.customLinks.length}/10）` : "" }}</el-button>
+                <div class="form-tip">展示在资源详情页右侧信息栏（如 Modrinth、爱发电等外链）；最多 10 条，链接需 http/https 开头</div>
+              </div>
+            </el-form-item>
             <el-form-item label="图标">
               <div class="img-field">
                 <img v-if="form.iconUrl" :src="form.iconUrl" class="img-preview img-preview-icon" alt="" />
@@ -1156,10 +1234,16 @@ onMounted(() => {
     >
       <el-form label-width="110px">
         <el-form-item label="文件名" required>
-          <el-input v-model.trim="assetForm.filename" maxlength="255" placeholder="如 quick-tools-1.2.0.jar" />
+          <el-input v-model.trim="assetForm.filename" maxlength="255" placeholder="粘贴 Release 链接后自动带出，可修改" />
         </el-form-item>
         <el-form-item label="资产 URL" required>
-          <el-input v-model.trim="assetForm.url" placeholder="https://github.com/…/releases/download/…" />
+          <el-input v-model.trim="assetForm.url" placeholder="https://github.com/…/releases/download/…" @input="parseReleaseUrl" />
+          <div v-if="parsedRelease" class="form-tip parsed-release-tip">
+            <i class="fa-solid fa-circle-check"></i>
+            已解析：仓库 <b>{{ parsedRelease.repo }}</b>
+            · tag <b>{{ parsedRelease.tag }}</b>
+            <el-button v-if="assetEditId === null" size="small" link type="primary" @click="applyParsedTagToVersion">带出到版本 Tag</el-button>
+          </div>
           <div class="form-tip">必须是 https://github.com/ 开头的 GitHub Release 资产链接；前台下载按钮指向本站跳转端点，不直接暴露此 URL。</div>
         </el-form-item>
         <el-form-item label="用途">
@@ -1346,6 +1430,29 @@ onMounted(() => {
   font-size: 12px;
   line-height: 1.5;
   margin-top: 4px;
+}
+.custom-links-editor {
+  width: 100%;
+}
+.custom-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  width: 100%;
+}
+.custom-link-label {
+  flex: 0 0 180px;
+}
+.custom-link-url {
+  flex: 1;
+}
+.parsed-release-tip {
+  color: var(--el-color-success);
+  b {
+    color: var(--el-color-success);
+    font-weight: 600;
+  }
 }
 .img-field {
   display: flex;

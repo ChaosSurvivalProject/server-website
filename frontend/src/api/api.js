@@ -441,6 +441,7 @@ export const resourcesAPI = {
    * 资源详情（只含已发布；未公开/已删 404）
    * @param {string} slug
    * @returns {Promise} - data: 列表字段 + {descriptionMd, githubRepoUrl, issuesUrl, docsUrl,
+   *   customLinks: [{label, url}]（自定义外链，信息栏展示）,
    *   versions: [{id, version, releaseTag, channel, publishedAt, gameVersions[], platforms[],
    *              side, isLatestStable, changelogMd, assets: [{id, filename, purpose, isPrimary}]}],
    *   downloadCount, downloadCountNote}

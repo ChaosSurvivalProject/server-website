@@ -110,6 +110,8 @@ _user_extra_migrated = False
 _announcement_content_migrated = False
 _user_mute_migrated = False
 _forum_recycle_migrated = False
+_resource_custom_links_migrated = False
+_download_event_counted_migrated = False
 
 
 def migrate_user_extra_columns() -> None:
@@ -177,6 +179,72 @@ def migrate_announcement_content_columns() -> None:
     except Exception as e:
         # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
         logger.warning("announcements 表 content_type 列迁移检查失败: %s", e)
+
+
+def migrate_resource_custom_links_column() -> None:
+    """resources 表补 custom_links 列（幂等；已存在的表结构不受影响）。
+
+    存量行经 ALTER 的 DEFAULT '[]' 自动归为空自定义链接列表，
+    保证自定义链接功能上线前后端行为不变。
+    """
+    global _resource_custom_links_migrated
+    if _resource_custom_links_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [
+                row[1] for row in con.execute("PRAGMA table_info('resources')")
+            ]
+            if "custom_links" not in col_names:
+                con.execute(
+                    "ALTER TABLE resources ADD COLUMN custom_links TEXT "
+                    "NOT NULL DEFAULT '[]'"
+                )
+                con.commit()
+                logger.info("已为 resources 表补充 custom_links 列（JSON 数组 [{label,url}]）")
+        finally:
+            con.close()
+        _resource_custom_links_migrated = True
+    except Exception as e:
+        # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
+        logger.warning("resources 表 custom_links 列迁移检查失败: %s", e)
+
+
+def migrate_download_event_counted_column() -> None:
+    """download_events 表补 counted 列（幂等；已存在的表结构不受影响）。
+
+    存量行经 ALTER 的 DEFAULT 1 全部视为「已计入展示计数」，与历史行为
+    （每次跳转都累加计数）保持一致，去重只对新跳转生效。
+    """
+    global _download_event_counted_migrated
+    if _download_event_counted_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [
+                row[1] for row in con.execute("PRAGMA table_info('download_events')")
+            ]
+            if "counted" not in col_names:
+                con.execute(
+                    "ALTER TABLE download_events ADD COLUMN counted INTEGER "
+                    "NOT NULL DEFAULT 1"
+                )
+                con.commit()
+                logger.info(
+                    "已为 download_events 表补充 counted 列（1=已计入展示计数，0=24h 窗口内重复跳转）"
+                )
+        finally:
+            con.close()
+        _download_event_counted_migrated = True
+    except Exception as e:
+        # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
+        logger.warning("download_events 表 counted 列迁移检查失败: %s", e)
 
 
 def migrate_user_mute_column() -> None:
@@ -718,6 +786,9 @@ class Resource(Base):
     github_repo_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     issues_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     docs_url: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    # 自定义外链（Modrinth / 爱发电等）：JSON 数组 [{"label","url"}]，序列化/校验
+    # 口径见 resource_center.py 的 _normalize_custom_links；上限 10 条。
+    custom_links: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
     created_by: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 后台操作人 username
     download_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 冗余计数=download_events 行数（见 resource_center.py 维护口径）
     create_time: Mapped[str] = mapped_column(String(30), nullable=False)
@@ -825,6 +896,9 @@ class DownloadEvent(Base):
     ip_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     user_agent: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # 可选，截断存储
     referer: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    # 展示计数去重标记（TODO P1）：1=本事件已计入 resources.download_count 冗余计数，
+    # 0=同 IP+资产 24h 窗口内的重复跳转（事件保留但不再累加展示计数）。
+    counted: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
 
 # FTS5 可用性标志（init_db 时探测；个别发行版的 SQLite 未编译 FTS5 时降级为仅向量检索）
@@ -859,6 +933,12 @@ async def init_db():
     migrate_forum_article_recycle_columns()
     # 资源中心：预置字典种子（幂等，按 type+key 判存，不覆盖后台改过的值）
     await seed_resource_dict_items()
+    # 资源中心：resources.custom_links 存量库补列（幂等）
+    migrate_resource_custom_links_column()
+    # 资源中心：download_events.counted 存量库补列（幂等，展示计数 24h 去重用）
+    migrate_download_event_counted_column()
+    # 资源中心：版本 published_at 纯日期存量修复（幂等，排序沉底问题）
+    await repair_resource_published_at()
     # 站内信：announcements 表迁移到 messages 表（仅对存量库执行，新库跳过）
     await migrate_announcements_to_messages()
 
@@ -939,6 +1019,47 @@ async def seed_resource_dict_items() -> None:
     except Exception:
         logger.warning("资源中心字典种子写入失败", exc_info=True)
         _resource_dict_seeded = False
+
+
+_resource_published_at_repaired = False
+
+
+async def repair_resource_published_at() -> None:
+    """存量修复（一次性，幂等）：把历史纯日期 'YYYY-MM-DD' 的
+    resource_versions.published_at 补成 'YYYY-MM-DDT23:59:59'。
+
+    不修的后果：详情页/后台按 published_at 字符串降序排序时，纯日期值
+    ('2026-11-10') 字典序小于同时日带时间值 ('2026-11-10T19:22:44')，
+    这些版本会永久沉底。补当日最末一秒（23:59:59）：只选日期 = 当天发布，
+    语义上应视为同日最新（版本迭代的新版本排在同日旧版本之前）。
+    新写入已由 resource_center._normalize_published_at 归一化，本函数只兜历史数据。
+    失败不阻断启动。
+    """
+    global _resource_published_at_repaired
+    if _resource_published_at_repaired:
+        return
+    _resource_published_at_repaired = True
+    try:
+        async with async_session_maker() as session:
+            r = await session.execute(
+                select(ResourceVersion).where(
+                    ResourceVersion.published_at.regexp_match(
+                        r"^\d{4}-\d{2}-\d{2}(T00:00:00)?$(?<!x)"
+                    )
+                )
+            )
+            rows = r.scalars().all()
+            if not rows:
+                return
+            for v in rows:
+                v.published_at = f"{v.published_at[:10]}T23:59:59"
+            await session.commit()
+            logger.info(
+                "已修复 %d 条版本 published_at 纯日期为完整 ISO（补 T23:59:59）", len(rows)
+            )
+    except Exception:
+        logger.warning("版本 published_at 存量修复失败", exc_info=True)
+        _resource_published_at_repaired = False
 
 
 # ── 站内信存量数据迁移 ────────────────────────────────────────────────

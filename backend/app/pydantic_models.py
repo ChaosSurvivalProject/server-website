@@ -9,6 +9,19 @@ from typing import List, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class CustomLinkItem(BaseModel):
+    """资源自定义外链条目（Modrinth / 爱发电等）。
+
+    label 展示名（≤30 字）；url 必须以 http:// 或 https:// 开头（前台 <a :href>
+    只接受 http(s)，防 javascript: 等协议注入，规范化口径见 resource_center.py）。
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    label: str = Field(..., min_length=1, max_length=30)
+    url: str = Field(..., min_length=1, max_length=512)
+
+
 class ResourceCreateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -26,6 +39,7 @@ class ResourceCreateRequest(BaseModel):
     github_repo_url: str = Field("", alias="githubRepoUrl", max_length=512)
     issues_url: str = Field("", alias="issuesUrl", max_length=512)
     docs_url: str = Field("", alias="docsUrl", max_length=512)
+    custom_links: List[CustomLinkItem] = Field(default_factory=list, alias="customLinks")
     platforms: List[str] = Field(default_factory=list)
     game_versions: List[str] = Field(default_factory=list, alias="gameVersions")
     tags: List[str] = Field(default_factory=list)
@@ -49,6 +63,7 @@ class ResourceUpdateRequest(BaseModel):
     github_repo_url: Optional[str] = Field(None, alias="githubRepoUrl", max_length=512)
     issues_url: Optional[str] = Field(None, alias="issuesUrl", max_length=512)
     docs_url: Optional[str] = Field(None, alias="docsUrl", max_length=512)
+    custom_links: Optional[List[CustomLinkItem]] = Field(None, alias="customLinks")
     platforms: Optional[List[str]] = None
     game_versions: Optional[List[str]] = Field(None, alias="gameVersions")
     tags: Optional[List[str]] = None

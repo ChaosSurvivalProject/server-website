@@ -92,9 +92,63 @@
             <!-- 版本 Tab：表格（制品版本 / 游戏版本 / 平台 / 发布时间 / 下载量） -->
             <section v-else class="fx-card">
               <div class="fx-card-pad res-version-table-wrap">
+                <!-- 筛选栏（渠道 / 游戏版本 / 平台）+ 分页：选项从版本数据即时聚合 -->
+                <div v-if="resource.versions.length" class="res-vfilter">
+                  <div class="res-vfilter-left">
+                    <i class="fa-solid fa-filter res-vfilter-icon"></i>
+                    <!-- 多选筛选（dropdown 多选面板）：placeholder 形态显示首个标签文案，选中后显示已选标签 -->
+                    <VersionFilterMulti
+                      v-model="verFilterChannels"
+                      placeholder="渠道"
+                      :options="versionChannelOptions"
+                      :label-fn="channelLabel"
+                    />
+                    <VersionFilterMulti
+                      v-model="verFilterGameVersions"
+                      placeholder="游戏版本"
+                      :options="versionGameVersionOptions"
+                      :label-fn="gameVersionLabel"
+                    />
+                    <VersionFilterMulti
+                      v-model="verFilterPlatforms"
+                      placeholder="平台"
+                      :options="versionPlatformOptions"
+                      :label-fn="platformLabel"
+                    />
+                    <button
+                      v-if="verFilterChannels.length || verFilterGameVersions.length || verFilterPlatforms.length"
+                      type="button"
+                      class="res-vfilter-clear"
+                      @click="clearVersionFilters"
+                    >清除</button>
+                  </div>
+                  <div class="res-vfilter-right">
+                    <button
+                      type="button"
+                      class="res-vpage-btn"
+                      :disabled="verPage <= 1"
+                      aria-label="上一页"
+                      @click="verPage--"
+                    ><i class="fa-solid fa-chevron-left"></i></button>
+                    <span class="res-vpage-info">{{ verPage }} / {{ versionTotalPages }}</span>
+                    <button
+                      type="button"
+                      class="res-vpage-btn"
+                      :disabled="verPage >= versionTotalPages"
+                      aria-label="下一页"
+                      @click="verPage++"
+                    ><i class="fa-solid fa-chevron-right"></i></button>
+                  </div>
+                </div>
+
                 <div v-if="!resource.versions.length" class="fx-empty">
                   <div class="fx-empty-title">暂无可用版本</div>
                   <div class="fx-empty-tip">该资源还没有发布任何可见版本</div>
+                </div>
+                <div v-else-if="!pagedVersions.length" class="fx-empty">
+                  <div class="fx-empty-title">没有符合条件的版本</div>
+                  <div class="fx-empty-tip">试试放宽筛选条件</div>
+                  <button type="button" class="fx-btn fx-btn-primary" @click="clearVersionFilters">清除筛选</button>
                 </div>
                 <table v-else class="res-vtable">
                   <thead>
@@ -108,7 +162,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="v in resource.versions" :key="v.id">
+                    <tr v-for="v in pagedVersions" :key="v.id">
                       <td>
                         <div class="res-vt-version">
                           {{ v.version }}
@@ -244,6 +298,10 @@
                   <span>文档</span>
                   <a :href="resource.docsUrl" target="_blank" rel="noopener noreferrer">查看文档<i class="fa-solid fa-arrow-up-right-from-square res-ext-icon"></i></a>
                 </div>
+                <div v-for="link in customLinks" :key="link.url" class="res-info-row">
+                  <span>{{ link.label }}</span>
+                  <a :href="link.url" target="_blank" rel="noopener noreferrer">链接<i class="fa-solid fa-arrow-up-right-from-square res-ext-icon"></i></a>
+                </div>
               </div>
             </div>
           </aside>
@@ -259,6 +317,7 @@ import { renderMarkdownContent } from "../../utils/markdown.js";
 import { formatCount } from "../../utils/forumFormat.js";
 import { showForumToast } from "../../utils/forumToast.js";
 import { copyText } from "../../utils/clipboard.js";
+import VersionFilterMulti from "../../components/resources/VersionFilterMulti.vue";
 
 /** Markdown → 消毒 HTML（全站统一渲染入口，AGENTS.md 红线：不另写渲染管线） */
 function renderMd(src) {
@@ -267,6 +326,7 @@ function renderMd(src) {
 
 export default {
   name: "ResourceDetail",
+  components: { VersionFilterMulti },
   data() {
     return {
       loading: true,
@@ -276,6 +336,12 @@ export default {
       activeTab: "intro",
       // 版本表格「更多操作」菜单当前打开的版本 id（'' = 全关；同屏只开一个）
       moreOpen: "",
+      // 版本筛选与分页（多选；选项从当前版本数据即时聚合；筛选变化回到第 1 页）
+      verFilterChannels: [],
+      verFilterGameVersions: [],
+      verFilterPlatforms: [],
+      verPage: 1,
+      VER_PAGE_SIZE: 10,
       resource: {
         // 骨架（加载完成前模板不渲染主区，这里仅兜底）
         name: "",
@@ -284,6 +350,7 @@ export default {
         gameVersions: [],
         tags: [],
         versions: [],
+        customLinks: [],
         downloadCount: 0,
         downloadCountNote: "",
       },
@@ -303,6 +370,50 @@ export default {
       const set = [...new Set(this.resource.versions.map((v) => v.channel))];
       return set.length ? set.map(this.channelLabel).join("、") : "-";
     },
+    /** 自定义外链（Modrinth / 爱发电等）：只放行 http(s)，与后端读取侧白名单一致 */
+    customLinks() {
+      const raw = this.resource.customLinks;
+      if (!Array.isArray(raw)) return [];
+      return raw.filter(
+        (l) => l && typeof l.label === "string" && l.label && /^https?:\/\//.test(String(l.url || ""))
+      );
+    },
+    /** ── 版本筛选与分页（选项聚合自当前资源的可见版本） ── */
+    versionChannelOptions() {
+      return [...new Set(this.resource.versions.map((v) => v.channel))];
+    },
+    versionGameVersionOptions() {
+      const set = new Set();
+      this.resource.versions.forEach((v) => (v.gameVersions || []).forEach((g) => set.add(g)));
+      return [...set];
+    },
+    versionPlatformOptions() {
+      const set = new Set();
+      this.resource.versions.forEach((v) => (v.platforms || []).forEach((p) => set.add(p)));
+      return [...set];
+    },
+    filteredVersions() {
+      const ch = this.verFilterChannels;
+      const gv = this.verFilterGameVersions;
+      const pf = this.verFilterPlatforms;
+      return this.resource.versions.filter(
+        (v) =>
+          // 多选语义：任一命中即保留（OR）；空数组 = 该维度不筛
+          (!ch.length || ch.includes(v.channel)) &&
+          (!gv.length || (v.gameVersions || []).some((g) => gv.includes(g))) &&
+          (!pf.length || (v.platforms || []).some((p) => pf.includes(p)))
+      );
+    },
+    versionTotalPages() {
+      return Math.max(1, Math.ceil(this.filteredVersions.length / this.VER_PAGE_SIZE));
+    },
+    pagedVersions() {
+      // 筛选/数据变化后页码可能越界（如翻页后改筛选），钳制到有效范围
+      const page = Math.min(this.verPage, this.versionTotalPages);
+      if (page !== this.verPage) return this.filteredVersions; // 本次渲染先用钳制值，watch 再校正
+      const start = (page - 1) * this.VER_PAGE_SIZE;
+      return this.filteredVersions.slice(start, start + this.VER_PAGE_SIZE);
+    },
     /** 下载面板唯一入口：最新稳定版优先，否则取第一个带可见资产的版本 */
     latestDownloadable() {
       const list = this.resource.versions || [];
@@ -320,6 +431,19 @@ export default {
   watch: {
     slug() {
       this.fetchDetail();
+    },
+    // 任一筛选变化回到第 1 页；数据刷新（slug 切换）后同样重置
+    verFilterChannels() {
+      this.verPage = 1;
+    },
+    verFilterGameVersions() {
+      this.verPage = 1;
+    },
+    verFilterPlatforms() {
+      this.verPage = 1;
+    },
+    filteredVersions() {
+      if (this.verPage > this.versionTotalPages) this.verPage = this.versionTotalPages;
     },
   },
   created() {
@@ -364,6 +488,12 @@ export default {
       // 后台"主资产最多一个，无主资产取排序第一个可见资产"已在后端排序保证，
       // 前端直接取第一个即可（isPrimary DESC, sort ASC）
       return (v.assets && v.assets[0]) || { id: 0, filename: "" };
+    },
+    /** 清空版本筛选（分页由 watch 归位） */
+    clearVersionFilters() {
+      this.verFilterChannels = [];
+      this.verFilterGameVersions = [];
+      this.verFilterPlatforms = [];
     },
 
     /** ── 版本表格行内操作（参照 Modrinth：下载 / 新标签打开 / 复制链接）── */
@@ -633,6 +763,87 @@ export default {
 /* ── 版本 Tab：表格 ── */
 .res-version-table-wrap {
   padding-top: 8px;
+}
+/* ── 版本筛选栏 + 分页（参照 Modrinth Versions 工具栏） ── */
+.res-vfilter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.res-vfilter-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.res-vfilter-icon {
+  color: var(--fx-text-3);
+  font-size: 13px;
+}
+.res-vfilter-select {
+  height: 32px;
+  padding: 0 28px 0 10px;
+  border: 1px solid var(--fx-line);
+  border-radius: 8px;
+  background: var(--fx-card) url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E") no-repeat right 10px center;
+  appearance: none;
+  font-size: 13px;
+  color: var(--fx-text-2);
+  cursor: pointer;
+}
+.res-vfilter-select:focus {
+  outline: none;
+  border-color: #4caf50;
+}
+.res-vfilter-clear {
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  background: transparent;
+  color: #4caf50;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.res-vfilter-clear:hover {
+  background: rgba(76, 175, 80, 0.08);
+}
+.res-vfilter-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+.res-vpage-btn {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--fx-line);
+  border-radius: 8px;
+  background: var(--fx-card);
+  color: var(--fx-text-2);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.res-vpage-btn:hover:not(:disabled) {
+  border-color: #4caf50;
+  color: #4caf50;
+}
+.res-vpage-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.res-vpage-info {
+  min-width: 52px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fx-text-2);
+  font-variant-numeric: tabular-nums;
 }
 .res-vtable {
   width: 100%;

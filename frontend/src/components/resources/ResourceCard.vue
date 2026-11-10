@@ -1,7 +1,7 @@
 <template>
   <!-- 资源卡片（需求 §5.2：整卡可点、封面统一比例、最多 2-3 个关键标签、
        下载跳转文案不写"下载量"） -->
-  <article class="res-card" @click="$emit('click')">
+  <article class="res-card" :class="{ 'res-card--list': compact }" @click="$emit('click')">
     <div class="res-card-cover">
       <img v-if="resource.coverUrl" :src="resource.coverUrl" :alt="resource.name" loading="lazy" />
       <div v-else class="res-card-cover-ph">
@@ -18,12 +18,17 @@
         <h3 class="res-card-name">{{ resource.name }}</h3>
         <span class="fx-tag fx-tag-cat res-card-type">{{ typeLabel }}</span>
       </div>
-      <p class="res-card-summary">{{ resource.summary || "暂无简介" }}</p>
-      <div class="res-card-tags">
+      <p v-if="!compact" class="res-card-summary">{{ resource.summary || "暂无简介" }}</p>
+      <div v-if="!compact" class="res-card-tags">
         <span v-for="p in topPlatforms" :key="p" class="fx-tag fx-tag-hash">{{ platformLabel(p) }}</span>
         <span v-for="g in topGameVersions" :key="g" class="fx-tag fx-tag-hash">{{ gameVersionLabel(g) }}</span>
         <span class="fx-tag fx-tag-hash">{{ sideLabel }}</span>
         <span v-if="extraTagCount" class="fx-tag fx-tag-hash res-card-more">+{{ extraTagCount }}</span>
+      </div>
+      <div v-else class="res-card-tags">
+        <span class="fx-tag fx-tag-hash">{{ sideLabel }}</span>
+        <span v-if="topPlatforms.length" class="fx-tag fx-tag-hash">{{ platformLabel(topPlatforms[0]) }}</span>
+        <span class="fx-tag fx-tag-hash">{{ typeLabel }}</span>
       </div>
       <div class="res-card-meta">
         <span class="res-card-dl">
@@ -46,6 +51,8 @@ export default {
     resource: { type: Object, required: true },
     /** 字典（key→label 映射；缺字典时回退显示 key） */
     dict: { type: Object, default: () => ({}) },
+    /** 列表视图紧凑模式（P1 视图切换）：横排、隐藏简介、标签收敛 */
+    compact: { type: Boolean, default: false },
   },
   emits: ["click"],
   computed: {
@@ -108,6 +115,33 @@ export default {
   transform: translateY(-2px);
   border-color: #a5d6a7;
   box-shadow: var(--fx-shadow-l);
+}
+/* 列表视图（P1）：横向布局，封面缩为左侧小图，简介隐藏、标签收敛 */
+.res-card--list {
+  flex-direction: row;
+  align-items: stretch;
+}
+.res-card--list .res-card-cover {
+  width: 148px;
+  aspect-ratio: auto;
+  min-height: 96px;
+}
+.res-card--list .res-card-body {
+  flex: 1;
+  min-width: 0;
+  padding: 10px 14px;
+}
+.res-card--list .res-card-summary {
+  display: none;
+}
+.res-card--list .res-card-meta {
+  margin-top: auto;
+}
+@media (max-width: 640px) {
+  /* 移动端列表视图封面进一步收窄，保正文可读 */
+  .res-card--list .res-card-cover {
+    width: 104px;
+  }
 }
 .res-card-cover {
   position: relative;

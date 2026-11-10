@@ -26,6 +26,23 @@
             <option value="name_asc">名称</option>
             <option value="downloads_desc">下载跳转次数</option>
           </select>
+          <!-- 视图切换（资源中心 P1）：网格 / 列表；偏好存 localStorage -->
+          <div class="res-view-toggle" role="group" aria-label="视图切换">
+            <button
+              type="button"
+              class="res-view-btn"
+              :class="{ on: viewMode === 'grid' }"
+              title="网格视图"
+              @click="setViewMode('grid')"
+            ><i class="fa-solid fa-grip"></i></button>
+            <button
+              type="button"
+              class="res-view-btn"
+              :class="{ on: viewMode === 'list' }"
+              title="列表视图"
+              @click="setViewMode('list')"
+            ><i class="fa-solid fa-list"></i></button>
+          </div>
           <!-- 移动端筛选按钮 -->
           <button type="button" class="fx-btn res-filter-toggle" @click="drawerOpen = true">
             <i class="fa-solid fa-sliders"></i>筛选
@@ -109,8 +126,15 @@
             </button>
           </div>
 
-          <div v-else class="res-grid">
-            <ResourceCard v-for="r in items" :key="r.id" :resource="r" :dict="filterDict" @click="goDetail(r)" />
+          <div v-else :class="viewMode === 'list' ? 'res-list' : 'res-grid'">
+            <ResourceCard
+              v-for="r in items"
+              :key="r.id"
+              :resource="r"
+              :dict="filterDict"
+              :compact="viewMode === 'list'"
+              @click="goDetail(r)"
+            />
           </div>
 
           <div v-if="items.length && loading" class="fx-loading-box">
@@ -166,6 +190,8 @@ export default {
       searchInput: "",
       drawerOpen: false,
       searchTimer: null,
+      // 视图模式（P1）：grid=网格 list=列表；本地偏好持久化，无 URL 参数
+      viewMode: localStorage.getItem("res_view_mode") === "list" ? "list" : "grid",
     };
   },
   computed: {
@@ -226,6 +252,15 @@ export default {
   methods: {
     splitParam(v) {
       return (v || "").split(",").filter(Boolean);
+    },
+    /** 视图切换（P1）：本地偏好持久化，下次进入保持用户选择 */
+    setViewMode(mode) {
+      this.viewMode = mode;
+      try {
+        localStorage.setItem("res_view_mode", mode);
+      } catch (e) {
+        /* 隐私模式等 localStorage 不可用时静默降级为会话内记忆 */
+      }
     },
     typeLabel(key) {
       return (this.filterDict.resource_type || []).find((i) => i.key === key)?.label ?? key;
@@ -475,6 +510,42 @@ export default {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 14px;
+}
+/* 列表视图（P1）：单列纵向排列，卡片自身转横排 */
+.res-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+/* 视图切换器（P1）：与排序下拉同高的分段按钮 */
+.res-view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--fx-line);
+  border-radius: 8px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+.res-view-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: var(--fx-card, #fff);
+  color: var(--fx-text-3, #909399);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.res-view-btn + .res-view-btn {
+  border-left: 1px solid var(--fx-line);
+}
+.res-view-btn.on {
+  background: #4caf50;
+  color: #fff;
+}
+.res-view-btn:not(.on):hover {
+  color: #4caf50;
 }
 .res-more {
   display: flex;

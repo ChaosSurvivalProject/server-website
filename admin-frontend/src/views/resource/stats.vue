@@ -61,7 +61,7 @@ onMounted(() => {
       class="rc-tip"
       type="info"
       :closable="false"
-      :title="stats?.note || '本站记录的是下载按钮跳转点击次数，文件由 GitHub 托管，非 GitHub 实际下载量。'"
+      :title="stats?.note || '本站记录的是下载按钮跳转点击次数（同一 IP 对同一文件 24 小时只计一次），文件由 GitHub 托管，非 GitHub 实际下载量。'"
     />
 
     <div class="toolbar">

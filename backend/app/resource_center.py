@@ -23,9 +23,9 @@
 
   ── 管理员（require_admin） ──
   GET    /resources/admin/page          资源管理分页（keyword/status，含未发布与已软删）
-  GET    /resources/admin/{id}          资源编辑回填（全字段 + 关联 key 数组）
+  GET    /resources/admin/{id}          资源编辑回填（全字段 + 关联 key 数组 + customLinks）
   POST   /resources/admin               新建资源
-  PUT    /resources/admin/{id}          编辑资源（slug 唯一性校验；同步三张关联表）
+  PUT    /resources/admin/{id}          编辑资源（slug 唯一性校验；同步三张关联表；customLinks 全量重写）
   POST   /resources/admin/{id}/status   状态切换（publish/hide/archive/draft）
   DELETE /resources/admin/{id}          软删除（deleted_at；前台立即可见性消失）
   GET    /resources/admin/{id}/versions          版本列表（含隐藏，含资产统计）
@@ -148,7 +148,7 @@ VERSION_MAX = 200  # 单资源版本数上限（防误批量灌库；正常运�
 ASSET_MAX = 50  # 单版本资产数上限
 
 # 计数口径固定文案（后台 tooltip / 前台说明共用语义；前端本地也有同文案）
-DOWNLOAD_COUNT_NOTE = "本站记录的是下载按钮跳转点击次数，文件由 GitHub 托管，非 GitHub 实际下载量。"
+DOWNLOAD_COUNT_NOTE = "本站记录的是下载按钮跳转点击次数（同一 IP 对同一文件 24 小时只计一次），文件由 GitHub 托管，非 GitHub 实际下载量。"
 
 # ── 下载端点限速（按 IP+资产，进程内滑动窗口；与 kb.py 同思路） ────
 # 一阶段单 worker 部署（uvicorn 默认），进程内窗口够用；扩多 worker 需换共享存储
@@ -159,6 +159,29 @@ _download_minute: dict[str, deque] = defaultdict(deque)
 
 def _now_iso() -> str:
     return datetime.now(_TZ).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _now_iso_minus_hours(hours: int) -> str:
+    """当前北京时间往前推 N 小时的 ISO 串（展示计数 24h 去重窗口用）。"""
+    return (datetime.now(_TZ) - timedelta(hours=hours)).strftime("%Y-%m-%dT%H:%M:%S")
+
+
+def _normalize_published_at(raw: str, default: str = "") -> str:
+    """版本发布时间归一化：统一成完整 naive ISO「YYYY-MM-DDTHH:MM:SS」（项目时间口径）。
+
+    后台日期选择器只到天（提交 'YYYY-MM-DD'），直接入库会在字符串降序排序时
+    被压到同时日带时间值的后面（'2026-11-10' < '2026-11-10T19:22:44'）。
+    纯日期补 T23:59:59（当日最末）：「只选了日期」的语义是"当天发布"，
+    同日手动精确时间的版本更晚创建、应排在其前，但只选日期的新版本
+    应排在所有历史同日版本之前（版本迭代总是越来越新）。
+    非法/空值回退 default。
+    """
+    s = (raw or "").strip()
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return f"{s}T23:59:59"
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}", s):
+        return s
+    return (default or s or "")[:30]
 
 
 def _client_ip(request: Request) -> str:
@@ -235,6 +258,55 @@ def _validate_github_asset_url(url: str) -> str:
     if len(u) > 1024:
         raise HTTPException(status_code=400, detail="URL 过长（≤1024 字符）")
     return u
+
+
+# 自定义外链（custom_links）规约：
+#   - 只接受 http:// 或 https:// 开头：前台详情页以 <a :href> 原样下发，
+#     非 http(s) 协议（javascript:/data: 等）必须在写入侧拦掉；
+#   - 条目上限 10、label ≤30 字（Pydantic 层已限），URL ≤512 字符；
+#   - 存储为 JSON 数组字符串（与 resource_versions.game_versions 同款口径）。
+CUSTOM_LINKS_MAX = 10
+
+
+def _normalize_custom_links(links: Optional[list]) -> str:
+    """自定义外链列表 → 入库 JSON 字符串（写入侧统一规范化 + 校验）。
+
+    Pydantic 已保证元素是 CustomLinkItem；这里补 strip、http(s) 白名单与条数上限。
+    """
+    if not links:
+        return "[]"
+    items = []
+    for link in links[:CUSTOM_LINKS_MAX]:
+        label = (link.label or "").strip()
+        url = (link.url or "").strip()
+        if not label or not url:
+            continue
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise HTTPException(
+                status_code=400,
+                detail=f"自定义链接「{label}」的 URL 必须以 http:// 或 https:// 开头",
+            )
+        if len(url) > 512:
+            raise HTTPException(
+                status_code=400, detail=f"自定义链接「{label}」的 URL 过长（≤512 字符）"
+            )
+        items.append({"label": label, "url": url})
+    return json.dumps(items, ensure_ascii=False)
+
+
+def _dump_custom_links(raw: str) -> list:
+    """入库 JSON 字符串 → 对外数组（容错：脏数据按空数组，不让详情页白屏）。"""
+    v = _loads_json_array(raw)
+    out = []
+    for item in v:
+        if not isinstance(item, dict):
+            continue
+        label = str(item.get("label", "")).strip()
+        url = str(item.get("url", "")).strip()
+        # 读取侧只放行 http(s)，与写入侧白名单一致（历史脏数据兜底）
+        if label and (url.startswith("http://") or url.startswith("https://")):
+            out.append({"label": label, "url": url})
+    return out
 
 
 async def _validate_dict_keys(
@@ -671,6 +743,7 @@ async def get_resource_detail(slug: str, db: AsyncSession = Depends(get_db)):
             "githubRepoUrl": row.github_repo_url or "",
             "issuesUrl": row.issues_url or "",
             "docsUrl": row.docs_url or "",
+            "customLinks": _dump_custom_links(row.custom_links),
             "createTime": row.create_time,
             "platforms": rels["platforms"].get(row.id, []),
             "gameVersions": rels["gameVersions"].get(row.id, []),
@@ -732,24 +805,44 @@ async def download_asset(asset_id: int, request: Request, db: AsyncSession = Dep
     ip = _client_ip(request)
     ua = (request.headers.get("user-agent", "") or "")[:255]
     referer = (request.headers.get("referer", "") or "")[:255]
-    db.add(
-        DownloadEvent(
-            resource_id=resource.id,
-            version_id=version.id,
-            asset_id=asset.id,
-            created_at=now,
-            ip_hash=_ip_hash(ip),
-            user_agent=ua,
-            referer=referer,
+    ip_hash = _ip_hash(ip)
+    # 展示计数去重（TODO P1）：同一 IP 哈希对同一资产 24h 内只累加一次冗余计数——
+    # 事件行仍全量记录（统计对账/时间范围筛选以 events 为准），去重只作用于
+    # resources.download_count 这一展示口径。窗口判定是「存在即跳过」的查询而非
+    # 先查后写业务态：并发跳转下最多多计不漏计，且不加锁不阻塞。
+    day_ago = _now_iso_minus_hours(24)
+    already_counted = (
+        await db.execute(
+            select(DownloadEvent.id)
+            .where(
+                DownloadEvent.asset_id == asset.id,
+                DownloadEvent.ip_hash == ip_hash,
+                DownloadEvent.created_at > day_ago,
+                DownloadEvent.counted == 1,
+            )
+            .limit(1)
         )
+    ).scalar_one_or_none()
+    should_count = already_counted is None
+    event = DownloadEvent(
+        resource_id=resource.id,
+        version_id=version.id,
+        asset_id=asset.id,
+        created_at=now,
+        ip_hash=ip_hash,
+        user_agent=ua,
+        referer=referer,
+        counted=1 if should_count else 0,
     )
-    # 冗余计数与事件同事务提交（forum 原子计数同思路；NullPool 下每请求独立连接，
-    # 事务内两写要么同时可见要么同时回滚，与关系表不会失配）
-    await db.execute(
-        update(Resource)
-        .where(Resource.id == resource.id)
-        .values(download_count=Resource.download_count + 1)
-    )
+    db.add(event)
+    if should_count:
+        # 冗余计数与事件同事务提交（forum 原子计数同思路；NullPool 下每请求独立连接，
+        # 事务内两写要么同时可见要么同时回滚，与关系表不会失配）
+        await db.execute(
+            update(Resource)
+            .where(Resource.id == resource.id)
+            .values(download_count=Resource.download_count + 1)
+        )
     await db.commit()
 
     return RedirectResponse(url=url, status_code=302)
@@ -1045,6 +1138,7 @@ async def admin_get_resource(
             "githubRepoUrl": row.github_repo_url or "",
             "issuesUrl": row.issues_url or "",
             "docsUrl": row.docs_url or "",
+            "customLinks": _dump_custom_links(row.custom_links),
             "createTime": row.create_time,
             "deletedAt": row.deleted_at or "",
             "createdBy": row.created_by or "",
@@ -1085,6 +1179,7 @@ async def admin_create_resource(
         github_repo_url=(data.github_repo_url or "").strip(),
         issues_url=(data.issues_url or "").strip(),
         docs_url=(data.docs_url or "").strip(),
+        custom_links=_normalize_custom_links(data.custom_links),
         created_by=_admin.username,
         download_count=0,
         create_time=now,
@@ -1148,6 +1243,8 @@ async def admin_update_resource(
         row.issues_url = data.issues_url.strip()
     if data.docs_url is not None:
         row.docs_url = data.docs_url.strip()
+    if data.custom_links is not None:
+        row.custom_links = _normalize_custom_links(data.custom_links)
 
     row.update_time = now
     await _sync_resource_relations(
@@ -1289,7 +1386,7 @@ async def admin_create_version(
         version=version_no,
         release_tag=(data.release_tag or "").strip(),
         channel=data.channel,
-        published_at=(data.published_at or now)[:30],
+        published_at=_normalize_published_at(data.published_at, default=now),
         game_versions=json.dumps(gv_keys, ensure_ascii=False),
         platforms=json.dumps(pf_keys, ensure_ascii=False),
         side=data.side,
@@ -1346,7 +1443,8 @@ async def admin_update_version(
         _validate_channel(data.channel)
         v.channel = data.channel
     if data.published_at is not None:
-        v.published_at = (data.published_at or "")[:30]
+        # 同创建口径归一化（空串 = 清空展示日期，保留原值语义改为显式传原值）
+        v.published_at = _normalize_published_at(data.published_at, default="")
     if data.game_versions is not None:
         v.game_versions = json.dumps(
             await _validate_dict_keys(db, DICT_TYPE_GAME_VERSION, data.game_versions),
