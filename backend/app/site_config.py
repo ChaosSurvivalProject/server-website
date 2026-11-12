@@ -1,7 +1,10 @@
-"""站点配置模块（系统管理-网站配置；首页个性化元素可配置化）。
+"""站点配置模块（系统管理-网站配置；首页个性化元素 + 站点标识可配置化）。
 
 数据形态：site_settings KV 表（app/database.py SiteSetting），键集合由
 FIELD_DEFS 定义、后台整包读写，不做自由键（防脏数据、防未知键注入）。
+
+分区：site.*（站点标识：标题/名称/logo）、banner.*、hero.*、video.*、
+faction.*、forum.*、footer.*。
 
 接口：
 - GET  /api/site-config            公开：首页渲染读取（未配置的键回默认值）
@@ -40,6 +43,10 @@ router = APIRouter()
 # type: text=单行 / textarea=多行 / image=图片URL / int=正整数 / bool=开关
 # mark: 允许 [[..]] {{..}} 高亮标记的富文本字段
 FIELD_DEFS: dict[str, dict[str, Any]] = {
+    # 站点标识（全站品牌：浏览器标签标题 / 导航栏与登录页的名称、logo）
+    "site.title": {"type": "text", "label": "网站标题", "max": 100},
+    "site.name": {"type": "text", "label": "网站名称", "max": 30},
+    "site.logo": {"type": "image", "label": "网站 Logo"},
     # 顶部内测横幅（常驻显示）
     "banner.enabled": {"type": "bool", "label": "横幅开关"},
     "banner.text": {"type": "textarea", "label": "横幅文案", "max": 200},
@@ -89,6 +96,9 @@ FIELD_DEFS: dict[str, dict[str, Any]] = {
 
 # 默认值：与改造前首页硬编码逐字一致（升级后未配置 = 页面行为不变）
 DEFAULTS: dict[str, str] = {
+    "site.title": "星穹旅驿 | 生存服务器",
+    "site.name": "星穹旅驿",
+    "site.logo": "",  # 空 = 前端回退打包内默认 logo 图
     "banner.enabled": "1",
     "banner.text": "🔔 全新阵营对战玩法内测开启，名额有限 · 申请时间 2026-09-21 ~ 2026-10-07",
     "banner.linkText": "申请内测",
@@ -210,11 +220,12 @@ async def _load_rows(db: AsyncSession) -> dict[str, str]:
 async def get_site_config(db: AsyncSession = Depends(get_db)):
     """公开：首页渲染读取（未配置键回默认值）。
 
-    Response: {code, message, data: {banner: {...}, hero: {...}, video: {...}, faction: {...}, forum: {...}}}
+    Response: {code, message, data: {site: {...}, banner: {...}, hero: {...}, video: {...}, faction: {...}, forum: {...}, footer: {...}}}
     """
     rows = await _load_rows(db)
     merged = _merge_defaults(rows)
     grouped: dict[str, dict[str, Any]] = {
+        "site": {},
         "banner": {},
         "hero": {},
         "video": {},

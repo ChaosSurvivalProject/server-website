@@ -26,6 +26,11 @@ const parseError = ref("");
 // 分区顺序与标题（键前缀 → 展示名），与首页元素一一对应
 const SECTIONS: Array<{ prefix: string; title: string; tip?: string }> = [
   {
+    prefix: "site",
+    title: "站点标识",
+    tip: "全站品牌信息：网站标题=浏览器标签页标题；网站名称与 Logo 用于顶部导航栏、登录/注册页；Logo 未上传时使用内置默认图"
+  },
+  {
     prefix: "banner",
     title: "顶部横幅",
     tip: "首页内容区最上方的常驻提示条；开关关闭后整条隐藏"
@@ -268,6 +273,7 @@ onMounted(() => {
               v-if="settings[field.key]"
               :src="settings[field.key]"
               class="image-preview"
+              :class="{ 'image-preview--logo': field.key === 'site.logo' }"
               alt=""
             />
             <div v-else class="image-preview image-preview-empty">未上传</div>
@@ -461,6 +467,12 @@ onMounted(() => {
   color: var(--el-text-color-placeholder);
   font-size: 12px;
   background: var(--el-fill-color-light);
+}
+
+/* 站点 Logo 保持原始比例完整展示（不裁切），浅底衬托透明 PNG */
+.image-preview--logo {
+  object-fit: contain;
+  background: var(--el-fill-color-lighter);
 }
 
 .save-bar {

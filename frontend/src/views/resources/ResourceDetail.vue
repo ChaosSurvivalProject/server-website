@@ -316,6 +316,7 @@ import { resourcesAPI } from "../../api/api.js";
 import { renderMarkdownContent } from "../../utils/markdown.js";
 import { formatCount } from "../../utils/forumFormat.js";
 import { showForumToast } from "../../utils/forumToast.js";
+import { siteBranding } from "../../utils/siteBranding.js";
 import { copyText } from "../../utils/clipboard.js";
 import VersionFilterMulti from "../../components/resources/VersionFilterMulti.vue";
 
@@ -579,7 +580,7 @@ export default {
         ]);
         this.resource = detail;
         this._dict = filters || {};
-        document.title = `${detail.name} - 资源中心 - 星穹旅驿`;
+        document.title = `${detail.name} - 资源中心 - ${siteBranding.name}`;
       } catch (e) {
         this.errorTitle = "资源不存在或未公开";
         this.error = e.message || "该资源可能已被下架或链接有误";

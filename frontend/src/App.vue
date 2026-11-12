@@ -63,6 +63,7 @@ import ForumToast from "./components/forum/ForumToast.vue";
 import fastRunLogo from "./assets/images/download/logo-white.png";
 import { authAPI, siteConfigAPI } from "./api/api.js";
 import { getToken, setAuth } from "./utils/auth.js";
+import { applySiteBranding } from "./utils/siteBranding.js";
 import McConfig from "./config/mc-config.js";
 
 // 页脚内置默认值：与后端 site_config.DEFAULTS / Home.vue HOME_DEFAULT_CONFIG 同一口径，
@@ -137,6 +138,12 @@ export default {
       if (e.detail) this.footerConfig = e.detail;
     };
     window.addEventListener("site-footer-config", this._footerHandler);
+    // 站点标识（网站标题/名称/logo）：根组件统一拉取公开配置，覆盖全局
+    // siteBranding（NavBar / AuthView 绑定响应）；失败保持内置默认值，不打扰用户
+    siteConfigAPI
+      .getConfig()
+      .then((data) => applySiteBranding(data && data.site))
+      .catch(() => {});
     // 恢复登录态：本地存有 token 时向后端校验并刷新用户信息，
     // token 已失效则由 axios 拦截器统一清除并跳转登录页
     if (getToken()) {

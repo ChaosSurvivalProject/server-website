@@ -3,8 +3,8 @@
     <div class="nav-container">
       <div class="nav-left">
         <router-link to="/" class="logo">
-          <img :src="logoImg" alt="星穹旅驿 logo" class="logo-img" />
-          <span class="logo-text">星穹旅驿</span>
+          <img :src="siteLogo" :alt="siteName + ' logo'" class="logo-img" />
+          <span class="logo-text">{{ siteName }}</span>
         </router-link>
       </div>
 
@@ -167,10 +167,10 @@
 </template>
 
 <script>
-import logoImg from "../assets/images/logo.png";
 import defaultAvatar from "../assets/images/avatar-default.svg";
 import McConfig from "../config/mc-config.js";
 import { authState, clearAuth } from "../utils/auth.js";
+import { siteBranding } from "../utils/siteBranding.js";
 import { showForumToast } from "../utils/forumToast.js";
 import { messagesAPI } from "../api/api.js";
 import MessagesPopup from "../views/Messages.vue";
@@ -181,7 +181,6 @@ export default {
   data() {
     return {
       mobileMenuOpen: false,
-      logoImg,
       defaultAvatar,
       avatarMenuOpen: false,
       unreadCount: 0,
@@ -190,6 +189,13 @@ export default {
     };
   },
   computed: {
+    /** 站点标识（网站配置 site.* 全局响应式；未配置时回退内置默认值） */
+    siteLogo() {
+      return siteBranding.logo;
+    },
+    siteName() {
+      return siteBranding.name;
+    },
     /** 全局登录态（reactive，登录/退出即时响应） */
     loggedIn() {
       return !!authState.token;

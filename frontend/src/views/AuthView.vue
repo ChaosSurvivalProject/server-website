@@ -3,8 +3,8 @@
     <div class="auth-card pixel-border">
       <!-- 站点标识 -->
       <div class="auth-logo">
-        <img :src="logoImg" alt="星穹旅驿 logo" />
-        <span class="auth-logo-text">星穹旅驿</span>
+        <img :src="siteLogo" :alt="siteName + ' logo'" />
+        <span class="auth-logo-text">{{ siteName }}</span>
       </div>
 
       <!-- 登录 / 注册切换 -->
@@ -165,10 +165,10 @@
 </template>
 
 <script>
-import logoImg from "../assets/images/logo.png";
 import SliderCaptcha from "../components/SliderCaptcha.vue";
 import { authAPI } from "../api/api.js";
 import { setAuth } from "../utils/auth.js";
+import { siteBranding } from "../utils/siteBranding.js";
 
 // 邮箱格式（与后端 email-validator 校验意图一致的前端快速校验）
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -185,9 +185,17 @@ export default {
       validator: (v) => ["login", "register"].includes(v),
     },
   },
+  computed: {
+    /** 站点标识（网站配置 site.* 全局响应式；未配置时回退内置默认值） */
+    siteLogo() {
+      return siteBranding.logo;
+    },
+    siteName() {
+      return siteBranding.name;
+    },
+  },
   data() {
     return {
-      logoImg,
       mode: this.initialMode,
       loading: false,
       notice: "",

@@ -65,7 +65,7 @@ export const serverConfigAPI = {
 export const siteConfigAPI = {
   /**
    * 公开：首页渲染读取
-   * @returns {Promise} - data: {banner: {enabled, text, linkText, linkUrl}, hero: {...}, video: {...}, faction: {...}, forum: {carouselImages}}
+   * @returns {Promise} - data: {site: {title, name, logo}, banner: {enabled, text, linkText, linkUrl}, hero: {...}, video: {...}, faction: {...}, forum: {carouselImages}, footer: {...}}
    */
   getConfig: () => {
     return axiosInstance.get('/api/site-config', { silent: true });

@@ -74,7 +74,7 @@
 
 - 服务器地址持久化在 SQLite `servers` 表（**DB 为唯一权威，内存 `SERVERS` 字典为读缓存**）：启动时 `load_servers()` 读库填充内存，表为空时用默认注册表做种子；后台管理页的增删改先改内存再同步落库（先 commit 再返回，失败回滚内存），**重启不再丢失**（原"重启即重置"行为属 bug，已修复）。不能删除主服务器，设主 / 设 `isPrimary` 会自动清除其他服务器的主标记，全表始终至多一个主服务器。
 
-## 网站配置（首页个性化）
+## 网站配置（首页个性化 + 站点标识）
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
@@ -82,8 +82,9 @@
 | GET | `/api/site-config/admin` | 管理员：后台表单回显（全部键 + 字段定义）（**需管理员**） |
 | PUT | `/api/site-config/admin` | 管理员：整包保存 `{settings: {键: 值}}`（**需管理员**） |
 
-- 存储在 SQLite `site_settings` KV 表；键集合由 `backend/app/site_config.py` 的 `FIELD_DEFS` 定义（banner.* / hero.* / video.* / faction.* / forum.* / footer.* 六个分区），不做自由键。
-- 公开响应按分区分组（`banner.enabled` / `faction.enabled` / `footer.enabled` 为布尔，其余为字符串）；**DB 无该键时回默认值**，前端另有内置默认值兜底（`Home.vue` 的 `HOME_DEFAULT_CONFIG`、`App.vue` 的 `FOOTER_DEFAULT_CONFIG`），接口失败不开天窗。
+- 存储在 SQLite `site_settings` KV 表；键集合由 `backend/app/site_config.py` 的 `FIELD_DEFS` 定义（site.* / banner.* / hero.* / video.* / faction.* / forum.* / footer.* 七个分区），不做自由键。
+- 公开响应按分区分组（`banner.enabled` / `faction.enabled` / `footer.enabled` 为布尔，其余为字符串）；**DB 无该键时回默认值**，前端另有内置默认值兜底（`Home.vue` 的 `HOME_DEFAULT_CONFIG`、`App.vue` 的 `FOOTER_DEFAULT_CONFIG`、`utils/siteBranding.js`），接口失败不开天窗。
+- `site` 分区（`site.title` / `site.name` / `site.logo`）为全站品牌：`App.vue` 启动时读取并写入 `utils/siteBranding.js` 的全局响应式状态，`site.title` 作为浏览器标签页标题，`site.name` / `site.logo` 用于顶部导航栏与登录/注册页；`site.logo` 置空回退打包内默认图。
 - 富文本字段（`hero.title` / `hero.subtitle` / `hero.description`）支持 `[[绿色]]` `{{紫色}}` 高亮标记，后端校验成对闭合，前端 `frontend/src/utils/highlight.js` 解析成 span（不走 v-html）。
 - 图片字段存 `/api/announcement/uploads/...` 相对 URL（复用公告上传接口）；置空则前端回退打包内默认图。
 - 行式列表字段（`hero.features` / `footer.sponsorDesc` / `footer.copyright` 每行一条；`footer.columns` 每行 `栏目名|链接文字|链接地址`）后端存原文，前端解析成数组。
