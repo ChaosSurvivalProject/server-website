@@ -28,3 +28,5 @@ backend/.env
 .playwright-mcp
 .zcode
 .workbuddy
+# 根目录 Docker Compose 本地/测试变量（禁止提交）
+/.env

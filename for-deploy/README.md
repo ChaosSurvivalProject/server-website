@@ -4,6 +4,8 @@
 
 本目录存放生产服务器上实际生效、但不属于任何子项目构建产物的配置文件快照，作为仓库内的留档参照。
 
+> **2026-11 起镜像化部署**：生产镜像由 GitHub Actions（`.github/workflows/release-images.yml`）在 Release 时构建并托管在 GHCR：`ghcr.io/chaossurvivalproject/server-website-backend` / `-web`。服务器只执行 `docker compose pull && docker compose up -d --no-build`，**不在服务器 build、不跑 Vite**（香港 2C2G 跑前端构建会 OOM）。下文「前端产物从哪来」的静态投放方案降级为历史 / 备用说明；当前以 GHCR 镜像为准。
+
 ## 生产拓扑（2026-10-03 起：1panel + Docker）
 
 换服务器后整套部署方式变了——旧站是裸机 nginx（`/etc/nginx/http.d/chaos-web.conf`，NAT 外部 23333 → 内部 80 且 nginx 在 80 上直接跑 SSL）。**现在是标准 443 的 1panel 托管**：
@@ -52,7 +54,7 @@ ssh root@<生产机> 'docker exec 1Panel-openresty-TV94 nginx -t && docker exec 
 
 ## 前端产物从哪来
 
-服务器上**没有也不会**跑 Vite（那台机器内存只剩 ~1GB，与 MySQL/Redis/halo/napcat 等生产服务同机，Vite 构建峰值会触发 OOM 连坐）。三个产物在本机构建后 `scp` 投放：
+服务器上**没有也不会**跑 Vite（生产为香港 2C2G/30G，Vite 构建峰值会 OOM）；前端与后端都改由 GitHub Actions 构建 GHCR 镜像，服务器只 pull 运行。以下静态投放表为历史 / 备用方案：
 
 | 子项目 | 构建命令（本机） | 投放位置 |
 | --- | --- | --- |
@@ -62,13 +64,13 @@ ssh root@<生产机> 'docker exec 1Panel-openresty-TV94 nginx -t && docker exec 
 
 站点根目录里 `404.html` 是 1panel 建的，`admin/`、`wiki/` 是子目录——三者与 SPA 的 `index.html` 共存，靠 `xqly-app.conf` 里的 location 分流。
 
-## 自包含部署（根 docker-compose.yml 的 web 服务，可选）
+## 生产/自包含部署（根 docker-compose.yml 的 web 服务）
 
-仓库根目录 `docker-compose.yml` 定义了 `xqly-website-web` 服务（`web/Dockerfile` + `web/nginx.conf`）：三个前端在镜像内多阶段构建、收进**一个 nginx 容器**（`xqly-website-web`），按与 `xqly-app.conf` 相同的规则分发 `/` 主站、`/admin/`、`/wiki/`，并反代 `/api` 到 `xqly-website-backend:5000`。宿主机只绑回环 `127.0.0.1:8090`，适合本地整栈联调或无 1panel 的自包含部署。
+仓库根目录 `docker-compose.yml` 定义了 `xqly-website-web` 服务（`web/Dockerfile` + `web/nginx.conf`）：三个前端在镜像内多阶段构建、收进**一个 nginx 容器**（`xqly-website-web`），按与 `xqly-app.conf` 相同的规则分发 `/` 主站、`/admin/`、`/wiki/`，并反代 `/api` 到 `xqly-website-backend:5000`。生产由 1panel/OpenResty 反代 `127.0.0.1:8090`；测试环境绑 `0.0.0.0:8090` 便于局域网访问。镜像统一由 CI 构建后 `pull` 运行。
 
 两点注意：
 
-- **生产前端仍按上表在本机构建投放**，不跑 `web` 镜像（服务器内存 ~1GB，容器内 Vite 构建会 OOM）——`web` 是本地/自包含方案，不是生产的替代。
+- **生产前端也走 `web` 镜像（GHCR，CI 构建）**，服务器不跑 Vite；生产 `web` 只绑 `127.0.0.1:8090`，由 1panel/OpenResty 反代。测试环境才把 web 绑 `0.0.0.0:8090` 便于局域网访问。
 - `web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是**同一套路由规则的两份载体**，改其一须同步另一份（SSE 四件套、SPA fallback、legacy location 三处尤其不能分叉）。
 
 ## 注意（改 conf 前必读）
@@ -91,7 +93,7 @@ ssh root@<生产机> 'docker exec 1Panel-openresty-TV94 nginx -t && docker exec 
 - 日志：追加到 `/proc/1/fd/1`，即 `docker logs xqly-website-backend`
 - 关闭开关：容器环境变量 `CRON_ENABLED=0`（本地只跑 API 时用）
 
-改调度时间 / 加新任务 = 改 `backend/crontab` → 提交 → 重新构建镜像 → `docker compose up -d --build`。
+改调度时间 / 加新任务 = 改 `backend/crontab` → 提交并发布 Release（由 GitHub Actions 重建 backend 镜像）→ 服务器 `docker compose pull && docker compose up -d --no-build`。
 
 ⚠️ 两个必守口径（改之前先读 `backend/crontab` 顶部注释）：
 

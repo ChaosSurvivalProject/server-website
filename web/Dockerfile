@@ -18,8 +18,13 @@ FROM node:20-alpine AS build-frontend
 
 WORKDIR /build/frontend
 # 先只拷贝 manifest 以最大化利用层缓存（依赖不变时跳过 npm ci）
+# 测试环境调整：registry.npmmirror.com 的 tarball 通道在本机网络下大面积
+# 超时（元数据 200 但 *.tgz 503/504/socket timeout），故全部改用 npmjs 官方源。
+# package-lock.json 的 resolved 字段写死了 npmmirror URL，npm ci 会原样使用，
+# 必须先整包替换 registry host（两源 tarball 完全一致，integrity 不受影响）。
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm config set registry https://registry.npmmirror.com && npm ci
+RUN sed -i 's#https://registry.npmmirror.com#https://registry.npmjs.org#g' package-lock.json \
+    && npm ci --registry=https://registry.npmjs.org
 
 COPY frontend/ ./
 RUN npm run build
@@ -35,8 +40,8 @@ COPY admin-frontend/package.json admin-frontend/pnpm-lock.yaml admin-frontend/.n
 # 且与仓库 lockfile 版本严格匹配
 RUN corepack enable \
     && corepack prepare pnpm@9.15.9 --activate \
-    && npm config set registry https://registry.npmmirror.com \
-    && pnpm config set registry https://registry.npmmirror.com \
+    && npm config set registry https://registry.npmjs.org \
+    && pnpm config set registry https://registry.npmjs.org \
     && pnpm install --frozen-lockfile
 
 COPY admin-frontend/ ./
@@ -52,7 +57,8 @@ FROM node:20-alpine AS build-wiki
 
 WORKDIR /build/wiki
 COPY wiki/package.json wiki/package-lock.json ./
-RUN npm config set registry https://registry.npmmirror.com && npm ci
+RUN sed -i 's#https://registry.npmmirror.com#https://registry.npmjs.org#g' package-lock.json \
+    && npm ci --registry=https://registry.npmjs.org
 
 COPY wiki/ ./
 RUN npm run build

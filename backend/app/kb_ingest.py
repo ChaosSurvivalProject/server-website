@@ -1,19 +1,29 @@
-"""知识库摄入纯逻辑：Markdown 清洗 / 切片 / Embedding（无 FastAPI 依赖）。
+"""知识库摄入：Markdown 清洗 / 切片 / Embedding（LangChain 实现）。
+
+RAG 管线各环节统一使用 LangChain 组件：
+- 切片：``langchain_text_splitters.RecursiveCharacterTextSplitter``
+  （保留代码围栏保护与标题路径——这两点直接决定检索质量，见决策记录 §4）
+- 向量化：``langchain_openai.OpenAIEmbeddings``
+  （OpenAI 兼容端点，默认硅基流动 bge-m3；向量仍按 float32 小端 BLOB 存
+  ``kb_chunks.embedding``，数据库结构不变）
 
 被两个调用方共用（同一套切片与向量，保证检索一致性）：
 - backend/kb_sync.py        同步 CLI（独立进程，sqlite3 直写）
 - app/kb.py 管理接口        异步 FastAPI（AsyncSession + FTS 原生 SQL）
 
-切片器规格见 docs/智能客服/智能客服P0落地方案.md §5.2：代码块保护、标题路径、
-按段落/句子递归切分，目标 chunk_size=600、chunk_overlap=80。
+切片器规格见 docs/智能客服/智能客服P0落地方案.md §5.2：
+代码块保护、标题路径、按段落/句子递归切分，目标 chunk_size=600、chunk_overlap=80。
 """
 import logging
 import math
 import re
 import struct
 from dataclasses import dataclass
+from functools import lru_cache
 
-import httpx
+from langchain_core.documents import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from .config import KB
 
@@ -22,7 +32,7 @@ logger = logging.getLogger("uvicorn.error")
 CHUNK_SIZE = 600
 CHUNK_OVERLAP = 80
 EMBED_BATCH_SIZE = 32
-EMBED_TIMEOUT = httpx.Timeout(connect=10, read=60, write=10, pool=10)
+EMBED_TIMEOUT = 60.0  # 秒；单次 Embedding 请求超时
 
 
 class KBIngestError(Exception):
@@ -45,7 +55,16 @@ def clean_markdown(text: str) -> str:
     return _BLANK_LINES_RE.sub("\n\n", text).strip()
 
 
-# ── 切片 ─────────────────────────────────────────────────────────
+# ── 切片（LangChain RecursiveCharacterTextSplitter） ─────────────
+
+# 中文场景直接把句末/分句标点作为分隔符，效果等价于原自写切片器的
+# 「段落 → 行 → 句子 → 子句 → 硬切」逐级降级，但由 LangChain 统一维护。
+_TEXT_SPLITTER = RecursiveCharacterTextSplitter(
+    chunk_size=CHUNK_SIZE,
+    chunk_overlap=CHUNK_OVERLAP,
+    separators=["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""],
+    keep_separator="end",
+)
 
 
 @dataclass
@@ -55,69 +74,27 @@ class Chunk:
 
 
 _HEADING_RE = re.compile(r"^(#{1,3})\s+(.+?)\s*$")
-_SENTENCE_RE = re.compile(r"(?<=[。！？；])")
-_CLAUSE_RE = re.compile(r"(?<=[，,])")
-
-
-def _split_long_text(text: str, chunk_size: int) -> list[str]:
-    """单段超长时按 段落 → 行 → 句子 → 子句 → 硬切 逐级降级拆成小块。"""
-    if len(text) <= chunk_size:
-        return [text]
-    units: list[str] = []
-    for line in text.split("\n"):
-        if len(line) <= chunk_size:
-            units.append(line)
-            continue
-        for sentence in _SENTENCE_RE.split(line):
-            if len(sentence) <= chunk_size:
-                units.append(sentence)
-                continue
-            for clause in _CLAUSE_RE.split(sentence):
-                if len(clause) <= chunk_size:
-                    units.append(clause)
-                else:  # 无任何分隔符的超长串：硬切
-                    units.extend(clause[i:i + chunk_size] for i in range(0, len(clause), chunk_size))
-    return units
-
-
-def _merge_units(units: list[str], chunk_size: int, overlap: int) -> list[str]:
-    """贪心合并小块到 chunk_size；超出时换新块并携带上一块尾部 overlap 字符。"""
-    chunks: list[str] = []
-    buf = ""
-    for unit in units:
-        unit = unit.strip("\n")
-        if not unit:
-            continue
-        candidate = f"{buf}\n{unit}" if buf else unit
-        if len(candidate) <= chunk_size:
-            buf = candidate
-            continue
-        if buf:
-            chunks.append(buf)
-        if len(unit) > chunk_size:
-            # 理论到不了这里（_split_long_text 已拆），防御性硬切
-            chunks.extend(unit[i:i + chunk_size] for i in range(0, len(unit), chunk_size))
-            buf = ""
-        else:
-            tail = buf[-overlap:] if overlap > 0 and len(buf) > overlap else ""
-            # 尾部尽量对齐到空白处，避免 overlap 截断在半个词中间
-            half = tail[: len(tail) // 2]
-            cut = half.find(" ") + 1 if " " in half else 0
-            buf = (tail[cut:].lstrip() + "\n" + unit).strip("\n") if tail else unit
-    if buf:
-        chunks.append(buf)
-    return chunks
 
 
 def chunk_markdown(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[Chunk]:
-    """Markdown → 切片列表。
+    """Markdown → 切片列表（LangChain 切片器 + 代码围栏/标题路径保护）。
 
     1. 以 ``` 围栏为界切段：围栏内绝不切分（避免把代码劈成两半），
        单块超长时整块保留、允许超 chunk_size。
     2. 非围栏段按 #/##/### 一级分隔，记录标题路径；无标题时 heading 为空串。
-    3. 段内按段落/句子切分并贪心合并到 chunk_size。
+    3. 段内交给 ``RecursiveCharacterTextSplitter`` 递归切分并合并到 chunk_size。
     """
-    # ── 围栏切分 ──────────────────────────────────────────────
+    splitter = _TEXT_SPLITTER
+    if chunk_size != CHUNK_SIZE or overlap != CHUNK_OVERLAP:
+        # 允许调用方覆盖参数（测试/特殊源），分隔符口径保持一致。
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size,
+            chunk_overlap=overlap,
+            separators=["\n\n", "\n", "。", "！", "？", "；", "，", " ", ""],
+            keep_separator="end",
+        )
+
+    # ── 围栏切分（代码块保护与 LangChain 无关，属数据完整性前置步骤） ──
     segments: list[tuple[bool, str]] = []  # (is_code, text)
     buf: list[str] = []
     in_code = False
@@ -139,7 +116,7 @@ def chunk_markdown(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK
     if tail:
         segments.append((in_code, tail))
 
-    # ── 标题切分 + 段落合并 ───────────────────────────────────
+    # ── 标题切分 + LangChain 段落合并 ─────────────────────────
     chunks: list[Chunk] = []
 
     def _emit(section_text: str, heading: str) -> None:
@@ -149,9 +126,13 @@ def chunk_markdown(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK
         if len(section_text) <= chunk_size:
             chunks.append(Chunk(heading=heading, content=section_text))
             return
-        units = _split_long_text(section_text, chunk_size)
-        for piece in _merge_units(units, chunk_size, overlap):
-            chunks.append(Chunk(heading=heading, content=piece))
+        documents = splitter.split_documents(
+            [Document(page_content=section_text, metadata={"heading": heading})]
+        )
+        for doc in documents:
+            piece = doc.page_content.strip("\n")
+            if piece.strip():
+                chunks.append(Chunk(heading=heading, content=piece))
 
     heading_path: list[str] = []
     plain_buf: list[str] = []
@@ -174,7 +155,30 @@ def chunk_markdown(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK
     return [c for c in chunks if c.content.strip()]
 
 
-# ── Embedding（OpenAI 兼容 /embeddings） ─────────────────────────
+# ── Embedding（LangChain OpenAIEmbeddings，OpenAI 兼容 /embeddings） ──
+
+
+@lru_cache(maxsize=1)
+def get_embeddings() -> OpenAIEmbeddings:
+    """OpenAI 兼容 Embedding 客户端（进程内单例）。
+
+    - ``base_url`` 指向硅基流动等 OpenAI 协议端点；
+    - ``check_embedding_ctx_length=False``：非 OpenAI 模型不要先用 tiktoken 切 token；
+    - ``model_kwargs={"encoding_format": "float"}``：直接拿浮点向量，避免 base64 解码口径差异；
+    - ``chunk_size`` 与历史批大小一致（32），``max_retries=1`` 等价原「失败重试一次」。
+    """
+    return OpenAIEmbeddings(
+        model=KB.embed_model,
+        api_key=KB.embed_api_key or "not-needed",
+        base_url=KB.embed_base_url,
+        check_embedding_ctx_length=False,  # 非 OpenAI 模型不要先用 tiktoken 切 token
+        tiktoken_enabled=False,
+        chunk_size=EMBED_BATCH_SIZE,
+        max_retries=1,
+        timeout=EMBED_TIMEOUT,
+        # 直接要浮点向量（OpenAIEmbeddings 1.x 无独立 encoding_format 字段）
+        model_kwargs={"encoding_format": "float"},
+    )
 
 
 def _l2_normalize(vec: list[float]) -> list[float]:
@@ -193,54 +197,49 @@ def unpack_vector(blob: bytes) -> list[float]:
     return list(struct.unpack(f"<{len(blob) // 4}f", blob))
 
 
-def _post_embeddings(texts: list[str]) -> list[list[float]]:
-    """单批 Embedding 请求：失败（超时/5xx）重试一次，仍失败抛 KBIngestError。"""
-    url = f"{KB.embed_base_url}/embeddings"
-    headers = {"Authorization": f"Bearer {KB.embed_api_key}"}
-    last_error: Exception | None = None
-    for attempt in (1, 2):  # 失败重试一次
-        try:
-            resp = httpx.post(
-                url,
-                headers=headers,
-                json={"model": KB.embed_model, "input": texts},
-                timeout=EMBED_TIMEOUT,
+def _normalize_and_check(vectors: list[list[float]]) -> list[list[float]]:
+    """维度校验 + L2 归一化（库内向量点积即余弦相似度）。"""
+    normalized: list[list[float]] = []
+    for vec in vectors:
+        if len(vec) != KB.embed_dim:
+            raise KBIngestError(
+                f"Embedding 维度不符：模型返回 {len(vec)} 维，配置 KB_EMBED_DIM={KB.embed_dim}，"
+                "请检查模型与 KB_EMBED_DIM 是否一致"
             )
-            if resp.status_code >= 500:
-                raise KBIngestError(f"Embedding 服务返回 {resp.status_code}")
-            if resp.status_code != 200:
-                detail = resp.text[:200]
-                raise KBIngestError(f"Embedding 服务返回 {resp.status_code}: {detail}")
-            data = resp.json().get("data") or []
-            if len(data) != len(texts):
-                raise KBIngestError(f"Embedding 返回条数不符：期望 {len(texts)}，实际 {len(data)}")
-            rows = sorted(data, key=lambda item: item.get("index", 0))
-            vectors = [row.get("embedding") or [] for row in rows]
-            for vec in vectors:
-                if len(vec) != KB.embed_dim:
-                    raise KBIngestError(
-                        f"Embedding 维度不符：模型返回 {len(vec)} 维，配置 KB_EMBED_DIM={KB.embed_dim}，"
-                        "请检查模型与 KB_EMBED_DIM 是否一致"
-                    )
-            return [_l2_normalize(vec) for vec in vectors]
-        except (httpx.TransportError, KBIngestError) as e:
-            last_error = e
-            logger.warning("Embedding 请求失败（第 %d 次）：%s", attempt, e)
-    raise KBIngestError(f"Embedding 请求失败：{last_error}")
+        normalized.append(_l2_normalize([float(x) for x in vec]))
+    return normalized
 
 
 def embed_documents(texts: list[str]) -> list[bytes]:
-    """批量 Embedding（批大小 32，顺序请求，不做并发），返回 L2 归一化 float32 BLOB 列表。"""
-    vectors: list[bytes] = []
-    for start in range(0, len(texts), EMBED_BATCH_SIZE):
-        batch = texts[start:start + EMBED_BATCH_SIZE]
-        vectors.extend(pack_vector(vec) for vec in _post_embeddings(batch))
-    return vectors
+    """批量 Embedding，返回 L2 归一化 float32 BLOB 列表（与库内历史数据同口径）。"""
+    if not texts:
+        return []
+    try:
+        vectors = get_embeddings().embed_documents(list(texts))
+    except KBIngestError:
+        raise
+    except Exception as e:  # 网络 / 上游 / SDK 异常统一转摄入错误，便于落 error_message
+        logger.warning("Embedding 请求失败：%s", e)
+        raise KBIngestError(f"Embedding 请求失败：{e}") from e
+    if len(vectors) != len(texts):
+        raise KBIngestError(f"Embedding 返回条数不符：期望 {len(texts)}，实际 {len(vectors)}")
+    return [pack_vector(vec) for vec in _normalize_and_check(vectors)]
 
 
 def embed_query(text: str) -> list[float]:
     """查询向量：同样 L2 归一化，与库内向量点积即余弦相似度。"""
-    return _post_embeddings([text])[0]
+    try:
+        vec = get_embeddings().embed_query(text)
+    except KBIngestError:
+        raise
+    except Exception as e:
+        logger.warning("查询向量生成失败：%s", e)
+        raise KBIngestError(f"Embedding 请求失败：{e}") from e
+    if len(vec) != KB.embed_dim:
+        raise KBIngestError(
+            f"Embedding 维度不符：模型返回 {len(vec)} 维，配置 KB_EMBED_DIM={KB.embed_dim}"
+        )
+    return _l2_normalize([float(x) for x in vec])
 
 
 def prompt_block(title: str, heading: str, content: str) -> str:

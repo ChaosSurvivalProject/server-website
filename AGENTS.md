@@ -21,7 +21,7 @@ cd admin-frontend && pnpm install && pnpm dev                      # 后台管�
 
 ## 知识库 / 智能客服规约
 
-完整规约见 [docs/agents/kb.md](docs/agents/kb.md)。硬性禁区：wiki 是知识库单一数据源（先改 wiki，再跑 `backend/kb_sync.py`）；索引热更新是设计点（**服务端不需重启**，别改成"重启生效"）；限流状态在进程内（多 worker 必须换共享存储）；流式渲染必须复用 `frontend/src/utils/markdown.js` 管线。
+完整规约见 [docs/agents/kb.md](docs/agents/kb.md)。硬性禁区：wiki 是知识库单一数据源（先改 wiki，再跑 `backend/kb_sync.py`）；索引热更新是设计点（**服务端不需重启**，别改成"重启生效"）；限流状态在进程内（多 worker 必须换共享存储）；RAG 内部实现已自 2026-11-12 改用 LangChain 组件（覆盖原"不引 LangChain"决策，**不要引入 `langchain-community`**，依赖以 `backend/requirements.txt` 为准）；流式渲染必须复用 `frontend/src/utils/markdown.js` 管线。
 
 ## 员工名片模块规约
 
@@ -61,11 +61,11 @@ DB `servers` 表是唯一权威（内存 `SERVERS` 只是读缓存）。硬性�
 
 ## 部署拓扑（生产）
 
-完整规约见 [docs/agents/deployment.md](docs/agents/deployment.md)。硬性红线：1panel 面板改站点设置会重新生成 nginx conf、丢手工补的 `try_files` 兜底与 `include proxy/*.conf`（改完回服务器核对）；新增 `location` 前缀不得与前端页面路由同名；前端产物本机构建后投放，**服务器上不跑 Vite**（生产机 OOM）；根 compose `docker compose up -d --build`（任何 compose/Dockerfile 改动都要重建）。
+完整规约见 [docs/agents/deployment.md](docs/agents/deployment.md)。硬性红线：1panel 面板改站点设置会重新生成 nginx conf、丢手工补的 `try_files` 兜底与 `include proxy/*.conf`（改完回服务器核对）；新增 `location` 前缀不得与前端页面路由同名；**镜像由 GitHub Actions 在 Release 时构建并推送 GHCR（`release-images.yml`），服务器只 `docker compose pull && docker compose up -d --no-build`，绝不在服务器 build**（2C2G 跑前端 Vite 会 OOM）；测试环境 web 绑 `0.0.0.0`，生产 web 只绑 `127.0.0.1:8090` 由 nginx/1panel 反代（`WEB_BIND_IP` 控制，默认回环）。
 
-### 统一前端容器（web 服务，本地/自包含用）
+### 统一前端容器（web 服务）
 
-生产不用 web 容器；`web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是同一套路由规则的两份载体，**改其一必须同步另一份**（SSE 四件套、SPA fallback、legacy location 三处不能分叉）。
+生产与测试都跑 `xqly-website-web` 镜像；`web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是同一套路由规则的两份载体，**改其一必须同步另一份**（SSE 四件套、SPA fallback、legacy location 三处不能分叉）。生产 web 只绑 `127.0.0.1:8090`，由 1panel/OpenResty 反代；测试环境绑 `0.0.0.0:8090`。
 
 ### 生产定时任务（镜像内 cron）
 

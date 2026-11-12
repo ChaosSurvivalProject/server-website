@@ -1,6 +1,9 @@
 """知识库检索：向量 Top-6 + FTS5 trigram Top-6 → RRF 融合 → 最终 Top KB_TOP_K。
 
-- RRF：score = Σ 1/(60 + rank)，rank 为该路结果中的名次（1 起）。
+实现要点（LangChain 组件 + 项目既有 SQL）：
+- 向量路：``kb_index``（LangChain ``VectorStore``，stdlib 余弦）取 Top-6，带余弦相似度；
+- FTS 路：``FTSRetriever``（LangChain ``BaseRetriever`` 适配 SQLite FTS5 trigram）；
+- 融合：RRF ``score = Σ 1/(60 + rank)``，rank 为该路结果中的名次（1 起）；
 - 展示与阈值用的 score 是余弦相似度（向量路才有）；KB_MIN_SCORE 与它比较。
 - FTS 查询构造不出合法 MATCH 串（全是 <3 字符片段）时跳过 FTS 这一路，
   绝不把非法 MATCH 字符串塞给 SQLite。
@@ -8,12 +11,20 @@
 import asyncio
 import logging
 import re
+from typing import Any
 
+from langchain_core.callbacks import (
+    AsyncCallbackManagerForRetrieverRun,
+    CallbackManagerForRetrieverRun,
+)
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
+from pydantic import ConfigDict
 from sqlalchemy import bindparam, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import kb_index, kb_ingest
 from . import database as _database
+from . import kb_index, kb_ingest
 from .config import KB
 
 logger = logging.getLogger("uvicorn.error")
@@ -36,12 +47,59 @@ def build_match_query(question: str, max_terms: int = 8) -> str | None:
     return " OR ".join('"' + s.replace('"', '""') + '"' for s in segs)
 
 
+class FTSRetriever(BaseRetriever):
+    """SQLite FTS5 trigram 检索器（LangChain ``BaseRetriever`` 适配）。
+
+    只提供异步接口：检索发生在 FastAPI 请求上下文，必须复用请求的 AsyncSession，
+    不能另起线程/连接。返回 ``Document.metadata['chunk_id']`` 供 RRF 按切片 id 融合。
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    db: Any = None
+    k: int = _PER_PATH_K
+
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: CallbackManagerForRetrieverRun
+    ) -> list[Document]:
+        raise NotImplementedError("FTSRetriever 仅支持异步调用（ainvoke）")
+
+    async def _aget_relevant_documents(
+        self, query: str, *, run_manager: AsyncCallbackManagerForRetrieverRun
+    ) -> list[Document]:
+        match_query = build_match_query(query)
+        if not match_query:
+            return []
+        result = await self.db.execute(
+            text(
+                "SELECT c.id, c.heading, c.content, d.title, d.source_type "
+                "FROM kb_chunks_fts f "
+                "JOIN kb_chunks c ON c.id = f.rowid "
+                "JOIN kb_documents d ON d.id = c.document_id "
+                "WHERE kb_chunks_fts MATCH :q ORDER BY rank LIMIT :k"
+            ),
+            {"q": match_query, "k": self.k},
+        )
+        return [
+            Document(
+                page_content=row[2],
+                metadata={
+                    "chunk_id": row[0],
+                    "heading": row[1],
+                    "title": row[3],
+                    "source_type": row[4],
+                },
+            )
+            for row in result
+        ]
+
+
 async def retrieve(db: AsyncSession, question: str, allow_vector: bool = True) -> list[dict]:
     """混合检索，返回 [{id, title, source_type, heading, content, score}]（最多 KB.top_k 条）。
 
     score 为余弦相似度（仅向量路命中时非 None）；整体为空列表表示两路均未命中。
     """
-    # ── 向量路 ────────────────────────────────────────────────
+    # ── 向量路（LangChain VectorStore，stdlib 余弦） ──────────
     vec_ranked: list[tuple[int, float]] = []  # [(chunk_id, cosine)]
     if KB.vector_enabled and allow_vector and kb_index.vector_available:
         loaded = await kb_index.index.ensure_loaded(db)
@@ -53,20 +111,14 @@ async def retrieve(db: AsyncSession, question: str, allow_vector: bool = True) -
                 # 查询向量失败降级为仅 FTS，不让一次网络抖动打死整条对话
                 logger.warning("查询向量生成失败，降级为仅全文检索：%s", e)
 
-    # ── FTS 路（trigram） ─────────────────────────────────────
+    # ── FTS 路（LangChain BaseRetriever 适配 SQLite trigram） ──
     fts_ranked: list[int] = []
     if KB.hybrid_enabled and _database.fts_available:
-        match_query = build_match_query(question)
-        if match_query:
-            result = await db.execute(
-                text(
-                    "SELECT c.id FROM kb_chunks_fts f "
-                    "JOIN kb_chunks c ON c.id = f.rowid "
-                    "WHERE kb_chunks_fts MATCH :q ORDER BY rank LIMIT :k"
-                ),
-                {"q": match_query, "k": _PER_PATH_K},
-            )
-            fts_ranked = [row[0] for row in result]
+        try:
+            docs = await FTSRetriever(db=db, k=_PER_PATH_K).ainvoke(question)
+            fts_ranked = [int(doc.metadata["chunk_id"]) for doc in docs]
+        except Exception:  # FTS 失败不应打死整条对话，降级为仅向量
+            logger.exception("FTS 检索失败，降级为仅向量检索")
 
     if not vec_ranked and not fts_ranked:
         return []

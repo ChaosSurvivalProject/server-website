@@ -193,9 +193,17 @@ export default {
       draft: "",
       streaming: false,
       fullscreen: false,      // 面板全屏（桌面端可切换；移动端始终全屏）
+      isMobile: false,        // 移动端（≤768px）：面板恒全屏，需锁背景滚动
     };
   },
   async mounted() {
+    // 移动端断点跟随（横竖屏切换 / 窗口缩放时同步），决定是否需要锁背景滚动
+    this._mq = window.matchMedia("(max-width: 768px)");
+    this.isMobile = this._mq.matches;
+    this._onMqChange = (e) => { this.isMobile = e.matches; };
+    if (this._mq.addEventListener) this._mq.addEventListener("change", this._onMqChange);
+    else this._mq.addListener?.(this._onMqChange);
+
     // 后端总开关校验：enabled=false 时不渲染悬浮球（VITE 侧开关在 App.vue 控制）
     try {
       const info = await chatAPI.getInfo();
@@ -208,7 +216,8 @@ export default {
       // 探测失败（如后端未部署）：按本地配置渲染，点开后再报具体错误
     }
     if (!this.backendEnabled) {
-      // 从 DOM 摘掉悬浮球（父组件 v-if 只控制前端开关）
+      // 从 DOM 摘掉悬浮球（父组件 v-if 只控制前端开关）；顺手释放 MQ 监听
+      this.cleanup();
       this.$el?.remove?.();
     }
   },
@@ -221,16 +230,25 @@ export default {
       if (on) window.addEventListener("keydown", this._escHandler);
       else window.removeEventListener("keydown", this._escHandler);
     },
+    // 移动端面板（恒全屏）或桌面全屏打开时锁住背景滚动，避免"聊天面板里滑动、背景跟着动"
+    shouldLockScroll(on) {
+      if (on) this.lockPageScroll();
+      else this.unlockPageScroll();
+    },
   },
   computed: {
     /** 登录态（authState 全局 reactive：登录/退出/401 清除即时联动输入区显隐） */
     loggedIn() {
       return !!authState.token;
     },
+    /** 面板是否处于"覆盖全屏"状态：移动端恒 true，桌面端看 fullscreen */
+    shouldLockScroll() {
+      return this.open && (this.isMobile || this.fullscreen);
+    },
   },
   methods: {
     cleanup() {
-      // 组件卸载必须 abort + 清定时器 + 摘全局监听
+      // 组件卸载必须 abort + 清定时器 + 摘全局监听 + 解锁背景滚动
       this._controller?.abort?.();
       this._controller = null;
       if (this._flushTimer) {
@@ -238,6 +256,30 @@ export default {
         this._flushTimer = null;
       }
       window.removeEventListener("keydown", this._escHandler);
+      if (this._mq) {
+        if (this._mq.removeEventListener) this._mq.removeEventListener("change", this._onMqChange);
+        else this._mq.removeListener?.(this._onMqChange);
+      }
+      this.unlockPageScroll();
+    },
+    /**
+     * 锁背景滚动：移动端/全屏面板是"伪模态"，body 用 position:fixed 兜底
+     * （iOS Safari 单靠 overflow:hidden 仍可能滚动），并记录 scrollY 关闭后还原。
+     * 用 class + CSS 变量而非直接改 cssText，避免和 Modal.vue 等其它锁滚动方互相覆盖。
+     */
+    lockPageScroll() {
+      if (this._scrollLocked) return;
+      this._scrollLockY = window.pageYOffset || document.documentElement.scrollTop || 0;
+      document.body.style.setProperty("--chat-scroll-lock-top", `-${this._scrollLockY}px`);
+      document.body.classList.add("chat-scroll-locked");
+      this._scrollLocked = true;
+    },
+    unlockPageScroll() {
+      if (!this._scrollLocked) return;
+      document.body.classList.remove("chat-scroll-locked");
+      document.body.style.removeProperty("--chat-scroll-lock-top");
+      this._scrollLocked = false;
+      window.scrollTo(0, this._scrollLockY || 0);
     },
     toggleFullscreen() {
       this.fullscreen = !this.fullscreen;
@@ -538,6 +580,9 @@ export default {
 .chat-body {
   flex: 1;
   overflow-y: auto;
+  /* 阻止滑到聊天区顶/底后把滚动链传给背后的页面（移动端"背景跟着滚"的另一半原因） */
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -789,6 +834,18 @@ export default {
 <!-- 非 scoped：v-html 注入节点（chat-block 内容、代码块 header/复制按钮）缺 data-v 属性，
      样式必须在这里声明。代码块样式自 AnnouncementDetail.vue 拷贝（渲染器输出同名类），加 .chat-content 前缀限定作用域。 -->
 <style>
+/* 客服面板（移动端/全屏）打开时锁背景滚动：body 用 position:fixed 兜底 iOS。
+   --chat-scroll-lock-top 由 JS 写入当前 -scrollY，关闭/卸载时还原并 scrollTo。 */
+body.chat-scroll-locked {
+  position: fixed;
+  top: var(--chat-scroll-lock-top, 0px);
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
 /* 块级流式渲染入场动画：历史块同 key 复用元素不会重放，仅新增块淡入 */
 .chat-widget .chat-block {
   animation: chat-block-in 0.25s ease both;

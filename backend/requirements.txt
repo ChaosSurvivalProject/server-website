@@ -14,3 +14,8 @@ nh3>=0.2.20
 python-multipart>=0.0.20
 httpx>=0.27.0
 qrcode>=8.0
+# ── 知识库 RAG（LangChain 1.x LTS；2026-11-12 重写 RAG 模块引入） ──
+# 只用 core / openai / text-splitters 三个包，不引入 langchain-community（重依赖）。
+langchain-core>=1.0,<2.0
+langchain-openai>=1.0,<2.0
+langchain-text-splitters>=1.0,<2.0

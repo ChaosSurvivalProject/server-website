@@ -7,4 +7,5 @@
 - 检索为向量 + FTS5 trigram 双路 RRF 融合（`KB_HYBRID_ENABLED=0` 关混合）；FTS 表是**独立表**（非 external content），写入/删除时手动同步 `rowid = kb_chunks.id`，不要加触发器。
 - 限流状态在**进程内**（滑动窗口 + 并发计数），P0 按单 worker 部署；改多 worker 必须换共享存储，否则限流失效。
 - 知识库配置在 `backend/.env`（**已 gitignore，含 API Key 禁止提交**），`app/config.py` 启动期一次性读入模块级 `KB` 对象——改 `.env` 需重启进程，不要做请求级读取。
+- **RAG 内部实现自 2026-11-12 起改用 LangChain 组件**（切片 `RecursiveCharacterTextSplitter`、Embedding `OpenAIEmbeddings`、向量库自实现 `VectorStore`（stdlib 余弦，不用 numpy）、FTS 适配 `BaseRetriever` + 自研 RRF、对话 `ChatOpenAI`）。**硬性规约不变**：wiki 单一数据源、`index_version` 热更新、FTS5 独立表、SSE 帧协议、`.env` 启动期一次性读取。依赖以 `backend/requirements.txt` 为准，不要引入 `langchain-community`。
 - 流式渲染必须复用 `frontend/src/utils/markdown.js` 管线：新增的 `splitMarkdownBlocks`（lexer 切块 → 逐块 parser → DOMPurify）与整篇 parse 等价，ChatWidget 的块级 keyed 渲染 + 末块未闭合补全都建立在它之上，不要绕开另写渲染入口。

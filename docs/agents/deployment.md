@@ -6,8 +6,8 @@
 
 **生产对外地址：`https://xqly.xt91tv.shop`**（2026-10-03 换服务器后启用，标准 443）。旧站是裸机 nginx + NAT 外部 23333 → 内部 80 且 nginx 在 80 上直接跑 SSL，**那套拓扑已废弃**；现在由 1panel 托管，nginx 是 1panel 的 OpenResty 容器（**host 网络**，监听 80/443），证书用 1panel「SSL」里导入的通配符证书下发给站点。
 
-- 仓库路径 `/opt/xqly-website`；后端容器 `xqly-website-backend`（`docker compose` 定义在仓库**根目录** `docker-compose.yml`，2026-10-31 从 `backend/` 迁出，**只绑 `127.0.0.1:5000`**——发布到 `0.0.0.0` 会被 Docker 的 iptables 规则绕过 ufw 直接把 API 暴露到公网）。同一 compose 还有可选的 `web` 服务（统一前端 nginx 容器 `xqly-website-web`，绑 `127.0.0.1:8090`，见下文「统一前端容器」）——**生产目前不用它**，前端产物仍按本机构建投放。
-- 站点是 1panel「静态网站」，站点根 `/opt/1panel/www/sites/xqly.xt91tv.shop/index`，三个前端产物都投放在这里（`admin/`、`wiki/` 为子目录，与 SPA 的 `index.html` 共存）。
+- 仓库路径 `/opt/xqly-website`；后端容器 `xqly-website-backend`（`docker compose` 定义在仓库**根目录** `docker-compose.yml`，2026-10-31 从 `backend/` 迁出，**只绑 `127.0.0.1:5000`**——发布到 `0.0.0.0` 会被 Docker 的 iptables 规则绕过 ufw 直接把 API 暴露到公网）。同一 compose 的 `web` 服务（统一前端 nginx 容器 `xqly-website-web`，生产绑 `127.0.0.1:8090`、测试绑 `0.0.0.0:8090`）**生产也使用**：镜像由 GitHub Actions 构建并推 GHCR，1panel/OpenResty 按域名反代到该容器。
+- 1panel 仍是站点入口（TLS/443）；生产将前端请求反代到 web 容器 `127.0.0.1:8090`（前端由 web 镜像提供，不再投放到站点根目录），`/api` 等接口 location 仍按 `for-deploy/xqly-app.conf` 维护。
 - **cookie/凭据类文件只在服务器上**：`backend/.env`（已 gitignore，含 API Key）以只读卷挂进容器（`./backend/.env:/app/backend/.env:ro`），wiki 源码以 `./wiki:/app/wiki:ro` 挂入供 `kb_sync.py` 读取（`KB_WIKI_DIR=/app/wiki`；compose 里已显式注入该环境变量，防止本地 `.env` 里按宿主机路径写的 `KB_WIKI_DIR=../wiki` 污染容器）。
 
 **⚠️ 1panel 的「静态网站」模板不生成 `try_files` 兜底、也不生成 `include proxy/*.conf`**，这两样是上线时手工补进 `/opt/1panel/www/conf.d/xqly.xt91tv.shop.conf` 的。**在面板里改动该站点的网站设置会重新生成这个文件，手工补的东西会丢**（症状：深层路由 404 + `/api` 全部 502）——改完必须回服务器核对 `grep -n 'proxy/\*\.conf'`。自定义 location 全部放在 `/opt/1panel/www/sites/xqly.xt91tv.shop/proxy/xqly-app.conf`。
@@ -24,17 +24,23 @@
 
 **新增 `location` 前缀时不得与前端页面路由同名**：`location /staff` 会把 SPA 的 `/staff/:code` 一并反代走，页面再也进不去，而 dev 直连后端看不出问题。统一 `/api` 之后新模块已不需要单独加 `location`，正常不会再触发；真要加，前缀与页面路由错开（如曾考虑过的复数前缀）。旧裸机 conf 里 `location = /faction-beta { try_files /index.html =404; }` 就是历史上处理这类同名的补丁，新版 `xqly-app.conf` 已不再需要它。
 
-**前端产物在本机构建后投放，服务器上不跑 Vite**：生产机内存只剩 ~1GB 且与 MySQL/Redis/halo/napcat 等同机，Vite 构建峰值会 OOM 连坐。构建命令与投放位置见 `for-deploy/README.md`「前端产物从哪来」。
+**服务器上不跑 Vite / 不在服务器 build**：生产为香港 2C2G/30G，前端 Vite 构建峰值会 OOM。镜像由 GitHub Actions（`.github/workflows/release-images.yml`）在 Release 时构建并推送到 GHCR；服务器只拉取运行：`docker compose pull && docker compose up -d --no-build`。测试环境需要本机构建时用 `docker compose up -d --build`，并把 web 绑 `0.0.0.0`（根目录 `.env` 的 `WEB_BIND_IP=0.0.0.0`）。
 
-后端 Docker 部署注意：`docker-compose.yml` 位于**仓库根目录**（2026-10-31 从 `backend/` 迁出），构建上下文即根目录（`context: .`），backend/Dockerfile 里必须写 `COPY backend/requirements.txt .`（写 `requirements.txt` 会 `not found`，2026-10-03 修过）；根目录 `.dockerignore` 负责把 `node_modules`/`dist`/`.git` 挡在 context 之外。**任何 `docker-compose.yml` / `Dockerfile` 改动都要 `docker compose up -d --build` 重新构建**。
+后端 Docker 部署注意：`docker-compose.yml` 位于**仓库根目录**（2026-10-31 从 `backend/` 迁出），构建上下文即根目录（`context: .`），backend/Dockerfile 里必须写 `COPY backend/requirements.txt .`（写 `requirements.txt` 会 `not found`，2026-10-03 修过）；根目录 `.dockerignore` 负责把 `node_modules`/`dist`/`.git` 挡在 context 之外。**任何 `Dockerfile` / 依赖改动都要发 Release 让 CI 重建镜像（本地联调才用 `docker compose up -d --build`），生产走 `pull + up --no-build`**。
 
-### 统一前端容器（web 服务，本地/自包含用）
+### 镜像发布（GitHub Actions → GHCR）
+
+- `release-images.yml` 仅在 GitHub Release `published` 时触发，构建并推送 `ghcr.io/chaossurvivalproject/server-website-{backend,web}`；正式版额外打 `latest`，预发行版只打 Release tag。
+- 服务器部署（不 build）：`IMAGE_TAG=v1.2.3 docker compose pull && IMAGE_TAG=v1.2.3 docker compose up -d --no-build`（也可在根 `.env` 固定 `IMAGE_TAG`）。首次拉取私有包需 `docker login ghcr.io`。
+- `docker-compose.yml` 同时保留 `build:` 与 `image:`：本地 `up --build` 会构建并按 image 名打 tag；生产必须 `pull + up --no-build`，否则 pull 失败时会回退本地构建（2C2G 上 Vite 必 OOM）。
+
+### 统一前端容器（web 服务）
 
 根 compose 的 `xqly-website-web` 服务由 `web/Dockerfile`（多阶段：三个前端各自 node 构建产物）+ `web/nginx.conf`（路由规则）组成，产物收进**一个 nginx 容器** `xqly-website-web`：`/` 主站、`/admin/` 后台、`/wiki/` 文档、`/api` 与 `/health`、`/announcement/uploads/` 反代 `xqly-website-backend:5000`，宿主机只绑 `127.0.0.1:8090`（8080 已被本机其他服务占用）。要点：
 
 - **`web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是同一套路由规则的两份载体**，改其一必须同步另一份（SSE 四件套、SPA fallback、legacy location 三处不能分叉）。
-- **生产不用 web 容器**：服务器内存 ~1GB，容器内跑 Vite 构建会 OOM，生产前端仍按本机构建后投放（见 `for-deploy/README.md`）。
-- **2026-10-31 容器名从 `announcement-backend` 改为 `xqly-website-backend`**，2026-11-01 起定时任务已改为**镜像内 cron**（`backend/crontab` + `backend/docker-entrypoint.sh`），不再依赖宿主机 `docker exec` + 容器名，因此该改名不会再让定时任务失效。生产服务器部署本仓库时要在 `/opt/xqly-website` 下 `docker compose up -d --build`（旧命令 `cd backend && docker compose up` 已失效）；宿主机上遗留的三条旧 crontab 条目需按 `for-deploy/README.md`「改定时任务」清空。数据卷路径已同步改为 `./backend/data` 与 `./backend/.env`——与旧 compose（在 `backend/` 下解析 `./data` / `./.env`）指向的**绝对路径相同**，生产直接 up 不会丢库。
+- **生产使用 web 容器**：生产 web 只绑 `127.0.0.1:8090`，由 1panel/OpenResty 按域名反代；镜像由 CI 构建，绝不在服务器跑 Vite（2C2G 会 OOM）。
+- **2026-10-31 容器名从 `announcement-backend` 改为 `xqly-website-backend`**，2026-11-01 起定时任务已改为**镜像内 cron**（`backend/crontab` + `backend/docker-entrypoint.sh`），不再依赖宿主机 `docker exec` + 容器名，因此该改名不会再让定时任务失效。生产服务器部署本仓库时要在 `/opt/xqly-website` 下 `docker compose pull && docker compose up -d --no-build`（**不要带 `--build`**；旧命令 `cd backend && docker compose up` 已失效）；宿主机上遗留的三条旧 crontab 条目需按 `for-deploy/README.md`「改定时任务」清空。数据卷路径已同步改为 `./backend/data` 与 `./backend/.env`——与旧 compose（在 `backend/` 下解析 `./data` / `./.env`）指向的**绝对路径相同**，生产直接 up 不会丢库。
 - 生产 `.env` 的 `KB_WIKI_DIR` 应写 `/app/wiki`；compose 已显式注入 `KB_WIKI_DIR=/app/wiki` 环境变量兜底（环境变量优先于 `.env` 文件值）。
 
 ### 生产定时任务（镜像内 cron）

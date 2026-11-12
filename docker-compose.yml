@@ -5,14 +5,17 @@
 #   xqly-website-web      统一前端 nginx：/ 主站 · /admin/ 后台 · /wiki/ 文档，
 #                         并反代 /api → xqly-website-backend:5000（web/Dockerfile）
 #
-# 启动：docker compose up -d --build
-# 入口：http://127.0.0.1:8090/（宿主机只绑回环，见 xqly-website-web.ports 注释）
+# 启动（本地/测试）：docker compose up -d --build
+# 入口：http://127.0.0.1:8090/（测试环境用根目录 .env 的 WEB_BIND_IP=0.0.0.0 开放局域网）
 #
 # ⚠️ 与生产部署的关系：
-#   生产（1panel OpenResty host 网络）目前只跑 xqly-website-backend 一个容器，
-#   三个前端产物在本机构建后投放站点目录（for-deploy/README.md「前端产物从哪来」）。
-#   本文件的 web 服务用于自包含部署 / 本地整栈联调，路由规则与生产
-#   for-deploy/xqly-app.conf 保持一致，两处改动须同步维护。
+#   生产镜像由 GitHub Actions（.github/workflows/release-images.yml）在 Release 时
+#   构建并推送到 GHCR（-backend / -web 两个镜像）；服务器**只拉取运行，不在服务器构建**
+#   （2C2G 跑前端 Vite 构建会 OOM）：
+#       docker compose pull && docker compose up -d --no-build
+#   web 容器生产只绑 127.0.0.1:8090（WEB_BIND_IP 默认值），由 1panel/OpenResty
+#   按域名反代对外；禁止在生产直接绑 0.0.0.0。
+#   build 段保留给本地/测试构建（image 与 build 共存：build 产物按 image 名打 tag）。
 #   生产定时任务仍按 for-deploy/crontab 在宿主机 docker exec 执行，依赖
 #   container_name: xqly-website-backend，勿改名。
 # ============================================================================
@@ -23,6 +26,9 @@ services:
       # backend/Dockerfile 里的 COPY backend/requirements.txt / COPY backend/ 依赖该路径。
       context: .
       dockerfile: backend/Dockerfile
+    # 镜像名：本地 build 会按此名打 tag；生产直接 pull 该镜像（见文件头部署说明）。
+    # 测试环境可在根目录 .env 设 IMAGE_PREFIX=server-website-xqly-website 复用本地构建镜像。
+    image: ${IMAGE_PREFIX:-ghcr.io/chaossurvivalproject/server-website}-backend:${IMAGE_TAG:-latest}
     container_name: xqly-website-backend
     environment:
       - ANNOUNCEMENT_DB=/app/data/announcements.db
@@ -64,13 +70,14 @@ services:
       # 产物收进一个 nginx 并按生产拓扑分发（web/nginx.conf）。
       context: .
       dockerfile: web/Dockerfile
+    image: ${IMAGE_PREFIX:-ghcr.io/chaossurvivalproject/server-website}-web:${IMAGE_TAG:-latest}
     container_name: xqly-website-web
     ports:
-      # 只绑回环：生产由 1panel OpenResty（host 网络）按域名反代到该端口；
-      # 勿改绑 0.0.0.0（会绕过 ufw 直接暴露公网）。本机联调直接访问
-      # http://127.0.0.1:8090/，需局域网访问时改绑本机内网 IP。
+      # host_ip 由 WEB_BIND_IP 控制：默认 127.0.0.1（生产安全，由 1panel/OpenResty
+      # 按域名反代到该端口）；本机测试环境在根目录 .env 设 WEB_BIND_IP=0.0.0.0
+      # 供局域网访问。生产禁止直接绑 0.0.0.0（会绕过 ufw 暴露公网）。
       # 8080 已被宿主机其他服务占用，故用 8090。
-      - "127.0.0.1:8090:80"
+      - "${WEB_BIND_IP:-127.0.0.1}:8090:80"
     depends_on:
       xqly-website-backend:
         condition: service_healthy
