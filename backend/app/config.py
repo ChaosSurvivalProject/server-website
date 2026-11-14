@@ -94,6 +94,23 @@ STAFF = StaffConfig(
 
 
 @dataclass(frozen=True)
+class GitHubConfig:
+    """GitHub Release 版本同步配置（docs/资源中心/GitHub Release 版本同步需求说明.md §2）。
+
+    pat 为空时降级为未认证请求（60 次/小时核心 API 限额，够少量资源手动同步；
+    定时全量扫描建议配 PAT——5000 次/小时）。安全红线：Token 只进请求头，
+    绝不出现在任何响应 / 日志 / 堆栈里（见 resource_sync_core 的错误处理口径）。
+    """
+
+    pat: str
+
+
+GITHUB = GitHubConfig(
+    pat=_env_str("GITHUB_PAT"),
+)
+
+
+@dataclass(frozen=True)
 class KBConfig:
     # 总开关
     enabled: bool

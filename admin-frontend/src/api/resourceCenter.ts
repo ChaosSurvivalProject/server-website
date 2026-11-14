@@ -77,6 +77,10 @@ export type VersionItem = {
   side: string;
   status: VersionStatus;
   isLatestStable: number;
+  /** manual=手动录入 github=GitHub 同步（来源或最近一次被覆盖过） */
+  source?: "manual" | "github";
+  /** 最近一次 GitHub 同步时间（批量/单版本通用；手动版本为空串） */
+  githubSyncedAt?: string;
   changelogMd?: string;
   updateTime: string;
   assets?: AssetItem[];
@@ -93,6 +97,8 @@ export type AssetItem = {
   sort: number;
   isPrimary: number;
   status: AssetStatus;
+  /** manual=手动录入 github=GitHub 同步（单版本覆盖只替换 github 行，手动行保留） */
+  source?: "manual" | "github";
   updateTime: string;
 };
 
@@ -248,9 +254,39 @@ export const updateVersion = (
   return http.request<VersionItem>("put", `/api/resources/admin/versions/${versionId}`, { data });
 };
 
-/** 管理员：软删除版本 */
+/** 管理员：删除版本（2026-11-14 起为物理删除：版本行及全部资产行一并硬删，不可恢复） */
 export const deleteVersion = (versionId: number) => {
   return http.request("delete", `/api/resources/admin/versions/${versionId}`);
+};
+
+// ── GitHub Release 双轨同步 ──────────────────────────────────────
+
+export type GithubBatchSyncResult = {
+  added: number;
+  skipped: number;
+  /** GitHub 返回的 Release 条数（未过滤 draft） */
+  fetched: number;
+  warnings: string[];
+  syncedAt: string;
+};
+
+/** 管理员：批量同步 GitHub Release（只增不改、按 Tag 判存跳过，幂等）。
+ * message 是后端拼好的「同步完成：新增 X 个版本，跳过 Y 个已存在版本」 */
+export const syncGithubReleases = (resourceId: number) => {
+  return http.request<GithubBatchSyncResult>(
+    "post",
+    `/api/resources/admin/${resourceId}/github-sync`,
+    { timeout: 60000 }
+  );
+};
+
+/** 管理员：单版本精准同步（覆盖 GitHub 字段+资产；状态/最新稳定版/兼容/平台/运行环境不覆盖） */
+export const syncGithubReleaseSingle = (versionId: number) => {
+  return http.request<VersionItem>(
+    "post",
+    `/api/resources/admin/versions/${versionId}/github-sync`,
+    { timeout: 60000 }
+  );
 };
 
 // ── 资产 ────────────────────────────────────────────────────────

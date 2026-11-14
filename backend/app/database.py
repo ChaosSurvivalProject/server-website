@@ -112,6 +112,7 @@ _user_mute_migrated = False
 _forum_recycle_migrated = False
 _resource_custom_links_migrated = False
 _download_event_counted_migrated = False
+_resource_version_sync_migrated = False
 
 
 def migrate_user_extra_columns() -> None:
@@ -245,6 +246,48 @@ def migrate_download_event_counted_column() -> None:
     except Exception as e:
         # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
         logger.warning("download_events 表 counted 列迁移检查失败: %s", e)
+
+
+def migrate_resource_version_sync_columns() -> None:
+    """资源版本双轨同步（GitHub Release）：resource_versions / version_assets 补
+    source（manual|github）与 github_synced_at 列（幂等；已存在的表结构不受影响）。
+
+    存量行经 ALTER 的 DEFAULT 分别落 manual / 空串，即"历史上都是手动录入、
+    从未同步过"，与补列前的语义完全一致（列是纯增量标记，不参与既有查询）。
+    """
+    global _resource_version_sync_migrated
+    if _resource_version_sync_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            vcols = [row[1] for row in con.execute("PRAGMA table_info('resource_versions')")]
+            if "source" not in vcols:
+                con.execute(
+                    "ALTER TABLE resource_versions ADD COLUMN source VARCHAR(16) "
+                    "NOT NULL DEFAULT 'manual'"
+                )
+            if "github_synced_at" not in vcols:
+                con.execute(
+                    "ALTER TABLE resource_versions ADD COLUMN github_synced_at VARCHAR(30) "
+                    "NOT NULL DEFAULT ''"
+                )
+            acols = [row[1] for row in con.execute("PRAGMA table_info('version_assets')")]
+            if "source" not in acols:
+                con.execute(
+                    "ALTER TABLE version_assets ADD COLUMN source VARCHAR(16) "
+                    "NOT NULL DEFAULT 'manual'"
+                )
+            con.commit()
+            logger.info("已为 resource_versions/version_assets 补 source、github_synced_at 列（GitHub 同步标记）")
+        finally:
+            con.close()
+        _resource_version_sync_migrated = True
+    except Exception as e:
+        # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
+        logger.warning("resource_versions/version_assets 同步列迁移检查失败: %s", e)
 
 
 def migrate_user_mute_column() -> None:
@@ -854,6 +897,11 @@ class ResourceVersion(Base):
     changelog_md: Mapped[str] = mapped_column(Text, nullable=False, default="")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="visible", index=True)  # visible/hidden/archived
     is_latest_stable: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 1=最新稳定版（每资源≤1）
+    # 版本来源：manual=后台手动录入，github=GitHub Release 同步（批量新增或单版本覆盖过）。
+    # 只标记来源，不改变任何写入权限——手动编辑入口对两类版本一致。
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
+    # 最近一次 GitHub 同步时间（北京时间 ISO，含批量/单版本；手动录入为空串）。
+    github_synced_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")
     create_time: Mapped[str] = mapped_column(String(30), nullable=False)
     update_time: Mapped[str] = mapped_column(String(30), nullable=False)
     deleted_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")
@@ -874,6 +922,9 @@ class VersionAsset(Base):
     sort: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_primary: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 1=主资产（每版本≤1，无则取 sort 第一个可见资产）
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="visible")  # visible/hidden
+    # 来源：manual=后台手动录入，github=GitHub Release 同步（同步重写资产时先软删
+    # 全部 github 来源行再重建，manual 行一律保留——防管理员手工补充的文件被冲掉）。
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
     create_time: Mapped[str] = mapped_column(String(30), nullable=False)
     update_time: Mapped[str] = mapped_column(String(30), nullable=False)
     deleted_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")
@@ -937,6 +988,8 @@ async def init_db():
     migrate_resource_custom_links_column()
     # 资源中心：download_events.counted 存量库补列（幂等，展示计数 24h 去重用）
     migrate_download_event_counted_column()
+    # 资源中心：GitHub Release 双轨同步标记列（幂等，source / github_synced_at）
+    migrate_resource_version_sync_columns()
     # 资源中心：版本 published_at 纯日期存量修复（幂等，排序沉底问题）
     await repair_resource_published_at()
     # 站内信：announcements 表迁移到 messages 表（仅对存量库执行，新库跳过）

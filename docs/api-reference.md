@@ -239,7 +239,7 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 
 ## 资源中心
 
-资源中心一阶段 MVP：后台手动维护资源/版本/下载资产元数据，前台展示列表与详情，下载一律经本站端点 302 跳转到后台录入的 GitHub Release 资产链接。实施依据 `docs/资源中心/资源中心一阶段MVP需求.md`；落点 `backend/app/resource_center.py`（请求模型 `app/pydantic_models.py`，五表 `app/database.py`：`dict_items` / `resources`（+三张关联表）/ `resource_versions` / `version_assets` / `download_events`）。**计数口径是「下载跳转次数」**——本站记录的是下载按钮跳转点击次数，文件由 GitHub 托管，不是 GitHub 实际下载量；**不做** GitHub 自动同步 / 文件代理 / SHA-256 校验 / 下载量同步 / 用户系统（PRD「明确不做」）。
+资源中心一阶段 MVP：后台手动维护资源/版本/下载资产元数据，前台展示列表与详情，下载一律经本站端点 302 跳转到后台录入的 GitHub Release 资产链接。实施依据 `docs/资源中心/资源中心一阶段MVP需求.md`；GitHub Release **双轨同步**（2026-11-14 新增，覆盖原「不做自动同步」口径）：`docs/资源中心/GitHub Release 版本同步需求说明.md`，核心在 `backend/app/resource_sync_core.py`（纯 SQLAlchemy+httpx，API 层与定时 CLI 共用），定时任务 `backend/github_sync.py`。落点 `backend/app/resource_center.py`（请求模型 `app/pydantic_models.py`，五表 `app/database.py`：`dict_items` / `resources`（+三张关联表）/ `resource_versions` / `version_assets` / `download_events`）。**计数口径是「下载跳转次数」**——本站记录的是下载按钮跳转点击次数，文件由 GitHub 托管，不是 GitHub 实际下载量；**不做** 文件代理 / SHA-256 校验 / 下载量同步 / 用户系统（PRD「明确不做」）。
 
 **公开接口（匿名可调）**
 
@@ -269,16 +269,19 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | GET | `/api/resources/admin/{id}/versions` | 版本列表（含隐藏；每版本内嵌资产数组） |
 | POST | `/api/resources/admin/{id}/versions` | 新建版本（同资源版本号唯一；`isLatestStable` 可直接勾选） |
 | PUT | `/api/resources/admin/versions/{vid}` | 编辑版本（`isLatestStable=true` 触发唯一转移；非 stable 渠道 400） |
-| DELETE | `/api/resources/admin/versions/{vid}` | 软删除版本（其资产随版本不可下载） |
+| DELETE | `/api/resources/admin/versions/{vid}` | **物理删除**版本（2026-11-14 改口径，原软删）：版本行及其全部资产行一并硬删（`resource_versions` 有 (resource_id,version) 全行唯一约束，软删会让 GitHub 批量同步撞约束 500、同号版本无法重建）；其 download_events 保留（统计口径不丢数据）。**不可恢复**，前端确认框已明示 |
 | GET | `/api/resources/admin/versions/{vid}/assets` | 资产列表（含隐藏） |
 | POST | `/api/resources/admin/versions/{vid}/assets` | 新建资产（URL 必须 `https://github.com/` 开头，否则 400；第一个 main 资产自动成为主资产） |
 | PUT | `/api/resources/admin/assets/{aid}` | 编辑资产（`isPrimary=true` 同版本唯一转移；隐藏即时不可下载） |
 | DELETE | `/api/resources/admin/assets/{aid}` | 软删除资产（主下载回落 sort 第一个可见资产） |
 | GET | `/api/resources/admin/stats` | 下载跳转统计（`start`/`end`=`YYYY-MM-DD` 可选时间范围；返回 `total` + `byResource`/`byVersion`/`byAsset`（带名称）+ `daily` 曲线 + `note` 口径说明） |
+| POST | `/api/resources/admin/{id}/github-sync` | **批量同步 GitHub Release**（只增不改，幂等）：拉最新 20 条 Release（`per_page=20`），过滤 draft 与 Source code 资产，按 `release_tag` 判存——本地已有同名 Tag 直接跳过，只新增缺失版本（新增默认 `status=visible`；**最新 Release**（列表第一条非 draft）若是 stable 渠道自动设为该资源最新稳定版（先清后立唯一转移，Beta 渠道不设并 warning）；兼容/平台继承资源级、首资产为主资产）。返回 `{added, skipped, fetched, warnings, syncedAt}`；message 固定文案「同步完成：新增 X 个版本，跳过 Y 个已存在版本」。整资源一个事务 |
+| POST | `/api/resources/admin/versions/{vid}/github-sync` | **单版本精准同步**：按版本 `release_tag` 调 `/repos/{owner}/{repo}/releases/tags/{tag}` 覆盖 GitHub 字段（`version`=Tag 去 v、`channel`（prerelease→Beta/Stable）、`publishedAt`（北京时间 ISO）、`changelogMd`）+ 资产列表（**只替换 `source=github` 的资产行**，手动录入资产保留）。**绝不覆盖**：`status`/`isLatestStable`/`gameVersions`/`platforms`/`side`/`releaseTag`。404=Tag 不存在（可能已删除）、429=限流、400=未填 Tag/版本号冲突/仓库地址非法 |
 
 - **唯一性口径**：slug 全局唯一（`_ensure_slug_free`）；同资源版本号唯一；「最新稳定版」每资源最多一个（唯一转移点 `_set_latest_stable`，先清后立同事务）；「主资产」每版本最多一个（`_set_primary_asset` 同款）。
 - **冗余计数**：`resources.download_count` 与 `download_events` 插入**同事务**原子 UPDATE（与论坛 like_count 同思路，NullPool 每请求独立连接不会失配）；列表/排序读冗余列避免 N+1，详情与后台统计按事件实时聚合，两者可互相对账。
 - **可见性三级联动**：下载端点实时校验「资产 visible + 版本 visible + 资源 published + 三方未软删」，版本/资源隐藏即时生效，无需物化处理资产。
+- **GitHub 双轨同步口径**（`resource_sync_core.py`，唯一权威）：**批量=只增不改**（Tag 是唯一匹配键，重复执行幂等；新增版本默认 `visible`，**最新 Release** 是 stable 渠道时自动设最新稳定版——2026-11-14 调整，覆盖原「默认 hidden」口径）；**单版本=精准覆盖**（覆盖白名单仅 `version/channel/published_at/changelog_md/资产`，`status/is_latest_stable/game_versions/platforms/side/release_tag` 红线不碰）。版本与资产带 `source`（`manual`/`github`）与 `github_synced_at` 标记列（存量库幂等补列）。鉴权走 `.env` 的 `GITHUB_PAT`（留空=未认证 60 次/h；注入 `Authorization: Bearer` + `Accept: application/vnd.github+json` + `X-GitHub-Api-Version: 2022-11-28`；**Token 绝不进响应/日志/堆栈**）。请求 10s 超时、网络错误最多重试 2 次。资源 `githubRepoUrl` 保存时校验（`https://github.com/{owner}/{repo}`）。定时批量 `backend/github_sync.py`（03:30 遍历已发布且有合法仓库地址的资源，crontab 进镜像）。
 - **字典表**：预置 24 项种子（类型/平台/游戏版本/侧别/渠道，幂等按 `type+key` 判存，不覆盖后台改过的值）；tag 无预置项由后台自建；停用用 `enabled=0`（MVP 无删除入口）。
 - 端到端回归脚本：`cd backend && python3 resource_center_smoke_test.py`（临时库 + `TestClient`，66 项断言：CRUD/唯一性/可见性/302 与事件/防重定向/限速/筛选排序/软删/统计）。
 

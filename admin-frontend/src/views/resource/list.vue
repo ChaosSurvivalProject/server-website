@@ -14,6 +14,8 @@ import {
   createVersion,
   updateVersion,
   deleteVersion,
+  syncGithubReleases,
+  syncGithubReleaseSingle,
   createAsset,
   updateAsset,
   deleteAsset,
@@ -459,9 +461,76 @@ const loadVersions = async () => {
   }
 };
 
+// ── GitHub Release 双轨同步（docs/资源中心/GitHub Release 版本同步需求说明.md）──
+// 批量=只增不改（本地已有 Tag 跳过，幂等）；单版本=精准覆盖 GitHub 字段+资产，
+// 状态/最新稳定版/兼容游戏版本/平台/运行环境后端一律不覆盖（手工元数据红线）。
+const batchSyncing = ref(false);
+const singleSyncingId = ref<number | null>(null);
+
+/** 资源是否配置了 GitHub 仓库地址（决定批量同步按钮可用性） */
+const hasGithubRepo = computed(() => !!(form.githubRepoUrl || "").trim());
+
+/** 上次同步时间（PRD §5.2）：版本卡片里 githubSyncedAt 的最大值 */
+const lastSyncedAt = computed(() => {
+  const times = versions.value.map(v => v.githubSyncedAt || "").filter(Boolean).sort();
+  return times.length ? formatDateTime(times[times.length - 1]) : "";
+});
+
+const handleBatchGithubSync = async () => {
+  if (editId.value === null) return;
+  batchSyncing.value = true;
+  try {
+    const res = await syncGithubReleases(editId.value);
+    ElMessage.success(res.warnings?.length ? "同步完成，部分条目需注意（见下）" : "同步完成");
+    // PRD §3.1 固定文案：新增 X 个版本，跳过 Y 个已存在版本
+    ElMessage.info({
+      message: `同步完成：新增 ${res.added} 个版本，跳过 ${res.skipped} 个已存在版本。`,
+      duration: 5000
+    });
+    for (const w of res.warnings || []) ElMessage.warning({ message: w, duration: 6000 });
+    loadVersions();
+  } catch (e: any) {
+    ElMessage.error(e.message || "同步失败");
+  } finally {
+    batchSyncing.value = false;
+  }
+};
+
+const handleSingleGithubSync = (row: VersionItem) => {
+  if (!row.releaseTag || !row.releaseTag.trim()) {
+    ElMessage.warning("该版本未填写 GitHub Tag，请先在编辑中补填后再同步");
+    return;
+  }
+  // PRD §3.2 确认话术：说明哪些不会被覆盖，管理员确认后才发请求
+  ElMessageBox.confirm(
+    "确定要使用 GitHub 上的最新数据覆盖此版本信息吗？您手动填写的兼容游戏版本、平台等信息不会被覆盖。",
+    `同步 Release（${row.version} · ${row.releaseTag}）`,
+    { confirmButtonText: "确认覆盖", cancelButtonText: "取消", type: "warning" }
+  ).then(
+    async () => {
+      singleSyncingId.value = row.id;
+      try {
+        await syncGithubReleaseSingle(row.id);
+        ElMessage.success("已使用 GitHub 最新数据覆盖该版本（兼容信息与状态保持不变）");
+        loadVersions();
+      } catch (e: any) {
+        // 404（Tag 已删除）/ 429（限流）/ 400（版本号冲突等）文案由后端给出
+        ElMessage.error(e.message || "同步失败");
+      } finally {
+        singleSyncingId.value = null;
+      }
+    },
+    () => {
+      /* 取消 */
+    }
+  );
+};
+
 const versionDialogVisible = ref(false);
 const versionSaving = ref(false);
 const versionEditId = ref<number | null>(null);
+/** 正在编辑的版本来源：github=同步生成的版本，GitHub Tag 只读（PRD §5.3） */
+const versionEditSource = ref<"manual" | "github">("manual");
 const versionForm = reactive({
   version: "",
   releaseTag: "",
@@ -477,6 +546,7 @@ const versionForm = reactive({
 
 const openVersionCreate = () => {
   versionEditId.value = null;
+  versionEditSource.value = "manual";
   Object.assign(versionForm, {
     version: "",
     releaseTag: "",
@@ -495,6 +565,7 @@ const openVersionCreate = () => {
 
 const openVersionEdit = (row: VersionItem) => {
   versionEditId.value = row.id;
+  versionEditSource.value = row.source || "manual";
   Object.assign(versionForm, {
     version: row.version,
     releaseTag: row.releaseTag || "",
@@ -547,7 +618,7 @@ const handleSaveVersion = async () => {
 
 const handleDeleteVersion = (row: VersionItem) => {
   ElMessageBox.confirm(
-    `确定删除版本 ${row.version} 吗？其下载资产将一并不可下载（数据保留可恢复请联系管理员）。`,
+    `确定删除版本 ${row.version} 吗？版本及其全部下载资产将被彻底删除（不可恢复）；后续可重新「同步 GitHub Release」拉回。`,
     "删除版本",
     { confirmButtonText: "确定删除", cancelButtonText: "取消", type: "warning" }
   ).then(
@@ -834,7 +905,7 @@ onMounted(() => {
       class="rc-tip"
       type="info"
       :closable="false"
-      title="「下载跳转次数」= 本站记录的下载按钮跳转点击次数；文件由 GitHub 托管，非 GitHub 实际下载量。资源与版本信息由后台手动维护，不做 GitHub 自动同步。"
+      title="「下载跳转次数」= 本站记录的下载按钮跳转点击次数；文件由 GitHub 托管，非 GitHub 实际下载量。版本支持 GitHub Release 双轨同步：批量只新增（已有 Tag 跳过），单版本可精准覆盖（手工元数据不被覆盖）。"
     />
 
     <div class="toolbar">
@@ -1105,7 +1176,19 @@ onMounted(() => {
         <el-tab-pane v-if="!isCreate" label="版本与资产" name="versions">
           <div class="version-toolbar">
             <el-button type="primary" size="small" :icon="Plus" @click="openVersionCreate">新增版本</el-button>
+            <el-button
+              size="small"
+              type="success"
+              :icon="Refresh"
+              :loading="batchSyncing"
+              :disabled="!hasGithubRepo"
+              @click="handleBatchGithubSync"
+            >同步 GitHub Release</el-button>
             <el-button size="small" :icon="Refresh" @click="loadVersions">刷新</el-button>
+            <span v-if="lastSyncedAt" class="form-tip last-synced-tip">上次同步：{{ lastSyncedAt }}</span>
+            <span v-else-if="!hasGithubRepo" class="form-tip">
+              填写基础信息的 GitHub 仓库地址后可同步
+            </span>
           </div>
           <div v-loading="versionsLoading" class="version-block">
             <el-empty v-if="!versionsLoading && !versions.length" description="暂无版本；前台无可见版本时不显示下载按钮" />
@@ -1117,8 +1200,17 @@ onMounted(() => {
                 <el-tag v-if="v.status !== 'visible'" size="small" type="danger">
                   {{ v.status === "hidden" ? "已隐藏" : "已归档" }}
                 </el-tag>
+                <el-tag v-if="v.source === 'github'" size="small" type="info" effect="plain">GitHub</el-tag>
                 <div class="version-head-spacer" />
                 <el-button size="small" link type="primary" @click="openVersionEdit(v)">编辑</el-button>
+                <el-button
+                  size="small"
+                  link
+                  type="success"
+                  :loading="singleSyncingId === v.id"
+                  :disabled="!v.releaseTag"
+                  @click="handleSingleGithubSync(v)"
+                >同步 Release</el-button>
                 <el-button size="small" link type="primary" @click="openAssetCreate(v)">+ 资产</el-button>
                 <el-button size="small" link type="danger" @click="handleDeleteVersion(v)">删除</el-button>
               </div>
@@ -1127,6 +1219,8 @@ onMounted(() => {
                 · 平台：{{ v.platforms.map(p => dictLabel("platform", p)).join("、") || "-" }}
                 · {{ sideLabel(v.side) }}
                 <span v-if="v.publishedAt">· 发布于 {{ v.publishedAt.slice(0, 10) }}</span>
+                <span v-if="v.githubSyncedAt">· GitHub 同步于 {{ formatDateTime(v.githubSyncedAt) }}</span>
+                <span v-if="!v.releaseTag" class="version-meta-warn">· 未填 GitHub Tag（无法精准同步）</span>
               </div>
               <el-table v-if="v.assets && v.assets.length" :data="v.assets" size="small" border>
                 <el-table-column label="文件名" min-width="200">
@@ -1178,7 +1272,15 @@ onMounted(() => {
           </el-radio-group>
         </el-form-item>
         <el-form-item label="GitHub Tag">
-          <el-input v-model.trim="versionForm.releaseTag" maxlength="128" placeholder="如 v1.2.0（选填，便于对账）" />
+          <el-input
+            v-model.trim="versionForm.releaseTag"
+            maxlength="128"
+            placeholder="如 v1.2.0（选填，便于对账）"
+            :disabled="versionEditId !== null && versionEditSource === 'github'"
+          />
+          <div v-if="versionEditId !== null && versionEditSource === 'github'" class="form-tip">
+            此版本来自 GitHub 同步，Tag 作为同步唯一标识不可修改（PRD §5.3）
+          </div>
         </el-form-item>
         <el-form-item label="发布日期">
           <el-date-picker
@@ -1419,6 +1521,12 @@ onMounted(() => {
   color: #909399;
   font-size: 12px;
   margin-bottom: 8px;
+}
+.version-meta-warn {
+  color: var(--el-color-warning);
+}
+.last-synced-tip {
+  margin-top: 0;
 }
 .version-no-asset {
   color: #909399;

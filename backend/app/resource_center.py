@@ -1,11 +1,15 @@
 """资源中心模块（一阶段 MVP）：/resources/*（main.py 统一挂 /api → /api/resources/*）
 与下载跳转端点 /download/asset/{assetId}（不挂 /api，nginx 另行反代）。
 
-实施唯一依据：docs/资源中心/资源中心一阶段MVP需求.md（一阶段 MVP）。
+实施唯一依据：docs/资源中心/资源中心一阶段MVP需求.md（一阶段 MVP）；
+GitHub Release 双轨同步（2026-11-14 新增，覆盖原「不做自动同步」口径）：
+docs/资源中心/GitHub Release 版本同步需求说明.md。
 
 口径红线（改代码前先读）：
-- 资源与版本信息由后台**手动维护**，不做 GitHub 自动同步 / 文件代理 / hash 校验 /
-  下载量同步 / 用户系统（需求 §0 与 §1.3 的「明确不做」）；
+- 资源与版本信息以后台**手动维护**为主；GitHub 同步只走「双轨」两条路：
+  批量同步**只增不改**（按 Tag 判存跳过已存在版本，幂等），单版本同步只覆盖
+  GitHub 能提供的字段——**绝不覆盖** status / is_latest_stable / 兼容游戏版本 /
+  平台 / 运行环境（管理员手工元数据红线）与手动录入的资产；
 - 计数口径是「下载跳转次数」：本站记录的是下载按钮跳转点击次数，**不得称为下载量**；
 - 前台不得直接暴露 GitHub URL，下载一律经 /download/asset/{assetId} 302 跳转；
 - 端点不接受任何 URL 参数，跳转目标只取数据库 asset.url（防开放重定向）；
@@ -37,6 +41,9 @@
   PUT    /resources/admin/assets/{aid}           编辑资产
   DELETE /resources/admin/assets/{aid}           软删除资产
   GET    /resources/admin/stats                  跳转统计（总览 + 按资源/版本/资产，时间范围可选）
+  POST   /resources/admin/{id}/github-sync       批量同步 GitHub Release（只增不改，幂等）
+  POST   /resources/admin/versions/{vid}/github-sync  单版本精准同步（覆盖 GitHub 字段+资产，
+                                                 不碰 status/最新稳定版/兼容/平台/运行环境）
 
 所有接口遵循项目统一响应包络 {code, message, data}（code=0 成功）；
 下载端点 302/404/410/429 为跳转语义，不走包络。
@@ -78,6 +85,15 @@ from .pydantic_models import (
     AssetUpdateRequest,
     DictCreateRequest,
     DictUpdateRequest,
+)
+from . import resource_sync_core
+from .resource_sync_core import (
+    GitHubNotFoundError,
+    GitHubRateLimitError,
+    GitHubSyncError,
+    VERSION_SOURCE_GITHUB,
+    sync_resource_batch,
+    sync_version_single,
 )
 
 router = APIRouter(prefix="/resources", tags=["resources"])
@@ -401,6 +417,10 @@ def _version_brief(v: ResourceVersion, assets: Optional[list] = None, download_c
         "side": v.side,
         "status": v.status,
         "isLatestStable": v.is_latest_stable,
+        # 同步标记：manual=手动录入 github=GitHub 同步（来源或最近一次被覆盖过）；
+        # githubSyncedAt 供后台「上次同步时间」展示，手动版本为空串。
+        "source": v.source or "manual",
+        "githubSyncedAt": v.github_synced_at or "",
         "updateTime": v.update_time,
     }
     if with_changelog:
@@ -424,6 +444,7 @@ def _asset_brief(a: VersionAsset) -> dict:
         "sort": a.sort,
         "isPrimary": a.is_primary,
         "status": a.status,
+        "source": a.source or "manual",
         "updateTime": a.update_time,
     }
 
@@ -1163,6 +1184,7 @@ async def admin_create_resource(
     await _ensure_slug_free(db, slug, exclude_id=None)
     _validate_status(data.status)
     _validate_side(data.side)
+    _validate_github_repo_url(data.github_repo_url)
     now = _now_iso()
     row = Resource(
         slug=slug,
@@ -1238,6 +1260,7 @@ async def admin_update_resource(
     if data.sort_weight is not None:
         row.sort_weight = data.sort_weight
     if data.github_repo_url is not None:
+        _validate_github_repo_url(data.github_repo_url)
         row.github_repo_url = data.github_repo_url.strip()
     if data.issues_url is not None:
         row.issues_url = data.issues_url.strip()
@@ -1340,7 +1363,8 @@ async def admin_list_versions(
         )
         for a in ar.scalars().all():
             asset_map[a.version_id].append(_asset_brief(a))
-    return _ok([_version_brief(v, asset_map.get(v.id, [])) for v in versions])
+    # with_changelog：后台编辑弹窗回填更新日志用（公开详情另见 resource_detail）
+    return _ok([_version_brief(v, asset_map.get(v.id, []), with_changelog=True) for v in versions])
 
 
 @router.post("/admin/{resource_id}/versions")
@@ -1492,14 +1516,81 @@ async def _set_latest_stable(db: AsyncSession, resource_id: int, target: Resourc
 async def admin_delete_version(
     version_id: int, _admin=Depends(require_admin), db: AsyncSession = Depends(get_db)
 ):
-    """软删除版本（其资产随版本不可下载，下载端点实时校验；数据保留）。"""
+    """**物理删除**版本（2026-11-14 改口径，原软删）：版本行及其全部资产行一并硬删。
+
+    原因：resource_versions 有 (resource_id, version) 全行唯一约束，软删行会导致
+    GitHub 批量同步撞约束 500、同号版本无法重建。版本无历史审计需求，删除即彻底
+    移除；其下载跳转事件（download_events）**保留**（统计口径不丢数据，仅失去
+    version join 目标，按版本聚合时自然消失）。前端确认框文案与此外呼一致。
+    """
     v = await _get_version_or_404(db, version_id)
     now = _now_iso()
-    v.deleted_at = now
-    v.is_latest_stable = 0
-    v.update_time = now
+    await db.execute(delete(VersionAsset).where(VersionAsset.version_id == v.id))
+    await db.delete(v)
     await db.commit()
-    return _ok({"id": v.id, "deletedAt": v.deleted_at})
+    return _ok({"id": v.id, "deletedAt": now})
+
+
+# ── GitHub Release 双轨同步（docs/资源中心/GitHub Release 版本同步需求说明.md）──
+
+
+def _translate_sync_error(e: GitHubSyncError) -> HTTPException:
+    """同步核心异常 → HTTPException（文案已面向用户；404 语义单独成类）。"""
+    if isinstance(e, GitHubRateLimitError):
+        return HTTPException(status_code=429, detail=str(e))
+    if isinstance(e, GitHubNotFoundError):
+        return HTTPException(status_code=404, detail=str(e))
+    return HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/admin/{resource_id}/github-sync")
+async def admin_sync_github_releases(
+    resource_id: int, _admin=Depends(require_admin), db: AsyncSession = Depends(get_db)
+):
+    """批量同步（只增不改，幂等）：拉最新 20 条 Release，已存在 Tag 跳过，只新增。
+
+    整资源一个事务：中途任一 Release 入库失败整体回滚（不留半批脏数据）。
+    GitHub 请求在事务内（拉取在前、写入在后，失败时 session 里只有未提交的
+    新对象，异常由 FastAPI 依赖收尾回滚，不会写库）。
+    """
+    resource = await _get_resource_or_404(db, resource_id)
+    if resource.deleted_at != "":
+        raise HTTPException(status_code=400, detail="已删除的资源不能同步")
+    now = _now_iso()
+    try:
+        result = await sync_resource_batch(db, resource, now=now)
+    except GitHubSyncError as e:
+        raise _translate_sync_error(e) from e
+    await db.commit()
+    payload = {
+        "added": result.added,
+        "skipped": result.skipped,
+        "fetched": result.fetched,
+        "warnings": result.warnings,
+        "syncedAt": now,
+    }
+    return _ok(payload, message=f"同步完成：新增 {result.added} 个版本，跳过 {result.skipped} 个已存在版本")
+
+
+@router.post("/admin/versions/{version_id}/github-sync")
+async def admin_sync_github_release_single(
+    version_id: int, _admin=Depends(require_admin), db: AsyncSession = Depends(get_db)
+):
+    """单版本精准同步：按版本 GitHub Tag 拉单条 Release 覆盖 GitHub 字段 + 资产。
+
+    覆盖白名单：version / channel / published_at / changelog_md / 资产列表
+    （只替换 source=github 的资产行，手动录入资产保留）。**不覆盖**：
+    status / is_latest_stable / game_versions / platforms / side / release_tag。
+    """
+    v = await _get_version_or_404(db, version_id)
+    now = _now_iso()
+    try:
+        v = await sync_version_single(db, v, now=now)
+    except GitHubSyncError as e:
+        raise _translate_sync_error(e) from e
+    await db.commit()
+    await db.refresh(v)
+    return _ok(_version_brief(v), message="已使用 GitHub 最新数据覆盖该版本（兼容信息与状态保持不变）")
 
 
 # ── 资产管理 ──────────────────────────────────────────────────────
@@ -1680,6 +1771,24 @@ def _validate_side(side: str) -> None:
 def _validate_channel(channel: str) -> None:
     if channel not in CHANNELS:
         raise HTTPException(status_code=400, detail=f"channel 仅支持 {'/'.join(CHANNELS)}")
+
+
+def _validate_github_repo_url(url: str) -> None:
+    """资源 GitHub 仓库地址校验（PRD §5.1：必须以 https://github.com/ 开头）。
+
+    双轨同步的解析口径更严：必须能提取出 owner/repo（parse_github_repo）。
+    资源编辑保存与同步触发都走这里，保证入库的地址可被同步直接使用。
+    """
+    u = (url or "").strip()
+    if not u:
+        return  # 选填字段：空 = 未配置同步（原有行为不变）
+    if not u.startswith(GITHUB_URL_PREFIX):
+        raise HTTPException(status_code=400, detail="GitHub 仓库地址必须以 https://github.com/ 开头")
+    if resource_sync_core.parse_github_repo(u) is None:
+        raise HTTPException(
+            status_code=400,
+            detail="GitHub 仓库地址格式不正确，应为 https://github.com/{owner}/{repo}",
+        )
 
 
 def _validate_version_status(status: str) -> None:

@@ -69,7 +69,7 @@ DB `servers` 表是唯一权威（内存 `SERVERS` 只是读缓存）。硬性�
 
 ### 生产定时任务（镜像内 cron）
 
-三条任务已进后端镜像（`backend/crontab` → `/etc/cron.d/xqly-jobs`：0 3 kb_sync --incremental、0 4 staff_expire、0 5 forum_purge，均空跑安全）；**cron 不继承容器 environment**，业务路径必须写进 crontab 且与 docker-compose.yml 的 environment 同步；`CRON_ENABLED=0` 可关闭。
+四条任务已进后端镜像（`backend/crontab` → `/etc/cron.d/xqly-jobs`：0 3 kb_sync --incremental、30 3 github_sync（GitHub Release 批量同步，只增不改幂等）、0 4 staff_expire、0 5 forum_purge，均空跑安全）；**cron 不继承容器 environment**，业务路径必须写进 crontab 且与 docker-compose.yml 的 environment 同步；`CRON_ENABLED=0` 可关闭。
 
 ## for-deploy 留档目录
 

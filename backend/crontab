@@ -47,3 +47,9 @@ KB_WIKI_DIR=/app/wiki
 # 论坛回收站超期清理（0 变更空跑安全；判定权威是 deleted_at，
 # 恢复接口自校验 + 列表自过滤，超期帖用户看不到也恢复不了）
 0 5 * * * root cd /app && python backend/forum_purge.py >> /proc/1/fd/1 2>&1
+
+# GitHub Release 批量同步（docs/资源中心/GitHub Release 版本同步需求说明.md §3.1；
+# 只增不改、按 Tag 判存跳过已存在版本，幂等——重跑/漏跑都不写坏数据；
+# 避开 03:00 的 kb_sync，错峰 03:30。GITHUB_PAT 走容器挂载的 backend/.env，
+# 不写进 crontab；留空则按未认证 60 次/h 限额运行，资源多时建议配 PAT）
+30 3 * * * root cd /app && python backend/github_sync.py >> /proc/1/fd/1 2>&1
