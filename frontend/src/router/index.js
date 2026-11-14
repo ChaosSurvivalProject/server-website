@@ -78,6 +78,13 @@ const routes = [
     props: true
   },
   {
+    path: '/resources/:slug/version/:version',
+    name: 'ResourceVersionDetail',
+    // 版本详情页（Modrinth 布局：更新日志 + 下载文件 + 右侧版本元数据）
+    component: () => import('../views/resources/ResourceVersionDetail.vue'),
+    props: true
+  },
+  {
     path: '/login',
     name: 'Login',
     // 登录/注册共用 AuthView，通过 initialMode 区分

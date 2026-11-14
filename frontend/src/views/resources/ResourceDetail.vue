@@ -165,25 +165,14 @@
                     <tr v-for="v in pagedVersions" :key="v.id">
                       <td>
                         <div class="res-vt-version">
-                          {{ v.version }}
+                          <!-- 版本号 → 版本详情页（Modrinth：版本名即详情入口） -->
+                          <router-link class="res-vt-version-link" :to="`/resources/${slug}/version/${encodeURIComponent(v.version)}`">
+                            {{ v.version }}
+                          </router-link>
                           <span class="fx-tag" :class="channelClass(v.channel)">{{ channelLabel(v.channel) }}</span>
                           <span v-if="v.isLatestStable" class="fx-tag fx-tag-featured">最新稳定版</span>
                         </div>
-                        <!-- 展开行：更新日志 + 全部下载资产（每文件带更多操作菜单） -->
-                        <details v-if="v.changelogMd || v.assets.length" class="res-vt-more">
-                          <summary>{{ v.changelogMd ? "更新日志与下载文件" : "全部下载文件" }}（{{ v.assets.length }}）</summary>
-                          <div v-if="v.changelogMd" class="res-vt-changelog fx-md" @click="handleContentClick" v-html="renderMd(v.changelogMd)"></div>
-                          <div v-if="v.assets.length" class="res-version-assets">
-                            <div v-for="a in v.assets" :key="a.id" class="res-asset-row">
-                              <a class="fx-btn fx-btn-sm res-dl-btn" :class="{ 'fx-btn-primary': a.isPrimary }" :href="`/download/asset/${a.id}`">
-                                <i class="fa-solid fa-download"></i>
-                                {{ a.filename }}
-                                <span v-if="a.isPrimary" class="res-asset-primary">主</span>
-                              </a>
-                            </div>
-                          </div>
-                          <div v-else class="res-version-no-asset">该版本暂无可下载文件</div>
-                        </details>
+                        <!-- 更新日志与文件列表已移至版本详情页（/resources/:slug/version/:version） -->
                       </td>
                       <td class="res-vt-dict">{{ v.gameVersions.map(gameVersionLabel).join("、") || "-" }}</td>
                       <td class="res-vt-dict">{{ v.platforms.map(platformLabel).join("、") || "-" }}</td>
@@ -193,12 +182,12 @@
                       <td class="num res-vt-actions">
                         <template v-if="v.assets.length">
                           <a
-                            class="res-vt-dl-btn"
+                            class="fx-btn fx-btn-primary fx-btn-sm res-vt-dl-main"
                             :href="`/download/asset/${primaryAsset(v).id}`"
                             :title="`下载 ${primaryAsset(v).filename}`"
                             aria-label="下载主文件"
                           >
-                            <i class="fa-solid fa-download"></i>
+                            <i class="fa-solid fa-download"></i>下载
                           </a>
                           <div class="res-more-wrap">
                             <button
@@ -220,6 +209,9 @@
                               <button type="button" class="res-menu-item" @click="copyPrimaryLink(v)">
                                 <i class="fa-solid fa-link"></i>复制链接
                               </button>
+                              <button type="button" class="res-menu-item" @click="openVersionDetail(v)">
+                                <i class="fa-solid fa-circle-info"></i>版本详情
+                              </button>
                             </div>
                           </div>
                         </template>
@@ -235,7 +227,7 @@
           <!-- ── 右侧栏：下载面板（移动端下沉） ── -->
           <aside class="res-detail-side">
             <div class="fx-card res-download-panel">
-              <div class="fx-card-hd"><i class="fa-solid fa-download"></i>下载</div>
+              <div class="fx-card-hd"><span><i class="fa-solid fa-download"></i>下载</span></div>
               <div class="fx-card-pad">
                 <!-- 只展示最新版本（最新稳定版优先，无稳定版取列表第一个有资产的版本） -->
                 <template v-if="latestDownloadable">
@@ -270,7 +262,7 @@
             </div>
 
             <div class="fx-card">
-              <div class="fx-card-hd"><i class="fa-solid fa-list-check"></i>信息</div>
+              <div class="fx-card-hd"><span><i class="fa-solid fa-list-check"></i>信息</span></div>
               <div class="fx-card-pad res-info-list">
                 <div class="res-info-row"><span>类型</span><span>{{ typeLabel }}</span></div>
                 <div class="res-info-row"><span>运行环境</span><span>{{ sideLabel }}</span></div>
@@ -319,11 +311,6 @@ import { showForumToast } from "../../utils/forumToast.js";
 import { siteBranding } from "../../utils/siteBranding.js";
 import { copyText } from "../../utils/clipboard.js";
 import VersionFilterMulti from "../../components/resources/VersionFilterMulti.vue";
-
-/** Markdown → 消毒 HTML（全站统一渲染入口，AGENTS.md 红线：不另写渲染管线） */
-function renderMd(src) {
-  return renderMarkdownContent(src);
-}
 
 export default {
   name: "ResourceDetail",
@@ -458,7 +445,6 @@ export default {
     document.removeEventListener("click", this.onDocClick);
   },
   methods: {
-    renderMd,
     dictLabel(type, key) {
       return this._dict?.[type]?.find?.((i) => i.key === key)?.label ?? this._fallbackLabel(type, key);
     },
@@ -503,6 +489,11 @@ export default {
     },
     onDocClick() {
       if (this.moreOpen !== "") this.moreOpen = "";
+    },
+    /** 跳转版本详情页（更新日志 + 全部文件的独立页面） */
+    openVersionDetail(v) {
+      this.moreOpen = "";
+      this.$router.push(`/resources/${this.slug}/version/${encodeURIComponent(v.version)}`);
     },
 
     /**
@@ -880,24 +871,18 @@ export default {
   font-weight: 700;
   color: var(--fx-text);
 }
-.res-vt-more {
-  margin-top: 6px;
-  font-weight: 400;
+/* 版本号 → 版本详情页链接（Modrinth：版本名即详情入口） */
+.res-vt-version-link {
+  color: var(--fx-text);
+  text-decoration: none;
+  border-bottom: 1px dashed transparent;
+  transition: color 0.15s ease, border-color 0.15s ease;
 }
-.res-vt-more summary {
-  cursor: pointer;
+.res-vt-version-link:hover {
   color: var(--fx-brand-d);
-  font-size: 12.5px;
-  font-weight: 600;
-  user-select: none;
-  width: fit-content;
+  border-bottom-color: var(--fx-brand-d);
 }
-.res-vt-changelog {
-  margin-top: 8px;
-  border-left: 3px solid var(--fx-line);
-  padding-left: 10px;
-  font-size: 12.5px;
-}
+/* 展开行（更新日志/文件）样式已移至版本详情页 ResourceVersionDetail.vue */
 .res-vt-dict {
   color: var(--fx-text-2);
   font-size: 12.5px;
@@ -912,11 +897,20 @@ export default {
   color: var(--fx-text);
   white-space: nowrap;
 }
-/* ── 行内操作：主下载按钮 + 更多菜单（参照 Modrinth Versions 表） ── */
+/* ── 行内操作：主下载按钮（带文字）+ 更多菜单（参照 Modrinth Versions 表） ── */
 .res-vt-actions {
   white-space: nowrap;
 }
-.res-vt-actions .res-vt-dl-btn,
+/* 下载按钮用全局 fx-btn fx-btn-primary fx-btn-sm，这里只补对齐与间距 */
+.res-vt-actions .res-vt-dl-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  vertical-align: middle;
+}
+.res-vt-actions .res-vt-dl-main i {
+  font-size: 11.5px;
+}
 .res-vt-actions .res-vt-more-btn {
   display: inline-flex;
   align-items: center;
@@ -926,19 +920,11 @@ export default {
   border-radius: 8px;
   border: 1px solid var(--fx-line);
   background: #fff;
-  color: var(--fx-brand-d);
+  color: var(--fx-text-3);
   cursor: pointer;
   transition: all 0.15s ease;
   margin-left: 6px;
   vertical-align: middle;
-}
-.res-vt-actions .res-vt-dl-btn:hover {
-  background: var(--fx-brand);
-  border-color: var(--fx-brand);
-  color: #fff;
-}
-.res-vt-actions .res-vt-more-btn {
-  color: var(--fx-text-3);
 }
 .res-vt-actions .res-vt-more-btn:hover,
 .res-vt-actions .res-vt-more-btn[aria-expanded="true"] {
@@ -994,36 +980,7 @@ export default {
 .res-menu-item.is-primary:hover {
   background: var(--fx-brand-soft);
 }
-/* 展开行内的文件行（主文件标记） */
-.res-asset-row {
-  display: flex;
-}
-.res-asset-primary {
-  font-size: 10.5px;
-  font-weight: 700;
-  color: var(--fx-brand-d);
-  background: var(--fx-brand-soft);
-  border-radius: 5px;
-  padding: 0 5px;
-  margin-left: 2px;
-}
-.res-version-assets {
-  margin-top: 10px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.res-dl-btn {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.res-version-no-asset {
-  margin-top: 8px;
-  font-size: 12px;
-  color: var(--fx-text-3);
-}
+/* 展开行样式已随「更新日志与下载文件」移至版本详情页（ResourceVersionDetail.vue） */
 
 /* 移动端表格横向滚动（不挤压五列） */
 @media (max-width: 720px) {
