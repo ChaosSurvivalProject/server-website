@@ -88,6 +88,13 @@
                   <!-- 观察（工具结果摘要）紧跟在其执行的下面 -->
                   <div v-if="st.observe" class="chat-step-observe">{{ st.observe }}</div>
                 </template>
+
+                <!-- 过程叙述块（工具调用之间的非思考说明文字）：可见段落，
+                     在时间线中按块呈现（参考主流 Agent UI 的分块叙述），
+                     由前端在"工具开始执行"边界把气泡中已累积的叙述提升而来 -->
+                <div v-else-if="st.kind === 'narrative'" class="chat-step-narrative">
+                  <div class="chat-step-narrative-text">{{ st.text }}</div>
+                </div>
               </div>
             </div>
 
@@ -422,18 +429,27 @@ export default {
         aiMsg.sources = frame.sources;
         this.scrollToBottom();
       } else if (frame.step && frame.step.kind) {
-        // 步骤边界帧（后端状态机：think→act→observe→think2→answer）：
-        // think/think2 都开新的思考步骤；act 开执行步骤；observe/answer 不建步骤
-        // （observe 并进最近 act，answer 是正文流）
+        // 步骤边界帧（后端状态机：think→act→observe）：
+        // think 开新思考步骤；act 开执行步骤；observe 不建步骤（并进最近 act）。
+        // 非思考正文不在这里建块——由 tool.running 时"提升气泡文本"产生（见下）。
         const kind = frame.step.kind;
-        // 新步骤开始：把流式中的思考步骤收尾
-        const runningThink = [...aiMsg.steps].reverse().find((s) => s.kind === "think");
-        if (runningThink && runningThink.state === "running" && kind !== "think") {
-          runningThink.state = "done";
-        }
-        if (kind === "think" || kind === "think2") {
+        // 新步骤开始：把仍在流式中的思考步骤收尾
+        const runningThink = [...aiMsg.steps].reverse().find((s) => s.kind === "think" && s.state === "running");
+        if (runningThink) runningThink.state = "done";
+        if (kind === "think") {
           aiMsg.steps.push({ kind: "think", text: "", state: "running" });
         } else if (kind === "act") {
+          // 进入工具执行前：把气泡中已累积的"非思考叙述"提升为独立可见块
+          // （后端先发 step:act 再发 tool:running，必须在此处提升，叙述块才会
+          //  排在执行步骤之前、顺序正确）。这样最终答案仍留在气泡，工具间的
+          //  说明文字进时间线块，无需后端按相位猜 narrative。
+          const pending = (this._rawAnswer || "").trim();
+          if (pending) {
+            aiMsg.steps.push({ kind: "narrative", text: this._rawAnswer.trim(), state: "done" });
+            this._rawAnswer = "";
+            aiMsg.raw = "";
+            aiMsg.blocks = [];
+          }
           // 执行步骤的 label 由紧随的 tool 帧填充；先占位
           aiMsg.steps.push({ kind: "act", label: "", name: "", state: "running", observe: "" });
         }
@@ -482,7 +498,7 @@ export default {
         aiMsg.error = frame.error;
       }
     },
-    /** 步骤徽标：思考 💭 / 执行 🔧 */
+    /** 步骤徽标：思考 💭 / 执行 🔧 / 叙述 💬（narrative 在模板中固定用 💬） */
     stepBadge(kind) {
       return kind === "think" ? "💭" : "🔧";
     },
@@ -523,6 +539,10 @@ export default {
       }
       this._aiMsg = null;
       aiMsg.streaming = false;
+      // 收尾：把仍在流式中的思考步骤标记完成；气泡里剩余的文本就是最终答案
+      aiMsg.steps.forEach((s) => {
+        if (s.state === "running") s.state = "done";
+      });
       if (this._rawAnswer) {
         aiMsg.raw = completeIncompleteMarkdown(this._rawAnswer);
         aiMsg.blocks = splitMarkdownBlocks(aiMsg.raw);
@@ -749,6 +769,7 @@ export default {
   border: 1px solid #eef1ef;
 }
 .chat-step--think::after { background: #a78bfa; }
+.chat-step--narrative::after { background: #34d399; }
 .chat-step--act::after { background: var(--primary-color, #4caf50); }
 
 .chat-step-think {
@@ -770,6 +791,24 @@ export default {
   font-family: inherit;
   font-size: 12px;
   line-height: 1.6;
+}
+
+/* 过程叙述块（工具调用之间的非思考说明文字）：可见段落，绿色系节点区分
+   （思考紫 / 叙述浅绿 / 执行主色）；正文用浅底卡片弱化，突出最终答案气泡。 */
+.chat-step-narrative {
+  display: block;
+}
+.chat-step-narrative-text {
+  margin: 2px 0 4px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(52, 211, 153, 0.08);
+  border-left: 2px solid rgba(52, 211, 153, 0.55);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--el-text-color-regular, #4b5563);
 }
 .chat-step-line {
   display: flex;
