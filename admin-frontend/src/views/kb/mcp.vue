@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { Plus, Refresh, Delete, Connection } from "@element-plus/icons-vue";
 import {
@@ -95,23 +95,57 @@ const emptyForm = (): McpServerUpsert => ({
   args: [],
   env: null,
   headers: null,
+  authType: "none",
   authToken: "",
+  apiKeyHeader: "",
   timeoutSeconds: 5,
   enabled: true
 });
 const form = reactive<McpServerUpsert>(emptyForm());
-const argsText = ref(""); // args 以逗号/空白分隔输入
+const argsText = ref(""); // args 以空白分隔输入
+const envText = ref(""); // stdio 环境变量（KEY=VALUE 每行一条）
+const headersText = ref(""); // 额外自定义 HTTP 头（Header: Value 每行一条）
+const editingHasToken = ref(false); // 编辑中 Server 是否已有凭据（列表行快照）
+const formHasToken = computed(() => editingId.value !== null && editingHasToken.value);
+
+/** "KEY=VALUE" 行文本 → 对象（容错首个冒号分隔；空行/# 注释行跳过） */
+const parseKvText = (text: string, sep: string): Record<string, string> => {
+  const out: Record<string, string> = {};
+  for (const line of text.split(/\r?\n/)) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const i = t.indexOf(sep);
+    if (i <= 0) continue;
+    out[t.slice(0, i).trim()] = t.slice(i + sep.length).trim();
+  }
+  return out;
+};
+
+/** 编辑表单校验：非法行（既无分隔符也不是注释）拒绝保存并定位行号 */
+const validateKvText = (text: string, sep: string, label: string): string | null => {
+  const lines = text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const t = lines[i].trim();
+    if (!t || t.startsWith("#")) continue;
+    if (t.indexOf(sep) <= 0) return `${label}第 ${i + 1} 行格式无效（需「键${sep}值」）`;
+  }
+  return null;
+};
 
 const openCreate = () => {
   editingId.value = null;
+  editingHasToken.value = false;
   Object.assign(form, emptyForm());
   argsText.value = "";
+  envText.value = "";
+  headersText.value = "";
   testResult.value = null;
   editVisible.value = true;
 };
 
 const openEdit = (row: McpServerItem) => {
   editingId.value = row.id;
+  editingHasToken.value = row.hasToken;
   Object.assign(form, {
     name: row.name,
     description: row.description,
@@ -121,13 +155,24 @@ const openEdit = (row: McpServerItem) => {
     args: [...(row.args || [])],
     env: null, // 凭据不下发：留 null = 保留原值
     headers: null,
+    authType: row.authType || "none",
     authToken: "", // 留空 = 保留原值
+    apiKeyHeader: row.apiKeyHeader || "",
     timeoutSeconds: row.timeoutSeconds,
     enabled: row.enabled
   });
   argsText.value = (row.args || []).join(" ");
+  envText.value = ""; // env 原文不下发（凭据红线）：留空 = 保留原值
+  headersText.value = ""; // headers 原文不下发：留空 = 保留原值
   testResult.value = null;
   editVisible.value = true;
+};
+
+/** 文本区 → 请求值：空 = null（后端保留原值）；DISCARD = {}（整体清空）；否则解析 */
+const kvPayload = (text: string, sep: string): Record<string, string> | null => {
+  const t = text.trim();
+  if (!t) return null;
+  return t.toUpperCase() === "DISCARD" ? {} : parseKvText(t, sep);
 };
 
 const doSave = async () => {
@@ -143,7 +188,27 @@ const doSave = async () => {
     ElMessage.warning("HTTP/SSE 传输必须填写 URL");
     return;
   }
+  if (form.transport !== "stdio" && form.authType !== "none" && !form.authToken && editingId.value === null) {
+    ElMessage.warning("已选择鉴权方式，请填写凭据值");
+    return;
+  }
+  const badEnv = validateKvText(envText.value, "=", "环境变量");
+  if (badEnv) {
+    ElMessage.warning(badEnv);
+    return;
+  }
+  const badHeaders = validateKvText(headersText.value, ":", "自定义头");
+  if (badHeaders) {
+    ElMessage.warning(badHeaders);
+    return;
+  }
   form.args = argsText.value.trim() ? argsText.value.trim().split(/\s+/) : [];
+  // env 仅 stdio 生效；HTTP/SSE 恒 null。DISCARD = 整体清空（存 {}）
+  form.env =
+    form.transport === "stdio"
+      ? kvPayload(envText.value, "=")
+      : null;
+  form.headers = form.transport !== "stdio" ? kvPayload(headersText.value, ":") : null;
   saving.value = true;
   try {
     if (editingId.value === null) {
@@ -163,7 +228,23 @@ const doSave = async () => {
 };
 
 const doTest = async () => {
+  if (!form.name.trim()) {
+    ElMessage.warning("请先填写名称");
+    return;
+  }
+  const badEnv = validateKvText(envText.value, "=", "环境变量");
+  if (badEnv) {
+    ElMessage.warning(badEnv);
+    return;
+  }
+  const badHeaders = validateKvText(headersText.value, ":", "自定义头");
+  if (badHeaders) {
+    ElMessage.warning(badHeaders);
+    return;
+  }
   form.args = argsText.value.trim() ? argsText.value.trim().split(/\s+/) : [];
+  form.env = form.transport === "stdio" ? kvPayload(envText.value, "=") : null;
+  form.headers = form.transport !== "stdio" ? kvPayload(headersText.value, ":") : null;
   testing.value = true;
   testResult.value = null;
   try {
@@ -187,9 +268,14 @@ const doImportJson = async () => {
     Object.assign(form, {
       ...model,
       env: model.env ?? null,
-      headers: model.headers ?? null
+      headers: model.headers ?? null,
+      authType: model.authType ?? "none",
+      apiKeyHeader: model.apiKeyHeader ?? ""
     });
     argsText.value = (model.args || []).join(" ");
+    envText.value = model.env ? Object.entries(model.env).map(([k, v]) => `${k}=${v}`).join("\n") : "";
+    headersText.value = model.headers ? Object.entries(model.headers).map(([k, v]) => `${k}: ${v}`).join("\n") : "";
+    editingHasToken.value = Boolean(model.authToken);
     jsonImportVisible.value = false;
     ElMessage.success(`已解析「${model.name}」，请核对字段后保存`);
   } catch (e: any) {
@@ -280,10 +366,20 @@ onMounted(() => {
               <span v-else class="mono">{{ row.url }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="凭据" width="90">
+          <el-table-column label="鉴权" width="110">
             <template #default="{ row }">
-              <el-tag v-if="row.hasToken" size="small" type="info">已配置</el-tag>
-              <span v-else>—</span>
+              <template v-if="row.transport === 'stdio'">
+                <el-tag v-if="row.hasEnv" size="small" type="info">有 Env</el-tag>
+                <span v-else>—</span>
+              </template>
+              <template v-else>
+                <el-tag v-if="row.authType === 'bearer'" size="small" type="warning">Bearer</el-tag>
+                <el-tag v-else-if="row.authType === 'api_key'" size="small" type="warning">
+                  {{ row.apiKeyHeader || "X-API-Key" }}
+                </el-tag>
+                <el-tag v-else-if="row.hasHeaders" size="small" type="info">自定义头</el-tag>
+                <span v-else>—</span>
+              </template>
             </template>
           </el-table-column>
           <el-table-column label="已启用工具" width="100" align="center">
@@ -381,15 +477,55 @@ onMounted(() => {
           <el-form-item label="命令参数">
             <el-input v-model="argsText" placeholder="空格分隔，如：-y minemcp" />
           </el-form-item>
+          <el-form-item label="环境变量">
+            <el-input
+              v-model="envText"
+              type="textarea"
+              :rows="3"
+              placeholder="每行一条，格式 KEY=VALUE，如：&#10;MINECRAFT_WIKI_API_URL=https://zh.minecraft.wiki/api.php"
+            />
+            <span class="form-hint">注入 stdio 子进程；编辑时留空 = 保留原值，清空请填 DISCARD</span>
+          </el-form-item>
         </template>
-        <el-form-item label="Bearer Token">
-          <el-input
-            v-model="form.authToken"
-            type="password"
-            show-password
-            :placeholder="editingId !== null && formHasToken ? '留空保留原值' : '可选'"
-          />
-        </el-form-item>
+        <template v-if="form.transport !== 'stdio'">
+          <el-form-item label="鉴权方式">
+            <el-radio-group v-model="form.authType">
+              <el-radio value="none">无鉴权</el-radio>
+              <el-radio value="bearer">Bearer Token</el-radio>
+              <el-radio value="api_key">API Key</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="form.authType === 'bearer'" label="Token">
+            <el-input
+              v-model="form.authToken"
+              type="password"
+              show-password
+              :placeholder="editingId !== null && formHasToken ? '留空保留原值' : 'Bearer 凭据值'"
+            />
+          </el-form-item>
+          <template v-if="form.authType === 'api_key'">
+            <el-form-item label="Header 名">
+              <el-input v-model="form.apiKeyHeader" placeholder="默认 X-API-Key" />
+            </el-form-item>
+            <el-form-item label="Key 值">
+              <el-input
+                v-model="form.authToken"
+                type="password"
+                show-password
+                :placeholder="editingId !== null && formHasToken ? '留空保留原值' : 'API Key 值'"
+              />
+            </el-form-item>
+          </template>
+          <el-form-item label="自定义头">
+            <el-input
+              v-model="headersText"
+              type="textarea"
+              :rows="3"
+              placeholder="额外随请求发送的 HTTP 头，每行一条，格式 Header: Value，如：&#10;X-Tenant: my-org"
+            />
+            <span class="form-hint">与鉴权头同名时鉴权值优先；编辑时留空 = 保留原值，清空请填 DISCARD</span>
+          </el-form-item>
+        </template>
         <el-form-item label="超时(秒)">
           <el-input-number v-model="form.timeoutSeconds" :min="1" :max="30" />
           <span class="form-hint">PRD 建议 3-5 秒</span>
@@ -414,7 +550,7 @@ onMounted(() => {
         v-model="jsonText"
         type="textarea"
         :rows="10"
-        placeholder='支持标准配置：{"mcpServers": {"名称": {"command": "npx", "args": [...], "env": {...}}}} 或单个 server 配置对象'
+        placeholder='支持标准配置：{"mcpServers": {"名称": {"command": "npx", "args": [...], "env": {...}}}} 或单个 server 配置对象；HTTP 传输可加 "authType": "bearer"|"api_key" 与 "headers": {...}（env 仅 stdio 生效）'
       />
       <template #footer>
         <el-button @click="jsonImportVisible = false">取消</el-button>

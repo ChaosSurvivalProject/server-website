@@ -87,7 +87,9 @@ export const reindexKBDocument = (id: number) => {
 // 契约参照 backend/app/kb.py 的 MCP 管理接口（require_admin，{code, message, data} 包络）。
 // 安全红线：authToken / env / headers 凭据原文不下发（只有 hasToken 等布尔标记）。
 
-/** MCP Server（列表项；凭据字段脱敏为 has* 布尔） */
+/** MCP Server（列表项；凭据字段脱敏为 has* 布尔，authType/apiKeyHeader 非凭据明文下发） */
+export type McpAuthType = "none" | "bearer" | "api_key";
+
 export type McpServerItem = {
   id: number;
   name: string;
@@ -96,6 +98,8 @@ export type McpServerItem = {
   url: string;
   command: string;
   args: string[];
+  authType: McpAuthType;
+  apiKeyHeader: string;
   hasToken: boolean;
   hasEnv: boolean;
   hasHeaders: boolean;
@@ -109,7 +113,7 @@ export type McpServerItem = {
   updateTime: string;
 };
 
-/** MCP Server 新增/编辑表单（authToken 留空 = 编辑时保留原值） */
+/** MCP Server 新增/编辑表单（authToken 留空 = 编辑时保留原值；env 仅 stdio 生效） */
 export type McpServerUpsert = {
   name: string;
   description: string;
@@ -119,7 +123,9 @@ export type McpServerUpsert = {
   args: string[];
   env?: Record<string, string> | null;
   headers?: Record<string, string> | null;
+  authType?: McpAuthType;
   authToken?: string;
+  apiKeyHeader?: string;
   timeoutSeconds: number;
   enabled: boolean;
 };

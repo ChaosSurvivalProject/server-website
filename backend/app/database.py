@@ -113,6 +113,7 @@ _forum_recycle_migrated = False
 _resource_custom_links_migrated = False
 _download_event_counted_migrated = False
 _resource_version_sync_migrated = False
+_kb_mcp_auth_migrated = False
 
 
 def migrate_user_extra_columns() -> None:
@@ -290,9 +291,49 @@ def migrate_resource_version_sync_columns() -> None:
         logger.warning("resource_versions/version_assets 同步列迁移检查失败: %s", e)
 
 
+def migrate_kb_mcp_auth_columns() -> None:
+    """kb_mcp_servers 表补鉴权三列（幂等；auth_type / api_key_header，已存在的表结构不受影响）。
+
+    存量行为自动回填：auth_token 非空 → auth_type='bearer'（保持补列前
+    "token 自动并进 Authorization 头"的连接行为不变），api_key_header 落空串默认。
+    """
+    global _kb_mcp_auth_migrated
+    if _kb_mcp_auth_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [
+                row[1] for row in con.execute("PRAGMA table_info('kb_mcp_servers')")
+            ]
+            if "auth_type" not in col_names:
+                con.execute(
+                    "ALTER TABLE kb_mcp_servers ADD COLUMN auth_type VARCHAR(16) "
+                    "NOT NULL DEFAULT 'none'"
+                )
+                con.execute(
+                    "UPDATE kb_mcp_servers SET auth_type='bearer' "
+                    "WHERE TRIM(COALESCE(auth_token, '')) != ''"
+                )
+            if "api_key_header" not in col_names:
+                con.execute(
+                    "ALTER TABLE kb_mcp_servers ADD COLUMN api_key_header VARCHAR(64) "
+                    "NOT NULL DEFAULT ''"
+                )
+            con.commit()
+            logger.info("已为 kb_mcp_servers 补 auth_type、api_key_header 列（鉴权方式）")
+        finally:
+            con.close()
+        _kb_mcp_auth_migrated = True
+    except Exception as e:
+        # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
+        logger.warning("kb_mcp_servers 表鉴权列迁移检查失败: %s", e)
+
+
 def migrate_user_mute_column() -> None:
     """users 表补 mute_until 列（论坛禁言功能引入；幂等）。
-
     空串/None = 未禁言；now < mute_until 视为禁言中。禁言与 status 三态正交：
     禁用（status=0）是不能登录，禁言是能登录浏览但不能发帖/评论（PRD §2）。
     迁移失败只记 warning 不阻断启动（与既有两个迁移函数同款）。
@@ -496,9 +537,11 @@ class KBMcpServer(Base):
     url: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # sse / streamable_http
     command: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # stdio
     args_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # stdio 参数 JSON 数组
-    env_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # stdio 环境变量
-    headers_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # HTTP 头（含认证）
-    auth_token: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # Bearer Token（明文存储但绝不下发）
+    env_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # stdio 环境变量（仅 stdio 生效）
+    headers_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # HTTP 额外自定义头（含认证时会被鉴权头覆盖）
+    auth_type: Mapped[str] = mapped_column(String(16), nullable=False, default="none")  # none | bearer | api_key（stdio 恒 none）
+    auth_token: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # Bearer/ApiKey 值（明文存储但绝不下发）
+    api_key_header: Mapped[str] = mapped_column(String(64), nullable=False, default="")  # api_key 自定义头名（空=X-API-Key）
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=5)  # PRD §5：3-5s 超时
     enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     last_test_ok: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0=未测/失败 1=成功
@@ -1102,6 +1145,8 @@ async def init_db():
     await seed_kb_tool_config()
     # 资源中心：版本 published_at 纯日期存量修复（幂等，排序沉底问题）
     await repair_resource_published_at()
+    # 智能客服 P1：MCP Server 鉴权方式列（幂等；存量行为为自动回填）
+    migrate_kb_mcp_auth_columns()
     # 站内信：announcements 表迁移到 messages 表（仅对存量库执行，新库跳过）
     await migrate_announcements_to_messages()
 

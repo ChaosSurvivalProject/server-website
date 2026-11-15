@@ -521,11 +521,11 @@ async def _agent_stream(
 
     # 思维链分段状态机（消费端）：生成器产出的 reasoning/delta 与工具回调 tool
     # 在此按真实到达顺序汇合。状态含义：
-    #   think   —— 第一段思考（工具调用前的规划）
+    #   think   —— 思考（工具调用前的规划 / 观察后的反思，按轮次自动分段）
     #   act     —— 工具执行中（on_tool_event running）
     #   observe —— 工具结果已返回（on_tool_event ok/error）
-    #   think2  —— 观察后的反思/组织回答（第二轮及以后的 reasoning）
-    #   answer  —— 最终正文流式
+    # 说明：非思考正文（delta）不在后端分段——"工具间叙述 vs 最终答案"实时无法判定，
+    # 统一按 delta 下发，由前端在工具开始执行的边界把气泡中已累积的叙述提升为独立块。
     _phase = {"cur": "init"}
 
     def _step_frame(kind: str) -> tuple:
@@ -545,9 +545,9 @@ async def _agent_stream(
             else kb_agent._MCP_TOOL_LABEL.format(tool=tool_name)
         )
         if state == "running":
-            _transition("act")  # 进入执行：同时把前一段思考收尾（前端据此折叠）
+            _transition("act")  # 进入执行：同时把前一段思考/叙述收尾（前端据此折叠）
         else:
-            _transition("observe")  # 工具返回：观察结果，随后 reasoning 会切 think2
+            _transition("observe")  # 工具返回：观察结果，随后 reasoning/delta 各开新段
         queue.put_nowait(
             ("tool", {"name": tool_name, "label": label, "state": state})
         )
@@ -560,12 +560,16 @@ async def _agent_stream(
             ):
                 if kind == "reasoning":
                     # 思考分段：思考态内的后续 token 不切（否则每个 token 拆一个块）；
-                    # 其余状态（初始/观察/正文）进入思考都开新步骤——观察后的反思
-                    # 由此成为独立的新思考段（前端按 step 帧分段渲染）
+                    # 其余状态（初始/观察/叙述/正文）进入思考都开新步骤——观察后的
+                    # 反思由此成为独立的新思考段（前端按 step 帧分段渲染）
                     if _phase["cur"] != "think":
                         _transition("think")
                 elif kind == "delta":
-                    _transition("answer")
+                    # 正文文本统一以 delta 帧下发。工具调用之间夹杂的"非思考说明文字"
+                    # 由前端在【工具开始执行】这一刻自动提升为独立叙述块（见 ChatWidget
+                    # onEvent 的 tool.running 分支）——不在此处按相位拆分，避免"最后一段
+                    # 究竟是叙述还是最终答案"在流式实时判定不了的难题。
+                    pass
                 queue.put_nowait((kind, piece))
         except asyncio.CancelledError:
             raise
@@ -896,11 +900,25 @@ async def admin_stats(
 # ── MCP Server 管理（P1 §2.1 / §2.2，require_admin，包络正常） ────
 
 _MCP_TRANSPORTS = ("stdio", "sse", "streamable_http")
+_MCP_AUTH_TYPES = ("none", "bearer", "api_key")
+
+
+def _normalize_headers(headers: Optional[dict[str, str]]) -> dict[str, str]:
+    """额外自定义头清洗：键非空、值转字符串、按键去重（后值覆盖前值）。"""
+    if not headers:
+        return {}
+    out: dict[str, str] = {}
+    for k, v in headers.items():
+        k = str(k).strip()
+        if k:
+            out[k] = str(v)
+    return out
 
 
 def _server_out(s: KBMcpServer) -> dict:
     """MCP Server 行 → 下发 dict。红线：auth_token / env_json / headers_json
-    不下发原文（含认证凭据），只给 hasToken 等布尔标记（与 GITHUB_PAT 同口径）。"""
+    不下发原文（含认证凭据），只给 hasToken / hasEnv 等布尔标记（与 GITHUB_PAT 同口径）；
+    authType / apiKeyHeader 非凭据，明文下发（编辑回显需要）。"""
     try:
         args = json.loads(s.args_json) if s.args_json else []
     except json.JSONDecodeError:
@@ -913,7 +931,9 @@ def _server_out(s: KBMcpServer) -> dict:
         "url": s.url,
         "command": s.command,
         "args": args,
-        # 凭据字段只回是否已配置；headers 下发但先抹掉 Authorization 值
+        "authType": s.auth_type or "none",
+        "apiKeyHeader": s.api_key_header or "",
+        # 凭据字段只回是否已配置；headers/env 下发布尔标记
         "hasToken": bool(s.auth_token),
         "hasEnv": bool(s.env_json and s.env_json != "{}"),
         "hasHeaders": bool(s.headers_json and s.headers_json != "{}"),
@@ -950,7 +970,13 @@ def _tool_config_out(c: KBToolConfig) -> dict:
 
 
 class _McpServerUpsert(BaseModel):
-    """MCP Server 新增/编辑（JSON 导入在前端展开为同构字段，§2.1）。"""
+    """MCP Server 新增/编辑（JSON 导入在前端展开为同构字段，§2.1）。
+
+    鉴权（仅 sse / streamable_http；stdio 无鉴权概念）：
+    authType=none 无鉴权 / bearer → Authorization: Bearer <token> /
+    api_key → 自定义头（apiKeyHeader，空 = X-API-Key）。额外自定义 headers
+    恒可配；同名头鉴权值优先（_build_connection 覆盖顺序）。
+    """
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -960,9 +986,11 @@ class _McpServerUpsert(BaseModel):
     url: str = Field(default="", max_length=512)
     command: str = Field(default="", max_length=255)
     args: list[str] = Field(default_factory=list, max_length=32)
-    env: Optional[dict[str, str]] = None
-    headers: Optional[dict[str, str]] = None
+    env: Optional[dict[str, str]] = None  # 仅 stdio 生效（子进程环境变量）
+    headers: Optional[dict[str, str]] = None  # 额外自定义头（HTTP/SSE）
+    auth_type: Literal["none", "bearer", "api_key"] = Field(default="none", alias="authType")
     auth_token: str = Field(default="", max_length=512, alias="authToken")
+    api_key_header: str = Field(default="", max_length=64, alias="apiKeyHeader")
     timeout_seconds: int = Field(default=5, ge=1, le=30, alias="timeoutSeconds")
     enabled: bool = True
 
@@ -971,7 +999,8 @@ class _McpServerUpsert(BaseModel):
         """标准 MCP 配置文件（Claude/Cursor 风格 mcpServers）→ Upsert 模型（§2.1）。
 
         支持 {"mcpServers": {name: {...}}} 整包或单个 server 配置对象两种形态；
-        stdio 用 command/args/env，HTTP 用 url/headers。
+        stdio 用 command/args/env，HTTP 用 url/headers。JSON 里的 Authorization 头
+        归位到 bearer（避免双重表达）；env 仅 stdio 生效，HTTP 配置丢弃并提示。
         """
         if "mcpServers" in data and isinstance(data["mcpServers"], dict):
             first_name = next(iter(data["mcpServers"]), None)
@@ -992,6 +1021,37 @@ class _McpServerUpsert(BaseModel):
         if transport not in _MCP_TRANSPORTS:
             # 按字段形态推断：有 command 即 stdio，有 url 默认 streamable_http
             transport = "stdio" if entry.get("command") else "streamable_http"
+        headers = {
+            str(k): str(v)
+            for k, v in (entry.get("headers") or {}).items()
+            if str(k).strip()
+        }
+        auth_type = str(entry.get("authType") or entry.get("auth_type") or "").strip()
+        auth_token = str(entry.get("authToken") or entry.get("token") or "")
+        api_key_header = str(entry.get("apiKeyHeader") or entry.get("api_key_header") or "")
+        if not auth_type:
+            # 按字段形态推断：仅给了 apiKeyHeader（无显式 token）→ api_key；
+            # 显式 token / JSON headers 里的 Authorization 头 → bearer
+            if api_key_header and not auth_token:
+                auth_type = "api_key"
+            elif auth_token or "authorization" in {k.lower() for k in headers}:
+                auth_type = "bearer"
+            else:
+                auth_type = "none"  # 默认无鉴权
+        if auth_type not in _MCP_AUTH_TYPES:
+            raise ValueError(f"authType 仅支持 {'/'.join(_MCP_AUTH_TYPES)}")
+        if auth_type == "bearer":
+            # JSON headers 里的 Authorization 归位为 authToken（后台统一注入，便于回显与替换）
+            for k in [k for k in headers if k.lower() == "authorization"]:
+                raw = headers.pop(k)
+                if not auth_token and raw.lower().startswith("bearer "):
+                    auth_token = raw[7:].strip()
+        env = entry.get("env") or None
+        notes: list[str] = []
+        if env and transport != "stdio":
+            # MCP 标准：env 是 stdio 子进程注入项，HTTP/SSE 无此概念，直接丢弃
+            env = None
+            notes.append("env 仅 stdio 传输生效，HTTP/SSE 配置已忽略")
         return cls(
             name=name,
             description=str(entry.get("description") or ""),
@@ -999,28 +1059,45 @@ class _McpServerUpsert(BaseModel):
             url=str(entry.get("url") or ""),
             command=str(entry.get("command") or ""),
             args=[str(a) for a in (entry.get("args") or [])],
-            env=entry.get("env") or None,
-            headers=entry.get("headers") or None,
-            auth_token=str(entry.get("authToken") or entry.get("token") or ""),
+            env=env,
+            headers=headers or None,
+            auth_type=auth_type,  # type: ignore[arg-type]
+            auth_token=auth_token,
+            api_key_header=api_key_header,
             timeout_seconds=int(entry.get("timeoutSeconds") or 5),
             enabled=bool(entry.get("enabled", True)),
         )
 
 
 def _apply_upsert(s: KBMcpServer, req: _McpServerUpsert, *, now: str) -> None:
-    """Upsert 字段落行。authToken 未传（None/空串）时保留旧值（编辑不覆盖凭据）。"""
+    """Upsert 字段落行。authToken 未传（None/空串）时保留旧值（编辑不覆盖凭据）；
+    鉴权方式切换（bearer→none 等）清空旧 token；env/headers None = 保留原值。"""
     s.name = req.name.strip()
     s.description = req.description.strip()
     s.transport = req.transport
     s.url = req.url.strip()
     s.command = req.command.strip()
     s.args_json = json.dumps(req.args, ensure_ascii=False)
-    if req.env is not None:
-        s.env_json = json.dumps(req.env, ensure_ascii=False)
-    if req.headers is not None:
-        s.headers_json = json.dumps(req.headers, ensure_ascii=False)
-    if req.auth_token:
-        s.auth_token = req.auth_token.strip()
+    if req.transport == "stdio":
+        # stdio 无鉴权概念：恒 none；env 仅在此传输下生效
+        s.auth_type = "none"
+        if req.env is not None:
+            s.env_json = json.dumps(_normalize_headers(req.env), ensure_ascii=False)
+    else:
+        s.auth_type = req.auth_type
+        if req.auth_type == "none":
+            s.auth_token = ""  # 切到无鉴权：旧 token 作废，不留死凭据
+            s.api_key_header = ""
+        elif req.auth_type == "api_key":
+            s.api_key_header = req.api_key_header.strip()[:64]
+            if req.auth_token:
+                s.auth_token = req.auth_token.strip()
+        else:  # bearer
+            s.api_key_header = ""
+            if req.auth_token:
+                s.auth_token = req.auth_token.strip()
+        if req.headers is not None:
+            s.headers_json = json.dumps(_normalize_headers(req.headers), ensure_ascii=False)
     s.timeout_seconds = req.timeout_seconds
     s.enabled = 1 if req.enabled else 0
     s.update_time = now
@@ -1224,7 +1301,10 @@ async def admin_test_mcp_server(
             args_json=json.dumps(req.args, ensure_ascii=False),
             env_json=json.dumps(req.env or {}, ensure_ascii=False),
             headers_json=json.dumps(req.headers or {}, ensure_ascii=False),
-            auth_token=req.auth_token, timeout_seconds=req.timeout_seconds,
+            auth_type=req.auth_type,
+            auth_token=req.auth_token,
+            api_key_header=req.api_key_header.strip()[:64],
+            timeout_seconds=req.timeout_seconds,
             enabled=1, last_test_ok=0, last_test_message="", last_test_time="",
             create_time=now, update_time=now,
         )

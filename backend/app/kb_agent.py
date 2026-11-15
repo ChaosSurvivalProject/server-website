@@ -220,7 +220,14 @@ class _McpBox:
 
     @staticmethod
     def _build_connection(s: KBMcpServer) -> Optional[dict]:
-        """DB 行 → adapters 连接字典（transport 三选一；token 自动并进 HTTP 头）。"""
+        """DB 行 → adapters 连接字典。
+
+        - stdio：command/args/env（env 为子进程注入的环境变量，仅 stdio 生效）；
+        - sse / streamable_http：url + 额外自定义头；鉴权按 auth_type 注入：
+          none 不加 / bearer → Authorization: Bearer <token> /
+          api_key → 自定义头（api_key_header，空 = X-API-Key）。
+          鉴权头最后覆盖，同名的额外自定义头不生效（不双重表达）。
+        """
         from datetime import timedelta
 
         headers = {}
@@ -229,8 +236,6 @@ class _McpBox:
                 headers = dict(json.loads(s.headers_json) or {})
             except json.JSONDecodeError:
                 headers = {}
-        if s.auth_token:
-            headers["Authorization"] = f"Bearer {s.auth_token}"
         timeout = float(s.timeout_seconds or KB.mcp_call_timeout)
         if s.transport == "stdio":
             try:
@@ -250,6 +255,11 @@ class _McpBox:
                 "session_kwargs": {"read_timeout_seconds": timedelta(seconds=timeout)},
             }
         if s.transport == "sse":
+            if s.auth_type == "bearer" and s.auth_token:
+                headers["Authorization"] = f"Bearer {s.auth_token}"
+            elif s.auth_type == "api_key" and s.auth_token:
+                key_name = (s.api_key_header or "").strip() or "X-API-Key"
+                headers[key_name] = s.auth_token
             return {
                 "transport": "sse",
                 "url": s.url,
@@ -258,6 +268,11 @@ class _McpBox:
                 "sse_read_timeout": timeout,
             }
         if s.transport == "streamable_http":
+            if s.auth_type == "bearer" and s.auth_token:
+                headers["Authorization"] = f"Bearer {s.auth_token}"
+            elif s.auth_type == "api_key" and s.auth_token:
+                key_name = (s.api_key_header or "").strip() or "X-API-Key"
+                headers[key_name] = s.auth_token
             return {
                 "transport": "streamable_http",
                 "url": s.url,

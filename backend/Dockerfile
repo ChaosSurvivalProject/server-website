@@ -13,14 +13,20 @@ RUN pip install --no-cache-dir -r requirements.txt
 #   - tzdata：cron 按 /etc/localtime 调度（Python 侧另有 pip 的 tzdata）
 #   - libpam-runtime / libpam-modules：slim 镜像不带 PAM 模块，缺了 cron 拉起
 #     任务会报 `Module is unknown` 并静默失败（不是任务写错，是运行时缺件）
+#   - git：uvx 从 git 源构建 MCP server（git+https://...）需要系统 git
 # 只在最终层装、并清理 apt 列表，避免把构建缓存留在镜像里。
 # DEBIAN_FRONTEND 必须显式给：tzdata 的 debconf 在无 TTY 的构建里可能等待输入
 RUN DEBIAN_FRONTEND=noninteractive apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      cron tzdata libpam-runtime libpam-modules \
+      cron tzdata libpam-runtime libpam-modules git ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && ln -fs /usr/share/zoneinfo/Asia/Shanghai /etc/localtime \
  && echo "Asia/Shanghai" > /etc/timezone
+
+# stdio MCP 运行时：uv/uvx（PyPI wheel 自带二进制）。镜像只提供运行时，不预装
+# 具体 MCP server——管理员在后台用 uvx --from git+https://... <cmd> 接入任意
+# uv 生态 server（首次构建慢，uv 缓存在容器内 ~/.cache/uv，二次启动秒级）。
+RUN pip install --no-cache-dir uv
 
 # Copy application
 COPY backend/ ./backend/

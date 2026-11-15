@@ -112,18 +112,20 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/kb/admin/mcp/servers` | MCP Server 列表（凭据脱敏：`hasToken` 等布尔，绝无原文） |
-| POST | `/api/kb/admin/mcp/servers` | 注册（body: `{name, transport: stdio\|sse\|streamable_http, url?, command?, args?, env?, headers?, authToken?, timeoutSeconds, enabled}`） |
-| PUT | `/api/kb/admin/mcp/servers/{id}` | 编辑（`authToken` 留空 = 保留原值） |
+| GET | `/api/kb/admin/mcp/servers` | MCP Server 列表（凭据脱敏：`hasToken` 等布尔，绝无原文；`authType`/`apiKeyHeader` 非凭据明文下发） |
+| POST | `/api/kb/admin/mcp/servers` | 注册（body: `{name, transport: stdio\|sse\|streamable_http, url?, command?, args?, env?, headers?, authType?: none\|bearer\|api_key, authToken?, apiKeyHeader?, timeoutSeconds, enabled}`；`env` 仅 stdio 生效，stdio 恒无鉴权） |
+| PUT | `/api/kb/admin/mcp/servers/{id}` | 编辑（`authToken` 留空 = 保留原值；`authType` 切 `none` 清空旧凭据；`env`/`headers` 传 `null` = 保留原值，传 `{}` = 清空） |
 | DELETE | `/api/kb/admin/mcp/servers/{id}` | 删除（级联删白名单） |
 | PUT | `/api/kb/admin/mcp/servers/{id}/toggle` | 独立启停（停用后其全部工具不进 LLM 上下文也不可执行，内置 RAG 不受影响） |
 | POST | `/api/kb/admin/mcp/servers/test` | 连接测试（用提交的配置现场连一次+列工具，**不落库**；恒 200，`data.ok=false` 给出原因） |
-| POST | `/api/kb/admin/mcp/servers/parse-json` | JSON 导入解析（粘贴标准 MCP 配置 `{"mcpServers":{...}}` → 表单字段，不落库） |
+| POST | `/api/kb/admin/mcp/servers/parse-json` | JSON 导入解析（粘贴标准 MCP 配置 `{"mcpServers":{...}}` → 表单字段，不落库；`env` 仅 stdio 保留，HTTP 配置的 `Authorization` 头归位 bearer） |
 | GET | `/api/kb/admin/mcp/servers/{id}/tools` | 工具白名单列表（`?refresh=1` 现场重新发现并同步快照行） |
 | PUT | `/api/kb/admin/mcp/tools/toggle` | 单工具勾选（body: `{serverId, toolName, enabled}`；**默认全部关闭**） |
 | PUT | `/api/kb/admin/mcp/tools/batch-toggle` | 按 Server 批量勾选/取消 |
 | GET | `/api/kb/admin/tool-config` | 内置检索工具配置（§2.3 系统级常驻） |
 | PUT | `/api/kb/admin/tool-config` | 更新内置工具配置（工具名/描述/Top-K/命中阈值，即时生效） |
+
+MCP 鉴权（2026-11-15）：HTTP/SSE 支持 `authType` 三选——`none` 无鉴权 / `bearer`（`Authorization: Bearer <authToken>`）/ `api_key`（自定义头 `apiKeyHeader`，空 = `X-API-Key`，值为 `authToken`）；`headers` 是额外自定义头（同名时鉴权值优先）。stdio 走 `env` 注入子进程环境变量（MCP 标准，HTTP/SSE 的 env 无意义会被忽略）；stdio 与 HTTP 的凭据字段互斥，切换传输时由后端自动清理对应字段。
 | GET | `/api/kb/admin/tool-logs` | 工具调用审计日志（prompt / LLM 决策 / 实参 / 结果摘要 / 耗时 / 状态，含内置检索与 MCP 全部调用；内置检索结果摘要含每条切片的正文与余弦分数） |
 | POST | `/api/kb/admin/tool-logs/cleanup` | 手动清理审计日志（body: `{mode:"days", days:N}` 清理 N 天前 或 `{mode:"date", startDate:"YYYY-MM-DD", endDate:"YYYY-MM-DD"}` 清理起止日期区间（含起止当天）；返回 `{deleted, scope}`，动作本身落审计留痕） |
 
