@@ -94,9 +94,12 @@ class FTSRetriever(BaseRetriever):
         ]
 
 
-async def retrieve(db: AsyncSession, question: str, allow_vector: bool = True) -> list[dict]:
-    """混合检索，返回 [{id, title, source_type, heading, content, score}]（最多 KB.top_k 条）。
+async def retrieve(
+    db: AsyncSession, question: str, allow_vector: bool = True, top_k: int | None = None
+) -> list[dict]:
+    """混合检索，返回 [{id, title, source_type, heading, content, score}]。
 
+    top_k 缺省用 KB.top_k；kb_agent 内置工具按后台配置（KBToolConfig.top_k）覆盖。
     score 为余弦相似度（仅向量路命中时非 None）；整体为空列表表示两路均未命中。
     """
     # ── 向量路（LangChain VectorStore，stdlib 余弦） ──────────
@@ -134,7 +137,9 @@ async def retrieve(db: AsyncSession, question: str, allow_vector: bool = True) -
 
     ordered_ids = [
         chunk_id
-        for chunk_id, _ in sorted(rrf_scores.items(), key=lambda kv: kv[1], reverse=True)[: KB.top_k]
+        for chunk_id, _ in sorted(rrf_scores.items(), key=lambda kv: kv[1], reverse=True)[
+            : top_k or KB.top_k
+        ]
     ]
     if not ordered_ids:
         return []

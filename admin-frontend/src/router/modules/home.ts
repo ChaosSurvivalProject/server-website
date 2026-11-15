@@ -216,6 +216,28 @@ export default [
           // 模块下只有这一个页面，不写 showParent 会被拍平成单个菜单项（模块名丢失）
           showParent: true
         }
+      },
+      {
+        path: "/kb/mcp",
+        name: "KB MCP",
+        component: () => import("@/views/kb/mcp.vue"),
+        meta: {
+          title: "MCP配置",
+          icon: "ep/connection",
+          showLink: true,
+          showParent: true
+        }
+      },
+      {
+        path: "/kb/tools",
+        name: "KB Tools",
+        component: () => import("@/views/kb/tools.vue"),
+        meta: {
+          title: "智能体工具",
+          icon: "ep/set-up",
+          showLink: true,
+          showParent: true
+        }
       }
     ]
   },

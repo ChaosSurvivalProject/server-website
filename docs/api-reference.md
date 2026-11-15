@@ -106,13 +106,37 @@
 | POST | `/api/kb/admin/documents/{id}/reindex` | 重建（**需管理员**；幂等：wiki 来源读源文件整篇重建，manual 来源重嵌入现有切片） |
 | GET | `/api/kb/admin/stats` | 统计（**需管理员**；文档数 / 切片数 / 索引版本 / 维度一致性 / 总字符数） |
 
+### MCP 扩展（P1：Agentic RAG + MCP）
+
+默认 **Agentic RAG**：知识库检索是内置 Function Calling 工具（`create_agent` 工具调用循环，LangChain 1.x），MCP 经官方适配器 `langchain-mcp-adapters` 动态接入（stdio / SSE / Streamable HTTP）。`KB_AGENT_ENABLED=0` 回退 P0 单轮流式；`KB_MCP_ENABLED=0` 只关 MCP（内置 RAG 保留）。以下全部 **需管理员** + 包络：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/kb/admin/mcp/servers` | MCP Server 列表（凭据脱敏：`hasToken` 等布尔，绝无原文） |
+| POST | `/api/kb/admin/mcp/servers` | 注册（body: `{name, transport: stdio\|sse\|streamable_http, url?, command?, args?, env?, headers?, authToken?, timeoutSeconds, enabled}`） |
+| PUT | `/api/kb/admin/mcp/servers/{id}` | 编辑（`authToken` 留空 = 保留原值） |
+| DELETE | `/api/kb/admin/mcp/servers/{id}` | 删除（级联删白名单） |
+| PUT | `/api/kb/admin/mcp/servers/{id}/toggle` | 独立启停（停用后其全部工具不进 LLM 上下文也不可执行，内置 RAG 不受影响） |
+| POST | `/api/kb/admin/mcp/servers/test` | 连接测试（用提交的配置现场连一次+列工具，**不落库**；恒 200，`data.ok=false` 给出原因） |
+| POST | `/api/kb/admin/mcp/servers/parse-json` | JSON 导入解析（粘贴标准 MCP 配置 `{"mcpServers":{...}}` → 表单字段，不落库） |
+| GET | `/api/kb/admin/mcp/servers/{id}/tools` | 工具白名单列表（`?refresh=1` 现场重新发现并同步快照行） |
+| PUT | `/api/kb/admin/mcp/tools/toggle` | 单工具勾选（body: `{serverId, toolName, enabled}`；**默认全部关闭**） |
+| PUT | `/api/kb/admin/mcp/tools/batch-toggle` | 按 Server 批量勾选/取消 |
+| GET | `/api/kb/admin/tool-config` | 内置检索工具配置（§2.3 系统级常驻） |
+| PUT | `/api/kb/admin/tool-config` | 更新内置工具配置（工具名/描述/Top-K/命中阈值，即时生效） |
+| GET | `/api/kb/admin/tool-logs` | 工具调用审计日志（prompt / LLM 决策 / 实参 / 结果摘要 / 耗时 / 状态，含内置检索与 MCP 全部调用；内置检索结果摘要含每条切片的正文与余弦分数） |
+| POST | `/api/kb/admin/tool-logs/cleanup` | 手动清理审计日志（body: `{mode:"days", days:N}` 清理 N 天前 或 `{mode:"date", startDate:"YYYY-MM-DD", endDate:"YYYY-MM-DD"}` 清理起止日期区间（含起止当天）；返回 `{deleted, scope}`，动作本身落审计留痕） |
+
+生效逻辑：可用工具 =（内置检索工具，若启用）+ Σ（启用中的 MCP Server × 白名单勾选的工具）。某 Server 断连/超时 → Agent 组装时**静默剔除**其工具，对话不中断；MCP 工具失败向 LLM 注入固定错误串、绝不暴露堆栈。MCP 调用超时按 Server 配置（默认 5s，PRD §5）。
+
 SSE 帧协议（UTF-8 JSON，空行分隔，`ensure_ascii=False`）：
 
 ```
-data: {"sources":[{"id":12,"title":"进服教程 / Java 客户端","sourceType":"wiki","score":0.83}]}   ← 首帧固定（无命中为 []）
+data: {"sources":[{"id":12,"title":"进服教程 / Java 客户端","sourceType":"wiki","score":0.83}]}   ← P0 模式首帧；P1 Agent 模式在循环结束后发（可能只有 title）
+data: {"tool":{"name":"search_knowledge_base","label":"📖 正在检索知识库...","state":"running"}}   ← P1 可选：工具调用链路（state ∈ running|ok|error，只有语义化动作名，绝无参数）
 data: {"reasoning":"..."}    ← 思考过程（思考模型才有），与 delta 可交错
 data: {"delta":"..."}        ← 回答正文增量
-data: {"fallback":true}      ← 可选：命中引导话术时附带
+data: {"fallback":true}      ← 可选：命中引导话术时附带（仅 P0 模式）
 data: {"error":"..."}        ← 可选：流开始后出错（流开始前走标准 HTTP 400/429/503 + 包络）
 data: [DONE]                 ← 一定发（try/finally 保证）
 ```
@@ -290,8 +314,9 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/health` | 健康检查 |
-| GET | `/api/kb/info` | 智能客服元信息（见本文「知识库 / 智能客服（P0）」一节） |
+| GET | `/api/kb/info` | 智能客服元信息（见本文「知识库 / 智能客服」一节） |
 | POST | `/api/kb/chat` | 智能客服流式问答（SSE，唯一不走包络） |
+| * | `/api/kb/admin/mcp/*`、`/api/kb/admin/tool-config`、`/api/kb/admin/tool-logs` | 智能客服 P1：MCP Server 管理 / 工具白名单 / 内置工具配置 / 调用审计（见「MCP 扩展」小节） |
 
 ## 图片上传
 

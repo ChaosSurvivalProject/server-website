@@ -144,6 +144,13 @@ class KBConfig:
     greeting: str
     fallback_hint: str
     system_prompt_extra: str
+    # Agent 层（智能客服 P1：Agentic RAG + MCP）
+    agent_enabled: bool          # False 时回退 P0 单轮流式（检索注入，不走工具调用）
+    agent_max_steps: int         # 工具调用循环上限（recursion_limit 同步收紧）
+    agent_tool_timeout: float    # 内置工具执行超时（秒）
+    mcp_enabled: bool            # MCP 扩展总开关（关 = 只剩内置 RAG 工具）
+    mcp_call_timeout: float      # MCP 工具调用超时（秒；PRD §5 要求 3-5s）
+    mcp_tool_cache_seconds: float  # 工具清单缓存（连接测试/白名单页共用，防刷）
 
 
 KB = KBConfig(
@@ -177,4 +184,11 @@ KB = KBConfig(
         "KB_FALLBACK_HINT", "抱歉，这个问题我暂时答不上来，你可以到 QQ 群 942235691 咨询管理员。"
     ),
     system_prompt_extra=_env_str("KB_SYSTEM_PROMPT_EXTRA"),
+    # Agent 层（P1）
+    agent_enabled=_env_bool("KB_AGENT_ENABLED", True),
+    agent_max_steps=_env_int("KB_AGENT_MAX_STEPS", 8),
+    agent_tool_timeout=_env_float("KB_AGENT_TOOL_TIMEOUT", 10.0),
+    mcp_enabled=_env_bool("KB_MCP_ENABLED", True),
+    mcp_call_timeout=_env_float("KB_MCP_CALL_TIMEOUT", 5.0),
+    mcp_tool_cache_seconds=_env_float("KB_MCP_TOOL_CACHE_SECONDS", 30.0),
 )

@@ -124,9 +124,11 @@ export const chatAPI = {
 
   /**
    * 流式问答。逐帧回调 onEvent(frame)，帧形如：
-   *   {sources: [{id, title, sourceType, score}]}   首帧固定
-   *   {reasoning: "..."} / {delta: "..."}           交错出现
-   *   {fallback: true} / {error: "..."}             可选
+   *   {sources: [{id?, title, sourceType?, score?}]}  来源（P1 Agent 模式下可能只有 title 且循环结束后才发）
+   *   {tool: {name, label, state}}                    工具调用链路（P1 §4.1：state ∈ running|ok|error，
+   *                                                   label 是语义化动作名，服务端保证绝不含参数/命令）
+   *   {reasoning: "..."} / {delta: "..."}             交错出现
+   *   {fallback: true} / {error: "..."}               可选
    * 收尾以流结束（服务端保证发 [DONE]，此处作为普通帧结束处理）为准。
    * @param {{message: string, history?: Array, signal?: AbortSignal, onEvent: Function}} options
    */

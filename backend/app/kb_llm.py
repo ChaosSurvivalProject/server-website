@@ -124,6 +124,16 @@ def _split_chunk(chunk) -> tuple[str, str]:
     return "".join(reasoning_parts), "".join(text_parts)
 
 
+def get_model() -> ChatOpenAI:
+    """暴露进程内单例模型（kb_agent 的 create_agent 复用同一实例与配置）。"""
+    return _get_model()
+
+
+def split_chunk(chunk) -> tuple[str, str]:
+    """公开 chunk 拆包（kb_agent 流式循环复用）：返回 (reasoning, content)。"""
+    return _split_chunk(chunk)
+
+
 async def stream_chat(messages: list[dict]):
     """流式对话：逐段 yield ("reasoning"|"delta", text)。
 

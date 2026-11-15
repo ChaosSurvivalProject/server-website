@@ -61,16 +61,35 @@
 
           <!-- AI 消息 -->
           <div v-else class="chat-msg chat-msg--ai">
-            <!-- 思考阶段默认展开流式思考内容；用户手动收起/展开后，:open 仅在绑定值变化时才被
-                 Vue 覆写（思考中值恒 true 不重写，手动状态得以保留），回答开始时自动折叠 -->
-            <details
-              v-if="msg.reasoning"
-              class="chat-reasoning"
-              :open="msg.streaming && !msg.raw"
-            >
-              <summary>{{ msg.streaming && !msg.raw ? '思考中…' : '思考过程' }}</summary>
-              <pre>{{ msg.reasoning }}</pre>
-            </details>
+            <!-- 思维链步骤流（P1 §4.1）：思考 → 执行 → 观察 时序呈现 -->
+            <div v-if="msg.steps && msg.steps.length" class="chat-steps">
+              <div
+                v-for="(st, si) in msg.steps"
+                :key="si"
+                class="chat-step"
+                :class="`chat-step--${st.kind}`"
+              >
+                <!-- 思考步骤：流式中展开、结束后折叠 -->
+                <details v-if="st.kind === 'think'" class="chat-step-think" :open="msg.streaming && st.state === 'running' && si === msg.steps.length - 1">
+                  <summary>
+                    <span class="chat-step-badge">{{ stepBadge(st.kind) }}</span>
+                    {{ st.state === 'running' ? '思考中…' : '思考' }}
+                  </summary>
+                  <pre>{{ st.text }}</pre>
+                </details>
+
+                <!-- 执行步骤：转圈 → 完成态 -->
+                <template v-else-if="st.kind === 'act'">
+                  <div class="chat-step-line">
+                    <span v-if="st.state === 'running'" class="chat-tool-spin" aria-hidden="true"></span>
+                    <span v-else class="chat-tool-ico">{{ st.state === 'ok' ? '✅' : '❌' }}</span>
+                    <span class="chat-step-label">{{ st.state === 'running' ? st.label : doneText(st) }}</span>
+                  </div>
+                  <!-- 观察（工具结果摘要）紧跟在其执行的下面 -->
+                  <div v-if="st.observe" class="chat-step-observe">{{ st.observe }}</div>
+                </template>
+              </div>
+            </div>
 
             <div v-if="msg.sources && msg.sources.length" class="chat-sources">
               <span class="chat-sources-label">来源</span>
@@ -94,7 +113,7 @@
                 <span v-if="msg.streaming" class="chat-caret" aria-hidden="true"></span>
               </div>
 
-              <div v-if="msg.streaming && !msg.blocks.length && !msg.reasoning" class="chat-typing" aria-label="正在输入">
+              <div v-if="msg.streaming && !msg.blocks.length && !hasThinkStep(msg)" class="chat-typing" aria-label="正在输入">
                 <span></span><span></span><span></span>
               </div>
 
@@ -189,7 +208,8 @@ export default {
       greeting: McConfig.chatWidget.greeting,
       faq: McConfig.chatWidget.faq,
       qqLink: McConfig.qqGroup.inviteLinkUrl || "#",
-      messages: [],           // {role:'user',content} | {role:'assistant',raw,blocks,reasoning,sources,fallback,error,streaming,isGreeting}
+      messages: [],           // {role:'user',content} | {role:'assistant',raw,blocks,steps,sources,fallback,error,streaming,isGreeting}
+                              // steps: 时序步骤流 [{kind:'think'|'act', text?, label?, name?, state?, observe?}]
       draft: "",
       streaming: false,
       fullscreen: false,      // 面板全屏（桌面端可切换；移动端始终全屏）
@@ -299,7 +319,7 @@ export default {
           role: "assistant",
           raw: "",
           blocks: splitMarkdownBlocks(this.greeting),
-          reasoning: "",
+          steps: [],
           sources: [],
           fallback: false,
           error: "",
@@ -352,7 +372,7 @@ export default {
         role: "assistant",
         raw: "",
         blocks: [],
-        reasoning: "",
+        steps: [],           // 思维链步骤流：思考→执行→观察 时序
         sources: [],
         fallback: false,
         error: "",
@@ -401,8 +421,56 @@ export default {
       if (frame.sources) {
         aiMsg.sources = frame.sources;
         this.scrollToBottom();
+      } else if (frame.step && frame.step.kind) {
+        // 步骤边界帧（后端状态机：think→act→observe→think2→answer）：
+        // think/think2 都开新的思考步骤；act 开执行步骤；observe/answer 不建步骤
+        // （observe 并进最近 act，answer 是正文流）
+        const kind = frame.step.kind;
+        // 新步骤开始：把流式中的思考步骤收尾
+        const runningThink = [...aiMsg.steps].reverse().find((s) => s.kind === "think");
+        if (runningThink && runningThink.state === "running" && kind !== "think") {
+          runningThink.state = "done";
+        }
+        if (kind === "think" || kind === "think2") {
+          aiMsg.steps.push({ kind: "think", text: "", state: "running" });
+        } else if (kind === "act") {
+          // 执行步骤的 label 由紧随的 tool 帧填充；先占位
+          aiMsg.steps.push({ kind: "act", label: "", name: "", state: "running", observe: "" });
+        }
+        this.scrollToBottom();
+      } else if (frame.tool && frame.tool.name) {
+        // 工具帧：归位到最近的 act 步骤（running 填 label，ok/error 翻转状态）。
+        // 只有语义化 label，服务端保证绝无参数/命令
+        const t = frame.tool;
+        const state = t.state === "ok" || t.state === "error" ? t.state : "running";
+        let act = [...aiMsg.steps].reverse().find((s) => s.kind === "act" && (!s.name || s.name === t.name));
+        if (!act) {
+          act = { kind: "act", label: t.label || t.name, name: t.name, state: "running", observe: "" };
+          aiMsg.steps.push(act);
+        }
+        if (state === "running") {
+          act.name = t.name;
+          act.label = t.label || "🔧执行" + t.name;
+          act.state = "running";
+        } else {
+          act.state = state;
+          // 观察（并进该执行步骤下方）：只给结果语义，不给参数/原文
+          act.observe =
+            state === "ok"
+              ? t.name === "search_knowledge_base"
+                ? "已获取知识库相关内容"
+                : "已获取工具返回结果"
+              : "查询失败，已转入备用回复";
+        }
+        this.scrollToBottom();
       } else if (typeof frame.reasoning === "string" && frame.reasoning) {
-        aiMsg.reasoning += frame.reasoning;
+        // 思考 token：并进当前 think 步骤（后端已按 Agent 轮次切好边界）
+        let think = [...aiMsg.steps].reverse().find((s) => s.kind === "think");
+        if (!think) {
+          think = { kind: "think", text: "", state: "running" };
+          aiMsg.steps.push(think);
+        }
+        think.text += frame.reasoning;
         this.scheduleFlush();
       } else if (typeof frame.delta === "string" && frame.delta) {
         this._rawAnswer += frame.delta;
@@ -413,6 +481,20 @@ export default {
         // 流中途错误：气泡内追加错误提示，保留已有文本
         aiMsg.error = frame.error;
       }
+    },
+    /** 步骤徽标：思考 💭 / 执行 🔧 */
+    stepBadge(kind) {
+      return kind === "think" ? "💭" : "🔧";
+    },
+    /** 是否已有思考步骤（决定"输入中三点"是否显示——思考中不重复显示三点） */
+    hasThinkStep(msg) {
+      return msg.steps.some((s) => s.kind === "think");
+    },
+    /** 执行完成态文案（"🔧执行tavily_search" → "✅ tavily_search 执行完成"） */
+    doneText(st) {
+      const name = st.name || st.label || "工具";
+      if (st.state === "error") return `${name} 执行失败，已转入备用回复`;
+      return `${name} 执行完成`;
     },
     /** 80ms 节流合并 token：到点才重算块级 HTML */
     scheduleFlush() {
@@ -621,28 +703,110 @@ export default {
   max-width: 100%;
 }
 
-/* 思考过程折叠 */
-.chat-reasoning {
+
+/* 思维链步骤流（P1 §4.1）：思考 → 执行 → 观察 时序呈现，左侧竖线串起步骤 */
+.chat-steps {
   max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   font-size: 12px;
   color: #6b7280;
   background: #eef1ef;
   border: 1px dashed #d5dbd7;
   border-radius: 8px;
-  padding: 6px 10px;
+  padding: 8px 10px;
+  position: relative;
 }
-.chat-reasoning summary {
+.chat-step {
+  position: relative;
+  padding-left: 16px;
+}
+/* 时序竖线：串联思考→执行→观察 */
+.chat-step::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 4px;
+  bottom: -6px;
+  width: 1px;
+  background: #cbd5d0;
+}
+.chat-step:last-child::before {
+  bottom: auto;
+  height: 12px;
+}
+/* 步骤节点圆点 */
+.chat-step::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  top: 7px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9ca3af;
+  border: 1px solid #eef1ef;
+}
+.chat-step--think::after { background: #a78bfa; }
+.chat-step--act::after { background: var(--primary-color, #4caf50); }
+
+.chat-step-think {
+  display: block;
+}
+.chat-step-think summary {
   cursor: pointer;
   user-select: none;
-  font-size: 12px;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
-.chat-reasoning pre {
+.chat-step-think summary::-webkit-details-marker { display: none; }
+.chat-step-think pre {
   margin: 6px 0 2px;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;
   font-size: 12px;
   line-height: 1.6;
+}
+.chat-step-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.5;
+}
+.chat-step-label {
+  word-break: break-all;
+}
+.chat-step-observe {
+  margin-top: 3px;
+  padding-left: 20px;
+  color: #8a938d;
+  line-height: 1.5;
+}
+.chat-step-observe::before {
+  content: "👁";
+  margin-right: 4px;
+  font-size: 11px;
+}
+.chat-tool-ico {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+.chat-tool-spin {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border: 2px solid #cbd5d0;
+  border-top-color: var(--primary-color, #4caf50);
+  border-radius: 50%;
+  animation: chat-tool-rotate 0.8s linear infinite;
+}
+@keyframes chat-tool-rotate {
+  to { transform: rotate(360deg); }
 }
 
 /* 来源标签 */

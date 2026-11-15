@@ -19,3 +19,10 @@ qrcode>=8.0
 langchain-core>=1.0,<2.0
 langchain-openai>=1.0,<2.0
 langchain-text-splitters>=1.0,<2.0
+# ── 智能客服 P1：Agentic RAG + MCP 扩展 ──
+# langchain：create_agent 官方 Agent 循环（Agentic RAG 工具调用）
+langchain>=1.0,<2.0
+# langchain-mcp-adapters：LangChain 官方 MCP 适配器（stdio / SSE / Streamable HTTP 三传输，
+# 工具直接转 LangChain BaseTool），依赖 mcp SDK（官方 Python MCP）
+langchain-mcp-adapters>=0.1,<1.0
+mcp>=1.10,<2.0

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import Integer, LargeBinary, String, Text, UniqueConstraint, select
+from sqlalchemy import Float, Integer, LargeBinary, String, Text, UniqueConstraint, select
 from sqlalchemy import event
 from sqlalchemy.pool import NullPool
 
@@ -461,12 +461,120 @@ class KBChunk(Base):
 
 
 class KBSetting(Base):
-    """知识库键值设置（index_version / embed_model / embed_dim / kb_schema_version）。"""
+    """知识库键值设置（index_version / embed_model / embed_dim / kb_schema_version / mcp_version）。"""
 
     __tablename__ = "kb_settings"
 
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+
+
+# ── MCP 扩展（智能客服 P1，docs/智能客服/智能客服P1需求—RAG架构升级与MCP扩展.md）──
+# 三张表 + kb_settings.mcp_version 热更新键。设计要点：
+# - token/密钥列任何管理响应都**不下发明文**，与 GITHUB_PAT 同一红线（下行 has_token 布尔）；
+# - whitelist_json 存 JSON 数组（勾选的工具名列表），默认 '[]' = 全部关闭（PRD §2.2）；
+# - 审计日志 result_json 存截断后的结果摘要，args_json 存完整实参（仅管理员可见）；
+# - stdio 传输的 command/args 由管理员配置，属受控注入面（require_admin 后面），文档明示风险。
+
+
+class KBMcpServer(Base):
+    """MCP Server 注册表：连接信息 + 独立启停开关（PRD §2.1）。
+
+    transport 取值：stdio / sse / streamable_http（langchain-mcp-adapters 三种传输）。
+    stdio：command + args_json（JSON 数组）；sse / streamable_http：url + headers_json。
+    enabled 是布尔语义 int（项目规约）：1=启用 0=停用；停用后其工具既不进 LLM
+    上下文也不可执行（Agent 层组装时直接剔除，PRD §2.1 生效逻辑）。
+    last_test_ok / last_test_message / last_test_time 是"测试连接"的最近一次结果快照。
+    """
+
+    __tablename__ = "kb_mcp_servers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    transport: Mapped[str] = mapped_column(String(20), nullable=False)  # stdio | sse | streamable_http
+    url: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # sse / streamable_http
+    command: Mapped[str] = mapped_column(String(255), nullable=False, default="")  # stdio
+    args_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # stdio 参数 JSON 数组
+    env_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # stdio 环境变量
+    headers_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # HTTP 头（含认证）
+    auth_token: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # Bearer Token（明文存储但绝不下发）
+    timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, default=5)  # PRD §5：3-5s 超时
+    enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    last_test_ok: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0=未测/失败 1=成功
+    last_test_message: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    last_test_time: Mapped[str] = mapped_column(String(30), nullable=False, default="")
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class KBMcpTool(Base):
+    """MCP 工具白名单：按 (server_id, tool_name) 逐工具勾选（PRD §2.2）。
+
+    默认全部**关闭**（无行 = 关闭）；enabled=1 且所属 Server enabled=1 才会被
+    转换为 LLM 的 Function Calling 定义。description/ schema 快照自最近一次
+    工具发现，仅供后台展示（执行时以 MCP Server 实时 schema 为准）。
+    """
+
+    __tablename__ = "kb_mcp_tools"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    server_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 默认关闭（PRD §2.2）
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+    __table_args__ = (UniqueConstraint("server_id", "tool_name", name="uq_kb_mcp_tool"),)
+
+
+class KBToolConfig(Base):
+    """内置知识库检索工具配置（PRD §2.3：系统级常驻工具，不受 MCP 启停影响）。
+
+    单行配置（id=1 固定行，upsert 语义）；enabled 默认 1。
+    """
+
+    __tablename__ = "kb_tool_config"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    tool_name: Mapped[str] = mapped_column(String(64), nullable=False, default="search_knowledge_base")
+    tool_description: Mapped[str] = mapped_column(
+        Text,
+        nullable=False,
+        default="检索服务器规则、玩法教程、指令、活动等静态知识。回答这类问题前必须先调用本工具。",
+    )
+    top_k: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    min_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.35)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class KBToolLog(Base):
+    """工具调用审计日志（PRD §5 安全审计）：含内置 RAG 与 MCP 工具。
+
+    prompt 截断 2000 字；args_json 是 LLM 决策的实际执行参数；result_json 是
+    截断后的结果摘要（总长 8000 字上限，防日志膨胀）；duration_ms 用于核对
+    PRD §5 的性能红线（知识库 1s / MCP 5s）。
+    """
+
+    __tablename__ = "kb_tool_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    tool_name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    tool_source: Mapped[str] = mapped_column(String(16), nullable=False, default="")  # builtin | mcp
+    server_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    server_name: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")  # 触发本轮对话的用户 Prompt
+    llm_decision: Mapped[str] = mapped_column(Text, nullable=False, default="")  # LLM 原始 tool_call 参数 JSON
+    args_json: Mapped[str] = mapped_column(Text, nullable=False, default="{}")  # 实际执行参数
+    result_json: Mapped[str] = mapped_column(Text, nullable=False, default="")  # 截断结果摘要
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="ok")  # ok | error | timeout
+    error_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
 
 
 class Staff(Base):
@@ -990,6 +1098,8 @@ async def init_db():
     migrate_download_event_counted_column()
     # 资源中心：GitHub Release 双轨同步标记列（幂等，source / github_synced_at）
     migrate_resource_version_sync_columns()
+    # 智能客服 P1：内置工具配置种子行（幂等，id=1 固定行）
+    await seed_kb_tool_config()
     # 资源中心：版本 published_at 纯日期存量修复（幂等，排序沉底问题）
     await repair_resource_published_at()
     # 站内信：announcements 表迁移到 messages 表（仅对存量库执行，新库跳过）
@@ -1113,6 +1223,31 @@ async def repair_resource_published_at() -> None:
     except Exception:
         logger.warning("版本 published_at 存量修复失败", exc_info=True)
         _resource_published_at_repaired = False
+
+
+_kb_tool_config_seeded = False
+
+
+async def seed_kb_tool_config() -> None:
+    """智能客服 P1：内置工具配置种子行（id=1，幂等；失败不阻断启动）。"""
+    global _kb_tool_config_seeded
+    if _kb_tool_config_seeded:
+        return
+    _kb_tool_config_seeded = True
+    try:
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        now = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y-%m-%dT%H:%M:%S")
+        async with async_session_maker() as session:
+            row = await session.get(KBToolConfig, 1)
+            if row is None:
+                session.add(KBToolConfig(id=1, update_time=now))
+                await session.commit()
+                logger.info("智能客服内置工具配置种子行已写入（kb_tool_config id=1）")
+    except Exception:
+        logger.warning("智能客服内置工具配置种子写入失败", exc_info=True)
+        _kb_tool_config_seeded = False
 
 
 # ── 站内信存量数据迁移 ────────────────────────────────────────────────

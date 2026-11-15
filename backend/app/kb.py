@@ -25,7 +25,7 @@ import json
 import logging
 import time
 from collections import defaultdict, deque
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Literal, Optional
 
 import httpx
@@ -36,12 +36,16 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy import bindparam
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from . import kb_index, kb_ingest, kb_llm, kb_retrieve, monitor
+from . import kb_agent, kb_index, kb_ingest, kb_llm, kb_retrieve, monitor
 from .config import KB
 from .crud import _TZ as BEIJING_TZ
 from .database import (
     KBChunk,
     KBDocument,
+    KBMcpServer,
+    KBMcpTool,
+    KBToolConfig,
+    KBToolLog,
     User,
     async_session_maker,
     fts_available,
@@ -397,15 +401,34 @@ async def _build_messages(message: str, history: list[dict], chunks: list[dict])
 
 
 async def _chat_stream(
-    *, request: Request, db: AsyncSession, ip: str, message: str, history: list[dict]
+    *,
+    request: Request,
+    db: AsyncSession,
+    ip: str,
+    message: str,
+    history: list[dict],
+    user_id: Optional[int] = None,
+    username: str = "",
 ):
-    """SSE 主体：首帧 sources → delta/reasoning 交错 → [DONE] 收尾。
+    """SSE 主体（P1 Agentic RAG 版）。
 
-    断连感知：每轮 is_disconnected 检查，用户关页面后立刻停止生成、释放上游连接，
-    避免烧 token。CancelledError（框架取消）原样上抛，finally 只做清理不 yield。
+    - KB_AGENT_ENABLED=1（默认）：走 kb_agent.create_agent 工具调用循环，
+      工具链路经 {"tool": ...} 帧下发（§4.1，只有语义化动作名，绝无参数）；
+    - KB_AGENT_ENABLED=0：回退 P0 单轮流式（检索注入，行为与 P0 完全一致）。
+
+    断连感知与 P0 相同；[DONE] 永远最后发（除断连外）。
     """
     producer: asyncio.Task | None = None
     try:
+        if KB.agent_enabled:
+            async for item in _agent_stream(
+                request=request, db=db, ip=ip, message=message,
+                history=history, user_id=user_id, username=username,
+            ):
+                yield item
+            return
+
+        # ── P0 回退路径（原样保留） ──
         chunks = await kb_retrieve.retrieve(db, message, allow_vector=kb_index.vector_available)
         sources = [
             {
@@ -419,14 +442,11 @@ async def _chat_stream(
         yield _frame({"sources": sources})
 
         if not kb_retrieve.is_hit(chunks):
-            # 未命中：引导话术，不调 LLM（后端日志可见未调用上游）
             logger.info("kb chat 未命中知识库（ip=%s），直接返回引导话术", ip)
             yield _frame({"delta": KB.fallback_hint})
             yield _frame({"fallback": True})
         else:
             messages = await _build_messages(message, history, chunks)
-            # 上游消费放独立任务 + 队列：主循环可对 queue.get 做 15s 超时保活，
-            # 而 asyncio.wait_for 不能直接包 __anext__（会取消上游读取、中断流）。
             queue: asyncio.Queue = asyncio.Queue()
 
             async def _produce() -> None:
@@ -451,7 +471,7 @@ async def _chat_stream(
                 try:
                     item = await asyncio.wait_for(queue.get(), timeout=_PING_INTERVAL)
                 except asyncio.TimeoutError:
-                    yield ": ping\n\n"  # 保活注释行，防中间代理掐连接
+                    yield ": ping\n\n"
                     continue
                 if item is None:
                     break
@@ -465,7 +485,7 @@ async def _chat_stream(
                     break
                 yield _frame({kind: piece})
             if disconnected:
-                return  # 客户端已断开：无需再发 [DONE]
+                return
             if upstream_error:
                 yield _frame({"error": upstream_error})
     except asyncio.CancelledError:
@@ -480,6 +500,120 @@ async def _chat_stream(
                 await producer
         _release_concurrent(ip)
     yield _DONE_FRAME  # [DONE] 一定发（除断连外所有路径都到这里）
+
+
+async def _agent_stream(
+    *,
+    request: Request,
+    db: AsyncSession,
+    ip: str,
+    message: str,
+    history: list[dict],
+    user_id: Optional[int],
+    username: str,
+):
+    """Agentic RAG 流：Agent 循环放独立任务 + 队列（与 P0 相同的背压/保活/断连形态）。
+
+    kb_agent.stream_agent yield ("reasoning"|"delta"|"sources", payload)；
+    工具链路帧经 on_tool_event 回调直接入队（{"tool": {...}}，§4.1）。
+    """
+    queue: asyncio.Queue = asyncio.Queue()
+
+    # 思维链分段状态机（消费端）：生成器产出的 reasoning/delta 与工具回调 tool
+    # 在此按真实到达顺序汇合。状态含义：
+    #   think   —— 第一段思考（工具调用前的规划）
+    #   act     —— 工具执行中（on_tool_event running）
+    #   observe —— 工具结果已返回（on_tool_event ok/error）
+    #   think2  —— 观察后的反思/组织回答（第二轮及以后的 reasoning）
+    #   answer  —— 最终正文流式
+    _phase = {"cur": "init"}
+
+    def _step_frame(kind: str) -> tuple:
+        queue.put_nowait(("step", {"kind": kind}))
+
+    def _transition(kind: str) -> None:
+        if _phase["cur"] != kind:
+            _phase["cur"] = kind
+            _step_frame(kind)
+
+    def on_tool_event(tool_name: str, state: str) -> None:
+        # 语义化动作名（§4.1）：label 直接用真实工具名（"🔧执行tavily_search"），
+        # 绝不带参数/命令（前端接口不下发实际调用的 JSON 参数）。
+        label = (
+            kb_agent._BUILTIN_TOOL_LABEL
+            if tool_name == "search_knowledge_base"
+            else kb_agent._MCP_TOOL_LABEL.format(tool=tool_name)
+        )
+        if state == "running":
+            _transition("act")  # 进入执行：同时把前一段思考收尾（前端据此折叠）
+        else:
+            _transition("observe")  # 工具返回：观察结果，随后 reasoning 会切 think2
+        queue.put_nowait(
+            ("tool", {"name": tool_name, "label": label, "state": state})
+        )
+
+    async def _produce() -> None:
+        try:
+            async for kind, piece in kb_agent.stream_agent(
+                db=db, message=message, history=history,
+                user_id=user_id, username=username, on_tool_event=on_tool_event,
+            ):
+                if kind == "reasoning":
+                    # 思考分段：思考态内的后续 token 不切（否则每个 token 拆一个块）；
+                    # 其余状态（初始/观察/正文）进入思考都开新步骤——观察后的反思
+                    # 由此成为独立的新思考段（前端按 step 帧分段渲染）
+                    if _phase["cur"] != "think":
+                        _transition("think")
+                elif kind == "delta":
+                    _transition("answer")
+                queue.put_nowait((kind, piece))
+        except asyncio.CancelledError:
+            raise
+        except (httpx.HTTPError, kb_llm.KBUpstreamError) as e:
+            logger.warning("kb chat Agent 上游异常：%s", e)
+            queue.put_nowait(("error", "上游服务暂时不可用，请稍后再试"))
+        except Exception:
+            logger.exception("kb chat Agent 未预期异常")
+            queue.put_nowait(("error", "上游服务暂时不可用，请稍后再试"))
+        finally:
+            queue.put_nowait(None)
+
+    producer = asyncio.create_task(_produce())
+    upstream_error: str | None = None
+    try:
+        while True:
+            try:
+                item = await asyncio.wait_for(queue.get(), timeout=_PING_INTERVAL)
+            except asyncio.TimeoutError:
+                yield ": ping\n\n"
+                continue
+            if item is None:
+                break
+            kind, piece = item
+            if kind == "error":
+                upstream_error = piece
+                break
+            if kind == "sources":
+                # Agent 循环结束后回填来源（只有 title，不含分数/参数）
+                yield _frame({"sources": piece})
+                continue
+            if kind == "tool":
+                yield _frame({"tool": piece})
+                continue
+            if kind == "step":
+                # 思维链步骤边界帧（think/act/observe/answer）
+                yield _frame({"step": piece})
+                continue
+            if await request.is_disconnected():
+                logger.info("kb chat 客户端断连（ip=%s），停止生成并释放上游", ip)
+                return
+            yield _frame({kind: piece})
+        if upstream_error:
+            yield _frame({"error": upstream_error})
+    finally:
+        producer.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await producer
 
 
 # ── 公开接口 ─────────────────────────────────────────────────────
@@ -505,7 +639,7 @@ async def chat(
     req: ChatRequest,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    _user: User = Depends(get_current_user),  # 仅登录用户可对话；401 属流前错误，走标准 HTTP
+    user: User = Depends(get_current_user),  # 仅登录用户可对话；401 属流前错误，走标准 HTTP
 ):
     """SSE 流式问答（全项目唯一不走包络的接口；未登录 401）。"""
     if not state.enabled:
@@ -530,7 +664,10 @@ async def chat(
     ]
 
     return StreamingResponse(
-        _chat_stream(request=request, db=db, ip=ip, message=message, history=history),
+        _chat_stream(
+            request=request, db=db, ip=ip, message=message, history=history,
+            user_id=user.id, username=user.username,
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -756,6 +893,721 @@ async def admin_stats(
     )
 
 
+# ── MCP Server 管理（P1 §2.1 / §2.2，require_admin，包络正常） ────
+
+_MCP_TRANSPORTS = ("stdio", "sse", "streamable_http")
+
+
+def _server_out(s: KBMcpServer) -> dict:
+    """MCP Server 行 → 下发 dict。红线：auth_token / env_json / headers_json
+    不下发原文（含认证凭据），只给 hasToken 等布尔标记（与 GITHUB_PAT 同口径）。"""
+    try:
+        args = json.loads(s.args_json) if s.args_json else []
+    except json.JSONDecodeError:
+        args = []
+    return {
+        "id": s.id,
+        "name": s.name,
+        "description": s.description,
+        "transport": s.transport,
+        "url": s.url,
+        "command": s.command,
+        "args": args,
+        # 凭据字段只回是否已配置；headers 下发但先抹掉 Authorization 值
+        "hasToken": bool(s.auth_token),
+        "hasEnv": bool(s.env_json and s.env_json != "{}"),
+        "hasHeaders": bool(s.headers_json and s.headers_json != "{}"),
+        "timeoutSeconds": s.timeout_seconds,
+        "enabled": bool(s.enabled),
+        "lastTestOk": bool(s.last_test_ok),
+        "lastTestMessage": s.last_test_message,
+        "lastTestTime": s.last_test_time,
+        "createTime": s.create_time,
+        "updateTime": s.update_time,
+    }
+
+
+def _tool_out(t: KBMcpTool) -> dict:
+    return {
+        "id": t.id,
+        "serverId": t.server_id,
+        "toolName": t.tool_name,
+        "description": t.description,
+        "enabled": bool(t.enabled),
+        "updateTime": t.update_time,
+    }
+
+
+def _tool_config_out(c: KBToolConfig) -> dict:
+    return {
+        "enabled": bool(c.enabled),
+        "toolName": c.tool_name,
+        "toolDescription": c.tool_description,
+        "topK": c.top_k,
+        "minScore": c.min_score,
+        "updateTime": c.update_time,
+    }
+
+
+class _McpServerUpsert(BaseModel):
+    """MCP Server 新增/编辑（JSON 导入在前端展开为同构字段，§2.1）。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str = Field(..., min_length=1, max_length=64)
+    description: str = Field(default="", max_length=255)
+    transport: Literal["stdio", "sse", "streamable_http"]
+    url: str = Field(default="", max_length=512)
+    command: str = Field(default="", max_length=255)
+    args: list[str] = Field(default_factory=list, max_length=32)
+    env: Optional[dict[str, str]] = None
+    headers: Optional[dict[str, str]] = None
+    auth_token: str = Field(default="", max_length=512, alias="authToken")
+    timeout_seconds: int = Field(default=5, ge=1, le=30, alias="timeoutSeconds")
+    enabled: bool = True
+
+    @classmethod
+    def from_json_import(cls, data: dict) -> "_McpServerUpsert":
+        """标准 MCP 配置文件（Claude/Cursor 风格 mcpServers）→ Upsert 模型（§2.1）。
+
+        支持 {"mcpServers": {name: {...}}} 整包或单个 server 配置对象两种形态；
+        stdio 用 command/args/env，HTTP 用 url/headers。
+        """
+        if "mcpServers" in data and isinstance(data["mcpServers"], dict):
+            first_name = next(iter(data["mcpServers"]), None)
+            first = data["mcpServers"].get(first_name) if first_name else None
+            if not isinstance(first, dict):
+                raise ValueError("mcpServers 配置为空")
+            entry = dict(first)
+            # 键名即服务器名（标准 MCP 配置形态）；entry 内 name 字段可覆盖
+            name = str(entry.get("name") or first_name or "").strip()
+        else:
+            entry = dict(data)
+            name = str(data.get("name") or entry.get("name") or "").strip()
+        if not name:
+            raise ValueError("JSON 中缺少服务器名称（mcpServers 键名或 name 字段）")
+        transport = str(entry.get("transport") or entry.get("type") or "").strip()
+        if transport in ("http", "streamable-http", "streamable_http", "streamablehttp"):
+            transport = "streamable_http"
+        if transport not in _MCP_TRANSPORTS:
+            # 按字段形态推断：有 command 即 stdio，有 url 默认 streamable_http
+            transport = "stdio" if entry.get("command") else "streamable_http"
+        return cls(
+            name=name,
+            description=str(entry.get("description") or ""),
+            transport=transport,  # type: ignore[arg-type]
+            url=str(entry.get("url") or ""),
+            command=str(entry.get("command") or ""),
+            args=[str(a) for a in (entry.get("args") or [])],
+            env=entry.get("env") or None,
+            headers=entry.get("headers") or None,
+            auth_token=str(entry.get("authToken") or entry.get("token") or ""),
+            timeout_seconds=int(entry.get("timeoutSeconds") or 5),
+            enabled=bool(entry.get("enabled", True)),
+        )
+
+
+def _apply_upsert(s: KBMcpServer, req: _McpServerUpsert, *, now: str) -> None:
+    """Upsert 字段落行。authToken 未传（None/空串）时保留旧值（编辑不覆盖凭据）。"""
+    s.name = req.name.strip()
+    s.description = req.description.strip()
+    s.transport = req.transport
+    s.url = req.url.strip()
+    s.command = req.command.strip()
+    s.args_json = json.dumps(req.args, ensure_ascii=False)
+    if req.env is not None:
+        s.env_json = json.dumps(req.env, ensure_ascii=False)
+    if req.headers is not None:
+        s.headers_json = json.dumps(req.headers, ensure_ascii=False)
+    if req.auth_token:
+        s.auth_token = req.auth_token.strip()
+    s.timeout_seconds = req.timeout_seconds
+    s.enabled = 1 if req.enabled else 0
+    s.update_time = now
+
+
+async def _bump_mcp_version(db: AsyncSession) -> None:
+    """MCP 配置变更后自增 mcp_version（预留；当前每次对话实时读配置，无需缓存失效）。"""
+    await db.execute(
+        text(
+            "INSERT INTO kb_settings(key, value) VALUES('mcp_version', '1') "
+            "ON CONFLICT(key) DO UPDATE SET "
+            "value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)"
+        )
+    )
+
+
+async def _get_server(db: AsyncSession, server_id: int) -> KBMcpServer:
+    s = (await db.execute(select(KBMcpServer).where(KBMcpServer.id == server_id))).scalar_one_or_none()
+    if s is None:
+        raise HTTPException(status_code=404, detail="MCP Server 不存在")
+    return s
+
+
+@router.get("/admin/mcp/servers")
+async def admin_list_mcp_servers(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """MCP Server 列表（含每 Server 工具白名单计数）。凭据字段不下发原文。"""
+    servers = (
+        (await db.execute(select(KBMcpServer).order_by(KBMcpServer.id))).scalars().all()
+    )
+    counts = dict(
+        (
+            await db.execute(
+                select(KBMcpTool.server_id, func.count())
+                .where(KBMcpTool.enabled == 1)
+                .group_by(KBMcpTool.server_id)
+            )
+        ).all()
+    )
+    items = []
+    for s in servers:
+        item = _server_out(s)
+        item["enabledToolCount"] = int(counts.get(s.id, 0))
+        items.append(item)
+    return _envelope(items)
+
+
+@router.post("/admin/mcp/servers")
+async def admin_create_mcp_server(
+    req: _McpServerUpsert,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """注册 MCP Server（手动表单或 JSON 导入展开后的同构字段）。"""
+    now = _now_iso()
+    name = req.name.strip()
+    dup = (
+        await db.execute(select(KBMcpServer).where(KBMcpServer.name == name))
+    ).scalar_one_or_none()
+    if dup:
+        raise HTTPException(status_code=400, detail=f"名称「{name}」已存在")
+    if req.transport in ("sse", "streamable_http") and not req.url.strip():
+        raise HTTPException(status_code=400, detail="HTTP/SSE 传输必须填写 URL")
+    if req.transport == "stdio" and not req.command.strip():
+        raise HTTPException(status_code=400, detail="stdio 传输必须填写启动命令")
+    s = KBMcpServer(create_time=now, update_time=now)
+    _apply_upsert(s, req, now=now)
+    db.add(s)
+    await _bump_mcp_version(db)
+    await db.commit()
+    await db.refresh(s)
+    return _envelope(_server_out(s))
+
+
+@router.put("/admin/mcp/servers/{server_id}")
+async def admin_update_mcp_server(
+    server_id: int,
+    req: _McpServerUpsert,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """编辑 MCP Server（authToken 留空 = 保留原值）。"""
+    s = await _get_server(db, server_id)
+    now = _now_iso()
+    name = req.name.strip()
+    dup = (
+        await db.execute(
+            select(KBMcpServer).where(KBMcpServer.name == name, KBMcpServer.id != server_id)
+        )
+    ).scalar_one_or_none()
+    if dup:
+        raise HTTPException(status_code=400, detail=f"名称「{name}」已存在")
+    if req.transport in ("sse", "streamable_http") and not req.url.strip():
+        raise HTTPException(status_code=400, detail="HTTP/SSE 传输必须填写 URL")
+    if req.transport == "stdio" and not req.command.strip():
+        raise HTTPException(status_code=400, detail="stdio 传输必须填写启动命令")
+    _apply_upsert(s, req, now=now)
+    await _bump_mcp_version(db)
+    await db.commit()
+    await db.refresh(s)
+    return _envelope(_server_out(s))
+
+
+async def _audit_mcp_change(
+    db: AsyncSession,
+    *,
+    action: str,
+    server_name: str,
+    server_id: Optional[int],
+    detail: str = "",
+) -> None:
+    """MCP 管理操作审计（P1 §5 延伸）：删除/启停等变更动作落 kb_tool_logs，
+    tool_source 固定 'mcp_admin'。管理接口此前无痕迹，误删无从追溯（2026-11-15 教训）。"""
+    try:
+        db.add(
+            KBToolLog(
+                user_id=None,
+                username="",
+                tool_name=action,
+                tool_source="mcp_admin",
+                server_id=server_id,
+                server_name=server_name[:64],
+                prompt="",
+                llm_decision="",
+                args_json="{}",
+                result_json=detail[:2000],
+                status="ok",
+                error_message="",
+                duration_ms=0,
+                create_time=_now_iso(),
+            )
+        )
+        await db.commit()
+    except Exception:
+        logger.exception("MCP 管理审计写入失败")
+        with contextlib.suppress(Exception):
+            await db.rollback()
+
+
+@router.delete("/admin/mcp/servers/{server_id}")
+async def admin_delete_mcp_server(
+    server_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """删除 MCP Server（级联删白名单行；落审计）。"""
+    s = await _get_server(db, server_id)
+    await db.execute(delete(KBMcpTool).where(KBMcpTool.server_id == server_id))
+    await db.delete(s)
+    await _bump_mcp_version(db)
+    await db.commit()
+    await _audit_mcp_change(
+        db, action="delete_server", server_name=s.name, server_id=server_id,
+        detail=f"transport={s.transport}",
+    )
+    return {"code": 0, "message": "success"}
+
+
+class _McpToggle(BaseModel):
+    enabled: bool
+
+
+@router.put("/admin/mcp/servers/{server_id}/toggle")
+async def admin_toggle_mcp_server(
+    server_id: int,
+    req: _McpToggle,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """独立启停（§2.1）：停用后其全部工具既不进 LLM 上下文也不可执行。"""
+    s = await _get_server(db, server_id)
+    s.enabled = 1 if req.enabled else 0
+    s.update_time = _now_iso()
+    await _bump_mcp_version(db)
+    await db.commit()
+    await _audit_mcp_change(
+        db, action="toggle_server", server_name=s.name, server_id=server_id,
+        detail=f"enabled={bool(s.enabled)}",
+    )
+    return _envelope({"id": s.id, "enabled": bool(s.enabled)})
+
+
+@router.post("/admin/mcp/servers/test")
+async def admin_test_mcp_server(
+    req: _McpServerUpsert,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """连接测试（§2.1）：用提交的（未必已保存的）配置现场连一次 + 列工具。
+
+    id 传入时测试"编辑后的新配置"；不传时测试全新配置。
+    连接失败不落库、不抛 500——状态码恒 200，data.ok=false + message 给管理员看。
+    """
+    now = _now_iso()
+    conn = kb_agent._McpBox._build_connection(
+        KBMcpServer(
+            id=0, name=req.name or "test", description="", transport=req.transport,
+            url=req.url.strip(), command=req.command.strip(),
+            args_json=json.dumps(req.args, ensure_ascii=False),
+            env_json=json.dumps(req.env or {}, ensure_ascii=False),
+            headers_json=json.dumps(req.headers or {}, ensure_ascii=False),
+            auth_token=req.auth_token, timeout_seconds=req.timeout_seconds,
+            enabled=1, last_test_ok=0, last_test_message="", last_test_time="",
+            create_time=now, update_time=now,
+        )
+    )
+    if conn is None:
+        return _envelope({"ok": False, "message": f"不支持的传输类型：{req.transport}", "tools": []})
+
+    from langchain_mcp_adapters.client import MultiServerMCPClient
+
+    started = time.monotonic()
+    try:
+        tools = await asyncio.wait_for(
+            MultiServerMCPClient({"test": conn}).get_tools(),
+            timeout=req.timeout_seconds + 3.0,
+        )
+    except asyncio.TimeoutError:
+        return _envelope(
+            {"ok": False, "message": f"连接超时（>{req.timeout_seconds + 3.0}s）", "tools": []}
+        )
+    except BaseException as e:  # ExceptionGroup 拆包给管理员看真实原因
+        return _envelope({"ok": False, "message": kb_agent._brief_err(e), "tools": []})
+
+    tool_list = [{"name": t.name, "description": (t.description or "").strip()[:200]} for t in tools]
+    return _envelope(
+        {
+            "ok": True,
+            "message": f"连接成功，发现 {len(tool_list)} 个工具",
+            "tools": tool_list,
+            "elapsedMs": int((time.monotonic() - started) * 1000),
+        }
+    )
+
+
+@router.post("/admin/mcp/servers/parse-json")
+async def admin_parse_mcp_json(
+    req: dict,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """JSON 导入解析（§2.1）：粘贴标准 MCP 配置 → 展开为表单字段（不落库）。"""
+    try:
+        model = _McpServerUpsert.from_json_import(req)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception:
+        raise HTTPException(status_code=400, detail="JSON 解析失败，请检查格式")
+    return _envelope(model.model_dump(by_alias=True))
+
+
+@router.get("/admin/mcp/servers/{server_id}/tools")
+async def admin_list_mcp_tools(
+    server_id: int,
+    refresh: bool = Query(default=False, description="现场重新发现工具（默认用库内快照）"),
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """工具白名单管理（§2.2）：按 Server 分组展示工具 + 勾选状态（默认全关）。
+
+    refresh=1 时现场连 Server 做工具发现并**同步快照行**（新增 upsert、消失的置
+    enabled=0 但保留行防误删勾选状态——重新上线自动恢复）。
+    """
+    s = await _get_server(db, server_id)
+    now = _now_iso()
+
+    if refresh:
+        conn = kb_agent._McpBox._build_connection(s)
+        if conn is None:
+            raise HTTPException(status_code=400, detail=f"不支持的传输类型：{s.transport}")
+        from langchain_mcp_adapters.client import MultiServerMCPClient
+
+        try:
+            discovered = await asyncio.wait_for(
+                MultiServerMCPClient({s.name: conn}).get_tools(),
+                timeout=kb_agent.timeout_for(s),
+            )
+        except BaseException as e:
+            raise HTTPException(status_code=502, detail=f"工具发现失败：{kb_agent._brief_err(e)}")
+
+        existing = {
+            r.tool_name: r
+            for r in (
+                await db.execute(select(KBMcpTool).where(KBMcpTool.server_id == server_id))
+            ).scalars()
+        }
+        for t in discovered:
+            row = existing.pop(t.name, None)
+            desc = (t.description or "").strip()
+            if row is None:
+                db.add(
+                    KBMcpTool(
+                        server_id=server_id, tool_name=t.name[:128], description=desc[:2000],
+                        enabled=0, create_time=now, update_time=now,
+                    )
+                )
+            else:
+                row.description = desc[:2000]
+                row.update_time = now
+        for gone in existing.values():  # Server 侧已下线的工具：保留行但停用
+            gone.enabled = 0
+            gone.update_time = now
+        s.last_test_ok = 1
+        s.last_test_message = f"工具发现成功（{len(discovered)} 个）"
+        s.last_test_time = now
+        await _bump_mcp_version(db)
+        await db.commit()
+
+    tools = (
+        await db.execute(
+            select(KBMcpTool).where(KBMcpTool.server_id == server_id).order_by(KBMcpTool.tool_name)
+        )
+    ).scalars().all()
+    return _envelope(
+        {
+            "server": _server_out(s),
+            "tools": [_tool_out(t) for t in tools],
+        }
+    )
+
+
+class _McpToolToggle(BaseModel):
+    """单工具白名单勾选（§2.2）。serverId + toolName 精确定位。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    server_id: int = Field(..., alias="serverId")
+    tool_name: str = Field(..., min_length=1, max_length=128, alias="toolName")
+    enabled: bool
+
+
+@router.put("/admin/mcp/tools/toggle")
+async def admin_toggle_mcp_tool(
+    req: _McpToolToggle,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """单工具勾选/取消（§2.2 白名单）。无快照行时先建行（管理员在发现前手动勾的场景）。"""
+    await _get_server(db, req.server_id)  # 404 校验
+    now = _now_iso()
+    row = (
+        await db.execute(
+            select(KBMcpTool).where(
+                KBMcpTool.server_id == req.server_id,
+                KBMcpTool.tool_name == req.tool_name,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        row = KBMcpTool(
+            server_id=req.server_id,
+            tool_name=req.tool_name[:128],
+            description="",
+            enabled=1 if req.enabled else 0,
+            create_time=now,
+            update_time=now,
+        )
+        db.add(row)
+    else:
+        row.enabled = 1 if req.enabled else 0
+        row.update_time = now
+    await _bump_mcp_version(db)
+    await db.commit()
+    return _envelope(_tool_out(row))
+
+
+class _McpToolsBatchToggle(BaseModel):
+    """整组勾选（Server 级全开/全关白名单）。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    server_id: int = Field(..., alias="serverId")
+    enabled: bool
+
+
+@router.put("/admin/mcp/tools/batch-toggle")
+async def admin_batch_toggle_mcp_tools(
+    req: _McpToolsBatchToggle,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """按 Server 批量勾选/取消全部工具（省一次个点）。"""
+    await _get_server(db, req.server_id)
+    now = _now_iso()
+    rows = (
+        await db.execute(select(KBMcpTool).where(KBMcpTool.server_id == req.server_id))
+    ).scalars().all()
+    for r in rows:
+        r.enabled = 1 if req.enabled else 0
+        r.update_time = now
+    await _bump_mcp_version(db)
+    await db.commit()
+    return _envelope({"serverId": req.server_id, "updated": len(rows), "enabled": req.enabled})
+
+
+class _ToolConfigUpsert(BaseModel):
+    """内置知识库检索工具配置（§2.3）。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    enabled: bool
+    tool_name: str = Field(..., min_length=1, max_length=64, alias="toolName")
+    tool_description: str = Field(..., min_length=1, alias="toolDescription")
+    top_k: int = Field(..., ge=1, le=20, alias="topK")
+    min_score: float = Field(..., ge=0.0, le=1.0, alias="minScore")
+
+
+@router.get("/admin/tool-config")
+async def admin_get_tool_config(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """内置知识库检索工具配置（系统级常驻，§2.3）。"""
+    c = await kb_agent.load_tool_config(db)
+    return _envelope(_tool_config_out(c))
+
+
+@router.put("/admin/tool-config")
+async def admin_update_tool_config(
+    req: _ToolConfigUpsert,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """更新内置工具配置（即时生效：每次对话实时读该行）。"""
+    c = await kb_agent.load_tool_config(db)
+    if c.id != 1:  # 种子行缺失的极端情况：补建
+        c = KBToolConfig(id=1, update_time=_now_iso())
+        db.add(c)
+    c.enabled = 1 if req.enabled else 0
+    c.tool_name = req.tool_name.strip()
+    c.tool_description = req.tool_description.strip()
+    c.top_k = req.top_k
+    c.min_score = req.min_score
+    c.update_time = _now_iso()
+    await db.commit()
+    return _envelope(_tool_config_out(c))
+
+
+@router.get("/admin/tool-logs")
+async def admin_list_tool_logs(
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=100),
+    toolSource: Optional[str] = Query(default=None),
+    status: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """工具调用审计日志（§5 安全审计）：含内置 RAG 与 MCP 工具全量调用记录。"""
+    stmt = select(KBToolLog)
+    count_stmt = select(func.count()).select_from(KBToolLog)
+    if toolSource in ("builtin", "mcp"):
+        stmt = stmt.where(KBToolLog.tool_source == toolSource)
+        count_stmt = count_stmt.where(KBToolLog.tool_source == toolSource)
+    if status in ("ok", "error", "timeout"):
+        stmt = stmt.where(KBToolLog.status == status)
+        count_stmt = count_stmt.where(KBToolLog.status == status)
+    total = (await db.execute(count_stmt)).scalar_one()
+    stmt = stmt.order_by(KBToolLog.id.desc()).offset((page - 1) * pageSize).limit(pageSize)
+    logs = (await db.execute(stmt)).scalars().all()
+
+    def _out(l: KBToolLog) -> dict:
+        return {
+            "id": l.id,
+            "userId": l.user_id,
+            "username": l.username,
+            "toolName": l.tool_name,
+            "toolSource": l.tool_source,
+            "serverId": l.server_id,
+            "serverName": l.server_name,
+            "prompt": l.prompt,
+            "llmDecision": l.llm_decision,
+            "args": _safe_json(l.args_json),
+            "result": l.result_json,
+            "status": l.status,
+            "errorMessage": l.error_message,
+            "durationMs": l.duration_ms,
+            "createTime": l.create_time,
+        }
+
+    total_pages = (total + pageSize - 1) // pageSize if pageSize else 0
+    return _envelope(
+        {
+            "items": [_out(l) for l in logs],
+            "page": page,
+            "pageSize": pageSize,
+            "total": total,
+            "totalPages": total_pages,
+        }
+    )
+
+
+class _ToolLogCleanup(BaseModel):
+    """审计日志手动清理入参：mode=days 按天数，mode=date 按起止日期区间。"""
+
+    mode: Literal["days", "date"]
+    days: Optional[int] = Field(default=None, ge=1, le=36500)
+    startDate: Optional[str] = None  # mode=date 时必填，YYYY-MM-DD（含当天）
+    endDate: Optional[str] = None  # mode=date 时必填，YYYY-MM-DD（含当天）
+
+
+@router.post("/admin/tool-logs/cleanup")
+async def admin_cleanup_tool_logs(
+    req: _ToolLogCleanup,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """手动清理工具调用审计日志（§5 维护）。
+
+    - mode=days：删除 create_time 早于「当前时间 - days 天」的记录（清理 N 天前）；
+    - mode=date：删除 create_time 落在 [startDate, endDate] 区间内（含起止当天，北京时间）的记录。
+
+    清理动作本身也写一条审计留痕（tool_source=admin），误删可追溯。
+    """
+    if req.mode == "days":
+        if not req.days:
+            raise HTTPException(status_code=400, detail="请提供 days（清理多少天前的日志）")
+        cutoff = (datetime.now(BEIJING_TZ) - timedelta(days=req.days)).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
+        cond = KBToolLog.create_time < cutoff
+        scope = f"{req.days} 天前（早于 {cutoff.replace('T', ' ')}）"
+    else:
+        start = (req.startDate or "").strip()
+        end = (req.endDate or "").strip()
+        if not start or not end:
+            raise HTTPException(status_code=400, detail="请提供 startDate 与 endDate（起止日期）")
+        try:
+            sd = datetime.strptime(start, "%Y-%m-%d")
+            ed = datetime.strptime(end, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="日期格式应为 YYYY-MM-DD")
+        if sd > ed:
+            raise HTTPException(status_code=400, detail="起止日期顺序不正确")
+        cond = (KBToolLog.create_time >= f"{start}T00:00:00") & (
+            KBToolLog.create_time <= f"{end}T23:59:59"
+        )
+        scope = f"{start} ~ {end}"
+
+    res = await db.execute(delete(KBToolLog).where(cond))
+    deleted = res.rowcount or 0
+    await db.commit()  # 先落删除，避免后续留痕异常把删除回滚
+
+    try:
+        db.add(
+            KBToolLog(
+                user_id=getattr(_admin, "id", None),
+                username=(getattr(_admin, "username", "") or "")[:100],
+                tool_name="cleanup_tool_logs",
+                tool_source="admin",
+                server_id=None,
+                server_name="",
+                prompt="",
+                llm_decision="",
+                args_json=json.dumps(
+                    {
+                        "mode": req.mode,
+                        "days": req.days,
+                        "startDate": req.startDate,
+                        "endDate": req.endDate,
+                    },
+                    ensure_ascii=False,
+                ),
+                result_json=f"清理{scope}的审计日志，共删除 {deleted} 条",
+                status="ok",
+                error_message="",
+                duration_ms=0,
+                create_time=_now_iso(),
+            )
+        )
+        await db.commit()
+    except Exception:
+        logger.exception("审计日志清理留痕写入失败（删除已生效）")
+        with contextlib.suppress(Exception):
+            await db.rollback()
+
+    return _envelope({"deleted": deleted, "scope": scope})
+
+
+def _safe_json(raw: str):
+    try:
+        return json.loads(raw) if raw else {}
+    except json.JSONDecodeError:
+        return raw
+
+
 # ── 启动校验（只记日志不阻断启动，方案 §5.9） ────────────────────
 
 
@@ -801,6 +1653,13 @@ async def startup_check() -> None:
         logger.error("SQLite 不支持 FTS5，全文检索不可用（仅向量检索）")
 
     asyncio.create_task(_warm_index())
+    # Agent 模式下 MCP 配置变更即时生效（每轮实时读库）；记录版本号便于排查
+    if KB.agent_enabled and KB.mcp_enabled:
+        mcp_servers = (
+            await db.execute(select(func.count()).select_from(KBMcpServer).where(KBMcpServer.enabled == 1))
+        ).scalar_one()
+        if mcp_servers:
+            logger.info("MCP 扩展已启用：%d 个启用中的 MCP Server", mcp_servers)
     logger.info(
         "智能客服已启用：chat=%s embed=%s(dim=%d) vector=%s fts=%s top_k=%d min_score=%.2f",
         KB.chat_model,
