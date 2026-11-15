@@ -520,6 +520,8 @@ select.fx-input {
   font-family: var(--fx-mono);
   font-size: 13px;
   color: #b91c1c;
+  /* 行内长代码 token（超长标识符/URL）允许在词内断行，不撑破所在段落/单元格 */
+  overflow-wrap: anywhere;
 }
 /* 行内代码不该带边框（围栏代码块才有） */
 .fx-md pre code {
@@ -543,6 +545,8 @@ select.fx-input {
   border-bottom: 1px solid #a5d6a7;
 }
 /* 宽表格横向滚动，不撑破容器（PRD §10.5 移动端验收项） */
+/* display:block 让 table 成为普通块盒，其上 overflow-x:auto 就是表格自己的
+   横向滚动条——宽表格只在自身范围内滑动，不影响页面/正文的其它内容。 */
 .fx-md table {
   border-collapse: collapse;
   margin: 14px 0;
@@ -556,6 +560,10 @@ select.fx-input {
   border: 1px solid var(--fx-line);
   padding: 7px 11px;
   text-align: left;
+  /* 单元格不换行：列宽由内容决定，宽表格整表在自身滚动条内横向滑动
+     （而不是把列压到几十 px 挤成竖条）。与 table 的 display:block +
+     overflow-x:auto 配合，"只有表格溢出的部分向右滚"，页面不动。 */
+  white-space: nowrap;
 }
 .fx-md th {
   background: var(--fx-bg-soft);

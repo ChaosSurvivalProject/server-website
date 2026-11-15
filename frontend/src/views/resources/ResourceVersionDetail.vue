@@ -408,7 +408,15 @@ export default {
   flex-direction: column;
   gap: 16px;
 }
-.res-vd-side {
+/* 主区卡片的内边距层允许收缩（内容是 v-html 注入的 Markdown，宽表格不该顶开卡片） */
+.res-vd-main .fx-card {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+.res-vd-main .fx-card-pad {
+  min-width: 0;
+}.res-vd-side {
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -421,9 +429,12 @@ export default {
 }
 
 /* ── 更新日志正文 ── */
-/* 排版来自全局 .fx-md（forum.css 非 scoped 定义，v-html 注入节点必须全局选择器才命中） */
+/* 排版来自全局 .fx-md（forum.css 非 scoped 定义，v-html 注入节点必须全局选择器才命中）。
+   表格自身的 overflow-x:auto 是滚动容器（forum.css .fx-md table），
+   这里不加 overflow —— 上一版加在正文本体上导致整个正文一起横滚。 */
 .res-md-body {
   font-size: 14.5px;
+  min-width: 0;
 }
 
 /* ── 下载文件列表 ── */
@@ -579,7 +590,9 @@ export default {
 /* 移动端：侧栏下沉（与资源详情页同策略） */
 @media (max-width: 900px) {
   .res-vd-grid {
-    grid-template-columns: 1fr;
+    /* 1fr 的隐式最小宽度是内容宽——更新日志里的宽表格（display:block + overflow-x:auto）
+       仍会把轨道撑破整页横向滚动，必须给 minmax(0,1fr) 显式允许收缩 */
+    grid-template-columns: minmax(0, 1fr);
   }
   .res-vd-side {
     position: static;
