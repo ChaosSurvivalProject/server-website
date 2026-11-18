@@ -5,6 +5,10 @@
 （通过 OpenAI SDK 的 ``extra_body``，避免 LangChain 1.x 把 ``max_tokens`` 强制改名
 为 ``max_completion_tokens`` 后部分兼容端点不认），不为单个厂商改代码（决策记录 §4）。
 
+思考强度（2026-11-18 新增）：默认走 DeepSeek 原生字段
+``enable_thinking`` + ``reasoning_effort(low/high/max)``，默认均衡档 high，
+由后台「客服设置」实时配置（kb_settings.chat_reasoning_effort），见下方常量说明。
+
 调用方式：``async for kind, text in stream_chat(messages)``，
 kind ∈ {"reasoning", "delta"}；网络/上游异常抛 KBUpstreamError，
 由 SSE 生成器统一转成 {"error": ...} 帧。
@@ -20,6 +24,38 @@ from .config import KB
 logger = logging.getLogger("uvicorn.error")
 
 TIMEOUT = 120.0  # 秒
+
+# ── 思考强度（reasoning effort）─────────────────────────────────
+# 约定：OpenAI 兼容网关按 DeepSeek 原生字段开启思考——
+#   enable_thinking(bool) + reasoning_effort("low" | "high" | "max")。
+# DeepSeek 原生只有 off/low/high/max 四档、**没有 "medium"**；
+# 「中（默认均衡档）」对应 high。值来自 kb_settings.chat_reasoning_effort
+# （后台「客服设置」可改，每次对话实时读取、即时生效），缺省回落
+# KB.chat_reasoning_effort（.env KB_CHAT_REASONING_EFFORT）。
+REASONING_EFFORT_VALUES = ("off", "low", "high", "max")
+DEFAULT_REASONING_EFFORT = "high"
+
+
+def normalize_reasoning_effort(value: str | None) -> str:
+    """归一化思考强度：非法/空值回落「默认均衡档」(high)。"""
+    v = (value or "").strip().lower()
+    if v in REASONING_EFFORT_VALUES:
+        return v
+    fallback = (getattr(KB, "chat_reasoning_effort", "") or "").strip().lower()
+    return fallback if fallback in REASONING_EFFORT_VALUES else DEFAULT_REASONING_EFFORT
+
+
+def reasoning_extra_body(effort: str | None) -> dict:
+    """把思考强度翻译成请求体字段。
+
+    - off：显式关闭（enable_thinking=false），不传 reasoning_effort；
+    - low/high/max：enable_thinking=true + reasoning_effort=<档位>。
+    由调用方用 ``setdefault`` 合并，保证 ``KB_CHAT_EXTRA_BODY`` 里的显式厂商字段优先。
+    """
+    effort = normalize_reasoning_effort(effort)
+    if effort == "off":
+        return {"enable_thinking": False}
+    return {"enable_thinking": True, "reasoning_effort": effort}
 
 
 class KBUpstreamError(Exception):
@@ -61,15 +97,28 @@ class ReasoningChatOpenAI(ChatOpenAI):
         return generation_chunk
 
 
-@lru_cache(maxsize=1)
-def _get_model() -> ChatOpenAI:
-    """进程内单例 ChatOpenAI（惰性构造：仅真正发起对话时读配置并建客户端）。"""
+def _resolve_model(model: str | None) -> str:
+    """对话模型：显式传入（后台配置）优先，空则回落 .env 的 KB_CHAT_MODEL。"""
+    m = (model or "").strip()
+    return m or KB.chat_model
+
+
+@lru_cache(maxsize=32)
+def _get_model(effort: str = "", model: str = "") -> ChatOpenAI:
+    """按 (思考强度, 对话模型) 分档缓存 ChatOpenAI（惰性构造：真正发起对话时才读配置建客户端）。
+
+    effort / model 均由每次对话实时读库得到（后台「客服设置」可改、即时生效）；
+    这里按组合分别缓存，避免每轮重建客户端，同时保证改档/改模型后下一次对话即生效
+    （不同档位/模型是不同的缓存键）。"""
     extra_body = dict(KB.chat_extra_body)
     # 用 extra_body 透传 max_tokens：LangChain 1.x 会把构造参数 max_tokens
     # 自动改名为 max_completion_tokens，而 DeepSeek 等兼容端点只认 max_tokens。
     extra_body.setdefault("max_tokens", KB.max_output_tokens)
+    # 思考强度：enable_thinking + reasoning_effort（KB_CHAT_EXTRA_BODY 显式字段优先）
+    for _k, _v in reasoning_extra_body(effort).items():
+        extra_body.setdefault(_k, _v)
     return ReasoningChatOpenAI(
-        model=KB.chat_model,
+        model=_resolve_model(model),
         api_key=KB.chat_api_key or "not-needed",
         base_url=KB.chat_base_url,
         streaming=True,
@@ -124,9 +173,9 @@ def _split_chunk(chunk) -> tuple[str, str]:
     return "".join(reasoning_parts), "".join(text_parts)
 
 
-def get_model() -> ChatOpenAI:
-    """暴露进程内单例模型（kb_agent 的 create_agent 复用同一实例与配置）。"""
-    return _get_model()
+def get_model(effort: str = "", model: str = "") -> ChatOpenAI:
+    """暴露进程内（按思考强度 + 对话模型分档的）模型单例（kb_agent 复用）。"""
+    return _get_model(effort, model)
 
 
 def split_chunk(chunk) -> tuple[str, str]:
@@ -134,13 +183,15 @@ def split_chunk(chunk) -> tuple[str, str]:
     return _split_chunk(chunk)
 
 
-async def stream_chat(messages: list[dict]):
+async def stream_chat(messages: list[dict], effort: str = "", model: str = ""):
     """流式对话：逐段 yield ("reasoning"|"delta", text)。
 
-    异常统一包成 KBUpstreamError；连接生命周期由 ``astream`` 的异步生成器保证，
-    被关闭（aclose/CancelledError）时底层连接随之释放（断连感知的关键）。
+    effort 为思考强度（off/low/high/max，见模块顶部说明），空值取默认均衡档；
+    model 为空则用 .env 的 KB_CHAT_MODEL。异常统一包成 KBUpstreamError；
+    连接生命周期由 ``astream`` 的异步生成器保证，被关闭（aclose/CancelledError）
+    时底层连接随之释放（断连感知的关键）。
     """
-    model = _get_model()
+    model = _get_model(effort, model)
     try:
         async for chunk in model.astream(_to_lc_messages(messages)):
             reasoning, content = _split_chunk(chunk)

@@ -238,6 +238,17 @@ export default [
           showLink: true,
           showParent: true
         }
+      },
+      {
+        path: "/kb/settings",
+        name: "KB Settings",
+        component: () => import("@/views/kb/settings.vue"),
+        meta: {
+          title: "客服设置",
+          icon: "ep/chat-dot-round",
+          showLink: true,
+          showParent: true
+        }
       }
     ]
   },

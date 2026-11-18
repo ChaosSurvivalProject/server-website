@@ -565,12 +565,15 @@ async def stream_agent(
     user_id: Optional[int],
     username: str,
     on_tool_event,
+    reasoning_effort: str = "",
+    chat_model: str = "",
 ):
     """Agentic RAG 流：yield ("reasoning"|"delta", text)。
 
     工具链路帧经 on_tool_event 回调旁路发给 SSE 生成器（不占用 token 流）；
     检索来源（sources 帧）由调用方从 final_state 提取（本生成器最后 yield 一个
-    ("sources", [...]) 特殊段）。
+    ("sources", [...]) 特殊段）。reasoning_effort 为思考强度（off/low/high/max）、
+    chat_model 为对话模型（空则回落 .env），均由 SSE 消费端每轮实时读库后传入。
     """
     from . import kb_llm
 
@@ -597,12 +600,12 @@ async def stream_agent(
 
     if not agent_tools:
         # 无工具：走 P0 单轮流式（复用 kb_llm，语义等价于"Agent 只答不调"）
-        async for kind, text in kb_llm.stream_chat(messages):
+        async for kind, text in kb_llm.stream_chat(messages, reasoning_effort, chat_model):
             yield (kind, text)
         yield ("sources", [])
         return
 
-    model = kb_llm.get_model()
+    model = kb_llm.get_model(reasoning_effort, chat_model)
     agent = create_agent(
         model=model,
         tools=agent_tools,

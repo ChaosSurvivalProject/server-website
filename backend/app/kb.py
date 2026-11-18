@@ -14,6 +14,9 @@
   GET    /kb/admin/documents/{id}/chunks  切片预览
   POST   /kb/admin/documents/{id}/reindex 重建（幂等：先删后建）
   GET    /kb/admin/stats                  统计（文档/切片/索引版本/维度一致性）
+  GET    /kb/admin/chat-config            客服模型设置（当前思考强度 + 可选项）
+  PUT    /kb/admin/chat-config            更新思考强度（off/low/high/max，即时生效）
+  GET    /kb/admin/models                  拉取上游网关可用模型列表（供后台选模型回填）
 
 错误分两类：流开始前的错误走标准 HTTP + 项目包络（400/429/503）；
 流开始后的错误只能发 {"error":...} 帧 + [DONE]（header 已发出，无法改状态码）。
@@ -232,6 +235,30 @@ async def _set_setting(db: AsyncSession, key: str, value) -> None:
     )
 
 
+async def _del_setting(db: AsyncSession, key: str) -> None:
+    await db.execute(text("DELETE FROM kb_settings WHERE key = :k"), {"k": key})
+
+
+async def _get_reasoning_effort(db: AsyncSession) -> str:
+    """当前思考强度（off/low/high/max）。
+
+    优先读 kb_settings.chat_reasoning_effort（后台「客服设置」可改、每次对话实时读取、
+    即时生效）；未配置时回落 .env 的 KB_CHAT_REASONING_EFFORT（默认 high=中）。
+    非法值一律归一化到默认均衡档，避免写坏库导致上游 400。
+    """
+    raw = await _get_setting(db, "chat_reasoning_effort")
+    return kb_llm.normalize_reasoning_effort(raw or KB.chat_reasoning_effort)
+
+
+async def _get_chat_model(db: AsyncSession) -> str:
+    """当前对话模型：kb_settings.chat_model（后台可改、即时生效）优先，空则回落 .env。
+
+    「未手动配置」= kb_settings 无该键或值为空 → 读 .env 的 KB_CHAT_MODEL。
+    """
+    raw = (await _get_setting(db, "chat_model") or "").strip()
+    return raw or KB.chat_model
+
+
 async def bump_index_version(db: AsyncSession) -> None:
     """摄入/删除后自增 index_version → 服务端下次对话自动重建内存索引，无需重启。"""
     await db.execute(
@@ -420,10 +447,14 @@ async def _chat_stream(
     """
     producer: asyncio.Task | None = None
     try:
+        # 每轮对话实时读思考强度与对话模型（后台可改、即时生效；缺省回落 .env）
+        reasoning_effort = await _get_reasoning_effort(db)
+        chat_model = await _get_chat_model(db)
         if KB.agent_enabled:
             async for item in _agent_stream(
                 request=request, db=db, ip=ip, message=message,
                 history=history, user_id=user_id, username=username,
+                reasoning_effort=reasoning_effort, chat_model=chat_model,
             ):
                 yield item
             return
@@ -451,7 +482,7 @@ async def _chat_stream(
 
             async def _produce() -> None:
                 try:
-                    async for kind, piece in kb_llm.stream_chat(messages):
+                    async for kind, piece in kb_llm.stream_chat(messages, reasoning_effort, chat_model):
                         queue.put_nowait((kind, piece))
                 except asyncio.CancelledError:
                     raise
@@ -511,11 +542,15 @@ async def _agent_stream(
     history: list[dict],
     user_id: Optional[int],
     username: str,
+    reasoning_effort: str = "",
+    chat_model: str = "",
 ):
     """Agentic RAG 流：Agent 循环放独立任务 + 队列（与 P0 相同的背压/保活/断连形态）。
 
     kb_agent.stream_agent yield ("reasoning"|"delta"|"sources", payload)；
     工具链路帧经 on_tool_event 回调直接入队（{"tool": {...}}，§4.1）。
+    reasoning_effort 为思考强度（off/low/high/max）、chat_model 为对话模型（空则回落 .env），
+    均透传给 Agent 模型。
     """
     queue: asyncio.Queue = asyncio.Queue()
 
@@ -557,6 +592,7 @@ async def _agent_stream(
             async for kind, piece in kb_agent.stream_agent(
                 db=db, message=message, history=history,
                 user_id=user_id, username=username, on_tool_event=on_tool_event,
+                reasoning_effort=reasoning_effort, chat_model=chat_model,
             ):
                 if kind == "reasoning":
                     # 思考分段：思考态内的后续 token 不切（否则每个 token 拆一个块）；
@@ -624,7 +660,7 @@ async def _agent_stream(
 
 
 @router.get("/info")
-async def kb_info():
+async def kb_info(db: AsyncSession = Depends(get_db)):
     """客服元信息。enabled=false 时前端不渲染悬浮球，/kb/chat 返回 503。"""
     return _envelope(
         {
@@ -633,7 +669,8 @@ async def kb_info():
             "greeting": KB.greeting,
             # 首屏示例问题文案由主站环境变量（VITE_CHAT_WIDGET_FAQ）提供，此字段预留
             "faq": [],
-            "model": KB.chat_model,
+            # 当前生效模型（后台可覆盖；未配置回落 .env）
+            "model": await _get_chat_model(db),
         }
     )
 
@@ -1539,6 +1576,161 @@ async def admin_update_tool_config(
     c.update_time = _now_iso()
     await db.commit()
     return _envelope(_tool_config_out(c))
+
+
+# ── 客服模型设置（对话模型 + 思考强度，2026-11-18） ─────────────
+# 对话模型与思考强度都存 kb_settings，未手动配置时回落 .env（KB_CHAT_MODEL /
+# KB_CHAT_REASONING_EFFORT）。DeepSeek 原生只有 off/low/high/max 四档（无 medium）；
+# 「中（默认均衡档）」= high。
+_REASONING_EFFORT_OPTIONS = [
+    {"value": "off", "label": "关闭", "description": "不输出思考内容（最快、最省）"},
+    {"value": "low", "label": "低", "description": "简短思考，适合延迟敏感场景"},
+    {"value": "high", "label": "高（默认·中）", "description": "均衡思考强度（DeepSeek 默认档，对应「中」）"},
+    {"value": "max", "label": "最高", "description": "最强思考，适合复杂问题（更慢、更贵）"},
+]
+
+
+class _ChatConfigUpsert(BaseModel):
+    """客服模型设置入参：对话模型 + 思考强度。
+
+    - model 省略（None）= 不改动；传空字符串 = 清除后台覆盖、回退 .env；
+      传非空 = 使用该模型（如 workbuddy/deepseek-v4.1-flash）。
+    - reasoningEffort 必填：off | low | high | max。
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    model: Optional[str] = Field(default=None, alias="model", max_length=200)
+    reasoning_effort: str = Field(..., alias="reasoningEffort")
+
+
+def _chat_config_out(model: str, effort: str, model_configured: bool) -> dict:
+    effort = kb_llm.normalize_reasoning_effort(effort)
+    return {
+        # 当前生效的对话模型 / 生效值来源 + .env 缺省（响应绝不下发 API Key）
+        "model": model,
+        "modelDefault": KB.chat_model,
+        "modelConfigured": model_configured,  # False = 未手动配置，读取 .env
+        "baseUrl": KB.chat_base_url,
+        # 思考强度：当前生效值 & 缺省值（.env 兜底）
+        "reasoningEffort": effort,
+        "reasoningEffortDefault": kb_llm.normalize_reasoning_effort(KB.chat_reasoning_effort),
+        "options": _REASONING_EFFORT_OPTIONS,
+    }
+
+
+@router.get("/admin/chat-config")
+async def admin_get_chat_config(
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """客服模型设置：当前对话模型 + 思考强度 + 可选项（模型/网关只读来源展示）。"""
+    model = await _get_chat_model(db)
+    effort = await _get_reasoning_effort(db)
+    model_configured = bool((await _get_setting(db, "chat_model") or "").strip())
+    return _envelope(_chat_config_out(model, effort, model_configured))
+
+
+@router.put("/admin/chat-config")
+async def admin_update_chat_config(
+    req: _ChatConfigUpsert,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """更新对话模型 / 思考强度。即时生效：每次对话实时读 kb_settings。
+
+    - model 传空字符串 → 删除覆盖，回退 .env 的 KB_CHAT_MODEL；
+    - model 省略 → 保持原样；
+    - reasoningEffort 校验 off/low/high/max。
+    """
+    raw_effort = (req.reasoning_effort or "").strip().lower()
+    if raw_effort not in kb_llm.REASONING_EFFORT_VALUES:
+        raise HTTPException(
+            status_code=400,
+            detail="思考强度只能是 off / low / high / max 之一",
+        )
+
+    if req.model is not None:
+        model_in = req.model.strip()
+        if model_in:
+            await _set_setting(db, "chat_model", model_in)
+        else:
+            # 显式清空 → 视为「未手动配置」，回退 .env
+            await _del_setting(db, "chat_model")
+
+    await _set_setting(db, "chat_reasoning_effort", raw_effort)
+    await db.commit()
+
+    model = await _get_chat_model(db)
+    model_configured = bool((await _get_setting(db, "chat_model") or "").strip())
+    return _envelope(_chat_config_out(model, raw_effort, model_configured))
+
+
+@router.get("/admin/models")
+async def admin_list_chat_models(
+    _admin=Depends(require_admin),
+):
+    """拉取上游网关可用模型列表（GET {KB_CHAT_BASE_URL}/models，OpenAI 兼容）。
+
+    供后台「客服设置」按钮选模型回填；只读代理，不下发 API Key。
+    兼容 base 带/不带 `/v1` 两种写法；失败返回 502（detail 给简短原因）。
+    """
+    base = KB.chat_base_url.rstrip("/")
+    urls = [f"{base}/models"]
+    if not base.endswith("/v1"):
+        urls.append(f"{base}/v1/models")
+    headers = {"Authorization": f"Bearer {KB.chat_api_key}"} if KB.chat_api_key else {}
+
+    last_err = ""
+    async with httpx.AsyncClient(timeout=12.0) as client:
+        for url in urls:
+            try:
+                resp = await client.get(url, headers=headers)
+            except Exception as e:  # 网络异常：换下一个候选 URL / 最终 502
+                last_err = f"{type(e).__name__}: {str(e)[:160]}"
+                continue
+            if resp.status_code != 200:
+                last_err = f"HTTP {resp.status_code}"
+                continue
+            try:
+                payload = resp.json()
+            except Exception:
+                last_err = "响应不是 JSON"
+                continue
+            rows = payload.get("data") if isinstance(payload, dict) else payload
+            if not isinstance(rows, list):
+                last_err = "响应缺少 data 数组"
+                continue
+
+            seen: set[str] = set()
+            models: list[dict] = []
+            for it in rows:
+                if not isinstance(it, dict):
+                    continue
+                mid = (it.get("id") or "").strip()
+                if not mid or mid in seen:
+                    continue
+                seen.add(mid)
+                models.append(
+                    {
+                        "id": mid,
+                        # 展示名：display_name > magpie_label > id
+                        "name": (
+                            it.get("display_name")
+                            or it.get("magpie_label")
+                            or mid
+                        ),
+                        "ownedBy": it.get("owned_by") or "",
+                        "reasoning": bool(it.get("reasoning")),
+                    }
+                )
+            models.sort(key=lambda m: m["id"].lower())
+            return _envelope({"models": models, "count": len(models)})
+
+    raise HTTPException(
+        status_code=502,
+        detail=f"获取模型列表失败：{last_err or '上游不可达'}",
+    )
 
 
 @router.get("/admin/tool-logs")

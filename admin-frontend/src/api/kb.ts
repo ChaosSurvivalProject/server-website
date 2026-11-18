@@ -282,3 +282,53 @@ export const cleanupKBToolLogs = (data: KBToolLogCleanup) => {
     { data }
   );
 };
+
+/** 客服模型设置：思考强度选项（对应后端 /kb/admin/chat-config 的 options） */
+export type KBChatConfigOption = {
+  value: "off" | "low" | "high" | "max" | string;
+  label: string;
+  description: string;
+};
+
+/** 客服模型设置（对话模型 + 思考强度；未手动配置回落 .env） */
+export type KBChatConfig = {
+  model: string;
+  modelDefault: string;
+  modelConfigured: boolean;
+  baseUrl: string;
+  reasoningEffort: string;
+  reasoningEffortDefault: string;
+  options: KBChatConfigOption[];
+};
+
+/** 读取客服模型设置 */
+export const getKBChatConfig = () => {
+  return http.request<KBChatConfig>("get", "/api/kb/admin/chat-config");
+};
+
+/** 更新客服模型设置（对话模型 + 思考强度，即时生效）
+ * model 传空字符串 = 清除后台覆盖、回退 .env；省略 model 字段 = 不改动 */
+export const updateKBChatConfig = (data: {
+  model?: string;
+  reasoningEffort: string;
+}) => {
+  return http.request<KBChatConfig>("put", "/api/kb/admin/chat-config", {
+    data
+  });
+};
+
+/** 上游网关模型项（对应 GET /kb/admin/models 的 models[]） */
+export type KBChatModelItem = {
+  id: string;
+  name: string;
+  ownedBy: string;
+  reasoning: boolean;
+};
+
+/** 拉取上游网关可用模型列表（供后台选模型回填） */
+export const getKBChatModels = () => {
+  return http.request<{ models: KBChatModelItem[]; count: number }>(
+    "get",
+    "/api/kb/admin/models"
+  );
+};

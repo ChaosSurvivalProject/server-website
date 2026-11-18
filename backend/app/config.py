@@ -119,6 +119,7 @@ class KBConfig:
     chat_api_key: str
     chat_model: str
     chat_extra_body: dict
+    chat_reasoning_effort: str   # 思考强度缺省值：off/low/high/max（后台可覆盖，high=中）
     max_output_tokens: int
     # Embedding（OpenAI 兼容）
     embed_base_url: str
@@ -159,6 +160,9 @@ KB = KBConfig(
     chat_api_key=_env_str("KB_CHAT_API_KEY"),
     chat_model=_env_str("KB_CHAT_MODEL", "deepseek-chat"),
     chat_extra_body=_env_json("KB_CHAT_EXTRA_BODY"),
+    # 思考强度缺省（off/low/high/max）。后台「客服设置」可覆盖、即时生效；
+    # 这里只是未配置时的兜底。high = DeepSeek 默认均衡档（即「中」强度）。
+    chat_reasoning_effort=_env_str("KB_CHAT_REASONING_EFFORT", "high").lower(),
     max_output_tokens=_env_int("KB_MAX_OUTPUT_TOKENS", 800),
     embed_base_url=_env_str("KB_EMBED_BASE_URL", "https://api.siliconflow.cn/v1").rstrip("/"),
     embed_api_key=_env_str("KB_EMBED_API_KEY"),

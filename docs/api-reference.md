@@ -124,6 +124,9 @@
 | PUT | `/api/kb/admin/mcp/tools/batch-toggle` | 按 Server 批量勾选/取消 |
 | GET | `/api/kb/admin/tool-config` | 内置检索工具配置（§2.3 系统级常驻） |
 | PUT | `/api/kb/admin/tool-config` | 更新内置工具配置（工具名/描述/Top-K/命中阈值，即时生效） |
+| GET | `/api/kb/admin/chat-config` | 客服模型设置（**需管理员**；返回生效 `model` + `modelDefault`(\.env) + `modelConfigured` + `baseUrl` + 当前思考强度 `reasoningEffort` 与可选项 `options`） |
+| PUT | `/api/kb/admin/chat-config` | 更新对话模型 / 思考强度（**需管理员**；body: `{model?: string, reasoningEffort: off\|low\|high\|max}`；`model` 传空串 = 清除覆盖回退 `.env`、省略 = 不改动；写 `kb_settings.chat_model` / `chat_reasoning_effort`，**即时生效**、无需重启） |
+| GET | `/api/kb/admin/models` | 拉取上游网关可用模型列表（**需管理员**；代理 `GET {KB_CHAT_BASE_URL}/models`，返回 `{models:[{id,name,ownedBy,reasoning}], count}`；供后台「获取模型列表」按钮选模型回填，失败 502） |
 
 MCP 鉴权（2026-11-15）：HTTP/SSE 支持 `authType` 三选——`none` 无鉴权 / `bearer`（`Authorization: Bearer <authToken>`）/ `api_key`（自定义头 `apiKeyHeader`，空 = `X-API-Key`，值为 `authToken`）；`headers` 是额外自定义头（同名时鉴权值优先）。stdio 走 `env` 注入子进程环境变量（MCP 标准，HTTP/SSE 的 env 无意义会被忽略）；stdio 与 HTTP 的凭据字段互斥，切换传输时由后端自动清理对应字段。
 | GET | `/api/kb/admin/tool-logs` | 工具调用审计日志（prompt / LLM 决策 / 实参 / 结果摘要 / 耗时 / 状态，含内置检索与 MCP 全部调用；内置检索结果摘要含每条切片的正文与余弦分数） |
@@ -161,7 +164,7 @@ python3 kb_sync.py --list            # 列出库内文档与切片数
 
 同步会自增 `kb_settings.index_version`，**服务端下次对话自动重建内存索引，无需重启**（设计点，勿改成"重启生效"）。服务与脚本可同时运行（双侧均已开 WAL + busy_timeout，不会 `database is locked`）。
 
-知识库配置（`backend/.env`，**已 gitignore，含 API Key 勿提交**）：总开关 `KB_ENABLED`；对话模型 `KB_CHAT_BASE_URL` / `KB_CHAT_API_KEY` / `KB_CHAT_MODEL`（OpenAI 兼容）+ 可选 `KB_CHAT_EXTRA_BODY`（厂商私有参数原样 merge）；Embedding `KB_EMBED_BASE_URL` / `KB_EMBED_API_KEY` / `KB_EMBED_MODEL` / `KB_EMBED_DIM`；检索 `KB_TOP_K` / `KB_MIN_SCORE` / `KB_MAX_CHUNKS` 等；文案 `KB_TITLE` / `KB_GREETING` / `KB_FALLBACK_HINT`。改 `.env` 需重启后端生效。启动自检：密钥缺失 → 客服自动关闭（`/kb/info` 返回 `enabled:false`，`/kb/chat` 503）；库内向量维度/模型与配置不一致 → 关闭向量检索降级为仅 FTS，`/kb/admin/stats` 标记"需重建索引"。
+知识库配置（`backend/.env`，**已 gitignore，含 API Key 勿提交**）：总开关 `KB_ENABLED`；对话模型 `KB_CHAT_BASE_URL` / `KB_CHAT_API_KEY` / `KB_CHAT_MODEL`（OpenAI 兼容）+ 思考强度缺省 `KB_CHAT_REASONING_EFFORT`（`off\|low\|high\|max`，默认 `high`=中；后台「智能客服 → 客服设置」可覆盖、即时生效）+ 可选 `KB_CHAT_EXTRA_BODY`（厂商私有参数原样 merge）；Embedding `KB_EMBED_BASE_URL` / `KB_EMBED_API_KEY` / `KB_EMBED_MODEL` / `KB_EMBED_DIM`；检索 `KB_TOP_K` / `KB_MIN_SCORE` / `KB_MAX_CHUNKS` 等；文案 `KB_TITLE` / `KB_GREETING` / `KB_FALLBACK_HINT`。改 `.env` 需重启后端生效（思考强度后台改则无需重启）。启动自检：密钥缺失 → 客服自动关闭（`/kb/info` 返回 `enabled:false`，`/kb/chat` 503）；库内向量维度/模型与配置不一致 → 关闭向量检索降级为仅 FTS，`/kb/admin/stats` 标记"需重建索引"。
 
 ## 员工名片
 
@@ -318,7 +321,7 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | GET | `/health` | 健康检查 |
 | GET | `/api/kb/info` | 智能客服元信息（见本文「知识库 / 智能客服」一节） |
 | POST | `/api/kb/chat` | 智能客服流式问答（SSE，唯一不走包络） |
-| * | `/api/kb/admin/mcp/*`、`/api/kb/admin/tool-config`、`/api/kb/admin/tool-logs` | 智能客服 P1：MCP Server 管理 / 工具白名单 / 内置工具配置 / 调用审计（见「MCP 扩展」小节） |
+| * | `/api/kb/admin/mcp/*`、`/api/kb/admin/tool-config`、`/api/kb/admin/tool-logs`、`/api/kb/admin/chat-config`、`/api/kb/admin/models` | 智能客服 P1：MCP Server 管理 / 工具白名单 / 内置工具配置 / 调用审计 / 客服模型设置（模型+思考强度）/ 上游模型列表（见「MCP 扩展」小节） |
 
 ## 图片上传
 
