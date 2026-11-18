@@ -62,9 +62,11 @@ const statusLabel = (row: ForumArticleItem) =>
 const statusTag = (row: ForumArticleItem) =>
   STATUS_META[row.status]?.tag ?? "info";
 
-/** 回收站剩余天数文案：`daysLeft=0` 表示今天到期（后端算好下发，前端不硬编码 30） */
+/** 回收站剩余天数文案：后端算好下发（前端不硬编码 30）。
+ *  `daysLeft=0` 在后台既可能是"今天到期"也可能是"已超期待 CLI 清理"——后台列表
+ *  不像「我的文章」那样过滤超期帖，所以统一显示「已到期」，别谎报成今天。 */
 const recycleLeftText = (row: ForumArticleItem) =>
-  row.daysLeft === 0 ? "今天到期" : `剩余 ${row.daysLeft ?? 0} 天`;
+  row.daysLeft && row.daysLeft > 0 ? `剩余 ${row.daysLeft} 天` : "已到期";
 
 /** 恢复目标文案：回收站恢复后回到删除前状态（0 待审核 / 1 已发布 / 2 已驳回） */
 const statusBeforeLabel = (row: ForumArticleItem) =>
