@@ -63,6 +63,6 @@
 
 - 后端 CORS 当前 `allow_origins=["*"]`（开发便利），生产收紧时需与同源部署方案一起评估。
 - `backend/app/monitor.py` 中 `server-info` 的 `start_time` / `end_time` / `time_period` 参数是预留参数，当前实现未使用，不要误删（前端会传）。
-- 智能客服（P0）遗留项见 `TODO.md`：真实玩家在线人数（mcstatus）、限流多 worker 共享存储、知识库自动定时任务（当前用 crontab）、检索效果看板等。
+- 智能客服（P0）遗留项见 `TODO.md`：限流多 worker 共享存储、知识库自动定时任务（当前用 crontab）、检索效果看板等。（真实玩家在线人数 / 版本已于 2026-11-16 经外部 MCP 实现并收口，见 `docs/归档/已完成清单.md`）
 - **HTTPS 证书 2026-12-24 到期**（Let's Encrypt 通配符 `*.xt91tv.shop`，90 天一签）：到期未换证书 = **全站不可访问**。现在证书由 1panel「SSL」管理并下发给站点 `/opt/1panel/www/sites/xqly.xt91tv.shop/ssl/`，续期后在面板里替换该证书再重载 OpenResty 即可；**旧的裸机路径 `/etc/nginx/ssl/` 已不存在**。
 - 生产 Nginx 的 `/api/kb/` SSE 反代已按四件套配置，现位于 `for-deploy/xqly-app.conf`（1panel 站点通过 `include .../proxy/*.conf` 引入）；生产改 nginx 时勿丢该 location。
