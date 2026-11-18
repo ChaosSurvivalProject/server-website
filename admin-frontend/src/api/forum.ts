@@ -10,8 +10,12 @@ import { http } from "@/utils/http";
  */
 
 // ── 类型 ────────────────────────────────────────────────────────
-/** 文章状态：0=待审核 1=已发布 2=已驳回 3=已下架（与后端 ARTICLE_STATUS_TEXT 同源） */
-export type ArticleStatus = 0 | 1 | 2 | 3;
+/** 文章状态：0=待审核 1=已发布 2=已驳回 3=已下架 4=回收站（与后端 ARTICLE_STATUS_TEXT 同源）
+ *  `3` 自 2026-10-05 起**只有"管理员下架"一个来源**；作者自删进 `4`（30 天保留期）。 */
+export type ArticleStatus = 0 | 1 | 2 | 3 | 4;
+
+/** 回收站帖的"删除前状态"：后端 `RESTORE_TARGETS` 同口径（0/1/2，恢复不重审） */
+export type ArticleStatusBeforeDelete = 0 | 1 | 2;
 
 export type ForumCategory = {
   id: number;
@@ -68,6 +72,12 @@ export type ForumArticleItem = {
   updateTime: string;
   /** 仅作者/管理员视角返回（公开列表不含） */
   reviewNote?: string;
+  /** 回收站帖专属（`status=4` 时后端才下发；其余状态无这三个字段，**不含正文**） */
+  deletedAt?: string;
+  /** 剩余可恢复天数，由后端按 deleted_at 计算（前端不自己算，保留期单一来源） */
+  daysLeft?: number;
+  /** 删除前状态（恢复目标；不重审） */
+  statusBeforeDelete?: ArticleStatusBeforeDelete;
   /** 后台详情接口额外返回 */
   content?: string;
   contentType?: string;
@@ -202,7 +212,10 @@ export const offlineArticle = (id: number, reason?: string) => {
   );
 };
 
-/** 管理员：恢复上架（remove_by=''，publish_time 重写，**不重新审核**） */
+/** 管理员：恢复。**同一条路由两种语义**：
+ *  - `status=3`（管理员下架）→ 回已发布，`remove_by=''`，`publish_time` 重写为当前时间；
+ *  - `status=4`（作者自删的回收站帖）→ 回 `statusBeforeDelete`，回填删除前 `publish_time`（防刷榜）。
+ *  两者都**不重新审核**；超 30 天保留期时后端返 410。 */
 export const restoreArticle = (id: number) => {
   return http.request<ForumArticleItem>(
     "post",

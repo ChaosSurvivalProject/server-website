@@ -29,12 +29,6 @@
 
 > 员工名片 P0 的**有意不做项**（勿当缺陷"修掉"）：应用层限流、查询日志审计、服务端渲染、中文字体。P0 的过期状态由 `valid_to` 判定并把 `active` 回写为 `revoked`（`revoked_reason='expired'`，仅系统写入），`backend/staff_expire.py` + crontab 每日兜底——**crontab 漏挂不影响核验正确性**（判定权威是 `valid_to`）。
 
-## 社区（论坛）帖子删除回收站：后台管理端待补
-
-> 回收站功能（`docs/论坛/论坛删除与回收站PRD.md` v1.3）**后端与主站已于 2026-10-05 上线**，上线清单见 [`docs/归档/已完成清单.md`](docs/归档/已完成清单.md)；只剩后台 UI 一项（需求 §5 第 9 项）未落地。
-
-- [ ] **后台文章管理页的回收站筛选与恢复**：状态下拉补「回收站」（`4`）、`status=4` 行显示「恢复」（`POST /api/forum/admin/articles/{id}/restore`，回 `statusBeforeDelete`）与「删除」（硬删），并对回收站行隐藏 通过/驳回/下架/置顶/加精；状态文案与标签色表（`STATUS_META`）补 `4`。**后端 `GET /api/forum/admin/articles` 的 `status` 参数与 `admin/articles/{id}/restore` 已支持 `4`**，只差后台页面
-
 ## 社区（论坛）第二阶段候选（按 `docs/论坛/论坛模块第一阶段PRD.md` §12.1 顺延）
 
 - [x] **站内信正式接入**（真实收发 + 未读数角标 + 审核结果通知）：导航栏 bell 按钮已留位（当前点击提示"功能开发中"）

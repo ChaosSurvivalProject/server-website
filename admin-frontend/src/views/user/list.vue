@@ -412,12 +412,14 @@ const forumStats = ref<ForumUserStats | null>(null);
 
 const FORUM_STATUS_META: Record<
   number,
-  { label: string; tag: "success" | "warning" | "danger" | "info" }
+  { label: string; tag: "success" | "warning" | "danger" | "info" | "primary" }
 > = {
   0: { label: "待审核", tag: "warning" },
   1: { label: "已发布", tag: "success" },
   2: { label: "已驳回", tag: "danger" },
-  3: { label: "已下架", tag: "info" }
+  3: { label: "已下架", tag: "info" },
+  // 4=回收站：作者自删、30 天保留期；文本用后端下发的 statusText，这里只定标签色
+  4: { label: "回收站", tag: "primary" }
 };
 
 const openForumStats = async (row: UserItem) => {

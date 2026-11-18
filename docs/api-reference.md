@@ -260,7 +260,7 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 - **标签 `use_count` = 被 `status=1` 文章引用的数量**，只挂在状态转移这一个点上；浏览/点赞/收藏/评论计数一律原子 SQL 自增。
 - **`comment_count` = 顶层评论数 + 回复数**（回复也算评论）；评论纯文本存储，不接受 Markdown/HTML。
 - **禁言语义**：能登录浏览，但**不能发帖/评论/上传**（点赞收藏不受影响）；命中返回 403 + `detail="账号已被禁言，至 <时间>"`。**删自己的帖子/评论属例外，禁言期间仍可用**。
-- **后台回收站筛选尚未实现**：`GET /api/forum/admin/articles` 的 `status` 参数已支持 `4`、`admin/articles/{id}/restore` 也已支持回收站帖，但后台文章管理页的下拉只有 0/1/2/3（见 `TODO.md`）。
+- **后台回收站已打通**（2026-11-18）：`GET /api/forum/admin/articles?status=4` 可筛出回收站帖（列表项带 `deletedAt` / `daysLeft` / `statusBeforeDelete`，**不含正文**），`POST /api/forum/admin/articles/{id}/restore` 按 `status_before_delete` 恢复；后台文章管理页对 `status=4` 行只留「恢复 / 删除」，隐藏通过 / 驳回 / 下架 / 置顶 / 加精 / 改属性。
 - 端到端回归脚本：`cd backend && python3 forum_smoke_test.py`（临时库 + `TestClient`，覆盖状态机/计数/回收站/权限/级联等断言）。
 
 ## 资源中心

@@ -47,17 +47,30 @@ import type {
 /** 状态元数据：与后端 ARTICLE_STATUS_TEXT 同源（状态映射表各页本地定义是既有惯例） */
 const STATUS_META: Record<
   ArticleStatus,
-  { label: string; tag: "success" | "warning" | "danger" | "info" }
+  { label: string; tag: "success" | "warning" | "danger" | "info" | "primary" }
 > = {
   0: { label: "待审核", tag: "warning" },
   1: { label: "已发布", tag: "success" },
   2: { label: "已驳回", tag: "danger" },
-  3: { label: "已下架", tag: "info" }
+  3: { label: "已下架", tag: "info" },
+  // 回收站用 primary（蓝紫）与"已下架"的灰、"已驳回"的红区分开；
+  // 前端主站同名表用紫色，语义一致、只是 Element 调色板没有紫色档。
+  4: { label: "回收站", tag: "primary" }
 };
 const statusLabel = (row: ForumArticleItem) =>
   STATUS_META[row.status]?.label ?? "未知";
 const statusTag = (row: ForumArticleItem) =>
   STATUS_META[row.status]?.tag ?? "info";
+
+/** 回收站剩余天数文案：`daysLeft=0` 表示今天到期（后端算好下发，前端不硬编码 30） */
+const recycleLeftText = (row: ForumArticleItem) =>
+  row.daysLeft === 0 ? "今天到期" : `剩余 ${row.daysLeft ?? 0} 天`;
+
+/** 恢复目标文案：回收站恢复后回到删除前状态（0 待审核 / 1 已发布 / 2 已驳回） */
+const statusBeforeLabel = (row: ForumArticleItem) =>
+  (row.statusBeforeDelete !== undefined
+    ? STATUS_META[row.statusBeforeDelete]?.label
+    : "") || "删除前状态";
 
 /** 下架原因：区分"你删除的"与"管理员下架" */
 const removeLabel = (row: ForumArticleItem) =>
@@ -280,22 +293,38 @@ const handleOffline = (row: ForumArticleItem) => {
   );
 };
 
-const handleRestore = (row: ForumArticleItem) =>
+/** 恢复：同一路由两种语义（status=3 恢复上架 / status=4 出回收站），文案必须分开说 */
+const handleRestore = (row: ForumArticleItem) => {
+  const recycled = row.status === 4;
   ElMessageBox.confirm(
-    `确定恢复《${row.title}》的上架吗？恢复后立即公开，**不重新审核**，且发布时间会重写为当前时间。`,
-    "恢复上架",
+    recycled
+      ? `确定从回收站恢复《${row.title}》吗？恢复后回到删除前的「${statusBeforeLabel(
+          row
+        )}」状态，**不重新审核**，发布时间回填删除前的时间（防止删了再恢复刷榜）。`
+      : `确定恢复《${row.title}》的上架吗？恢复后立即公开，**不重新审核**，且发布时间会重写为当前时间。`,
+    recycled ? "从回收站恢复" : "恢复上架",
     { confirmButtonText: "确定恢复", cancelButtonText: "取消", type: "success" }
   ).then(
     async () => {
-      await runAction(row, () => restoreArticle(row.id), "已恢复上架");
+      await runAction(
+        row,
+        () => restoreArticle(row.id),
+        recycled ? "已从回收站恢复" : "已恢复上架"
+      );
     },
     () => {}
   );
+};
 
 /** 硬删除：级联清理评论 / 点赞 / 收藏，必须二次确认并说清不可恢复 */
 const handleDelete = (row: ForumArticleItem) => {
+  // 回收站行也走这条硬删，额外提醒"30 天保留期随即作废"
+  const recycleNote =
+    row.status === 4
+      ? "该帖当前在回收站中，删除后 30 天保留期随即作废。\n"
+      : "";
   ElMessageBox.confirm(
-    `确定永久删除《${row.title}》吗？\n该帖的评论、点赞、收藏记录会一并删除，**不可恢复**。`,
+    `确定永久删除《${row.title}》吗？\n${recycleNote}该帖的评论、点赞、收藏记录会一并删除，**不可恢复**。`,
     "永久删除",
     {
       confirmButtonText: "确定删除",
@@ -529,7 +558,8 @@ onMounted(() => {
         <h2>文章管理</h2>
         <p>
           先审后发：通过后公开；作者编辑重提会回到「待审核」，且浏览 / 点赞 /
-          收藏 / 评论全部保留。
+          收藏 / 评论全部保留。作者自删的帖子进入「回收站」保留 30
+          天，可在状态下拉中筛出并恢复或彻底删除。
         </p>
       </div>
       <div class="hd-btns">
@@ -600,6 +630,8 @@ onMounted(() => {
         <el-option label="已发布" :value="1" />
         <el-option label="已驳回" :value="2" />
         <el-option label="已下架" :value="3" />
+        <!-- 回收站：不选状态 = 全部（含回收站），保持"默认不过滤"以免数据被藏起来 -->
+        <el-option label="回收站" :value="4" />
       </el-select>
     </div>
 
@@ -667,6 +699,14 @@ onMounted(() => {
           >
             {{ removeLabel(row) }}
           </el-tag>
+          <!-- 回收站帖：剩余可恢复天数（删除时间放 tooltip，避免把这列撑得太高） -->
+          <el-tooltip
+            v-if="row.status === 4"
+            :content="`删除于 ${formatDateTime(row.deletedAt)}`"
+            placement="top"
+          >
+            <div class="sub-text recycle-left">{{ recycleLeftText(row) }}</div>
+          </el-tooltip>
         </template>
       </el-table-column>
       <el-table-column label="置顶/精华" width="100" align="center">
@@ -732,11 +772,13 @@ onMounted(() => {
             @click="handleReject(row)"
             >驳回</el-button
           >
+          <!-- 恢复：3=管理员下架恢复上架，4=出回收站（回到 statusBeforeDelete） -->
           <el-button
-            v-if="row.status === 3"
+            v-if="row.status === 3 || row.status === 4"
             size="small"
             link
             type="success"
+            :loading="actingId === row.id"
             @click="handleRestore(row)"
             >恢复</el-button
           >
@@ -748,29 +790,36 @@ onMounted(() => {
             @click="handleOffline(row)"
             >下架</el-button
           >
-          <el-button size="small" link type="primary" @click="handleTop(row)">
-            {{ row.isTop ? "取消置顶" : "置顶" }}
-          </el-button>
-          <el-button
-            size="small"
-            link
-            type="primary"
-            @click="handleFeature(row)"
-          >
-            {{ row.isFeatured ? "取消加精" : "加精" }}
-          </el-button>
-          <el-button size="small" link type="primary" @click="openEdit(row)"
-            >改属性</el-button
-          >
-          <el-button
-            size="small"
-            link
-            type="primary"
-            :loading="actingId === row.id"
-            @click="openComments(row)"
-            >评论 {{ row.commentCount }}</el-button
-          >
-          <el-button size="small" link @click="openSite(row)">原帖</el-button>
+          <!--
+            回收站帖（status=4）：只留「恢复」与「删除」。
+            置顶/加精后端直接 400；改属性后端 400；原贴对所有人 404（含管理员）；
+            评论抽屉虽然能开，但对一篇已删除、30 天后会被清除的帖子做软删没有治理意义。
+          -->
+          <template v-if="row.status !== 4">
+            <el-button size="small" link type="primary" @click="handleTop(row)">
+              {{ row.isTop ? "取消置顶" : "置顶" }}
+            </el-button>
+            <el-button
+              size="small"
+              link
+              type="primary"
+              @click="handleFeature(row)"
+            >
+              {{ row.isFeatured ? "取消加精" : "加精" }}
+            </el-button>
+            <el-button size="small" link type="primary" @click="openEdit(row)"
+              >改属性</el-button
+            >
+            <el-button
+              size="small"
+              link
+              type="primary"
+              :loading="actingId === row.id"
+              @click="openComments(row)"
+              >评论 {{ row.commentCount }}</el-button
+            >
+            <el-button size="small" link @click="openSite(row)">原帖</el-button>
+          </template>
           <el-button size="small" link type="danger" @click="handleDelete(row)"
             >删除</el-button
           >
@@ -950,7 +999,7 @@ onMounted(() => {
         :closable="false"
         show-icon
         title="此抽屉只提供删除"
-        description="管理员不参与回复 / 点赞 / 置顶，避免后台出现两套互动入口。"
+        description="管理员不参与回复 / 点赞 / 置顶，避免后台出现两套互动入口。作者自己删评论是直接把整行移除，不在此留痕；这里能看到的「已删除」只来自后台软删。"
       />
 
       <div v-loading="commentLoading" class="cmt-tree">
@@ -1145,6 +1194,12 @@ onMounted(() => {
   color: var(--el-color-warning-dark-2);
   background: var(--el-color-warning-light-9);
   border-radius: 4px;
+}
+
+/* 回收站行：剩余可恢复天数（贴在第一行标签下方） */
+.recycle-left {
+  margin-top: 4px;
+  line-height: 1.4;
 }
 
 .edit-form {
