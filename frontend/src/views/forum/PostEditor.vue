@@ -554,7 +554,7 @@ export default {
   text-decoration: none;
 }
 .back-link:hover {
-  background: #fff;
+  background: var(--fx-card);
   color: var(--fx-brand-d);
 }
 .page-title {
@@ -618,21 +618,21 @@ export default {
   text-align: left;
 }
 .cat-pick .cp:hover {
-  border-color: #c7d2e0;
+  border-color: var(--border-strong);
 }
 .cat-pick .cp.on {
   border-color: var(--fx-brand);
   background: var(--fx-brand-soft);
   color: var(--fx-brand-d);
   font-weight: 700;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 /* 用 flex 列 + align-items:center 居中，而不是 text-align:center：
    FontAwesome 给 .fa-solid 设了 `width: var(--fa-width, 1.25em)` 的**定宽**，
    元素一旦 display:block 就变成一个 27.5px 的块贴左边排，text-align 管不到它
    （只会在块内部居中字形），于是图标偏左而文字居中。 */
 .cover-box {
-  border: 1.5px dashed #d3dbe6;
+  border: 1.5px dashed var(--border-strong);
   border-radius: 10px;
   padding: 18px;
   display: flex;
@@ -647,7 +647,7 @@ export default {
   font-size: 13px;
 }
 .cover-box:hover {
-  border-color: #a5d6a7;
+  border-color: var(--brand-tint-2);
   background: var(--fx-brand-soft);
 }
 .cover-box i {
@@ -720,8 +720,8 @@ export default {
   min-height: 44px;
 }
 .tag-input-box:focus-within {
-  border-color: #a5d6a7;
-  background: #fff;
+  border-color: var(--brand-tint-2);
+  background: var(--fx-card);
 }
 .tag-input {
   border: none;
@@ -748,7 +748,7 @@ export default {
   font-weight: 600;
 }
 .tag-chip button {
-  color: #a5d6a7;
+  color: var(--brand-tint-2);
   font-size: 14px;
   line-height: 1;
   background: none;

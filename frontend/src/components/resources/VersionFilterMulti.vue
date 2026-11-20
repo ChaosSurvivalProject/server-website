@@ -101,7 +101,7 @@ export default {
 }
 .vfm-trigger:hover,
 .vfm-trigger.open {
-  border-color: #4caf50;
+  border-color: var(--brand);
 }
 .vfm-placeholder {
   color: var(--fx-text-3);
@@ -116,7 +116,7 @@ export default {
   color: var(--fx-text-2);
 }
 .vfm-summary-val {
-  color: #4caf50;
+  color: var(--brand);
   font-weight: 600;
 }
 .vfm-caret {
@@ -153,10 +153,10 @@ export default {
   white-space: nowrap;
 }
 .vfm-item:hover {
-  background: rgba(76, 175, 80, 0.08);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
 }
 .vfm-item input {
-  accent-color: #4caf50;
+  accent-color: var(--brand);
   margin: 0;
 }
 .vfm-empty {
@@ -171,7 +171,7 @@ export default {
   border: none;
   border-top: 1px solid var(--fx-line-soft);
   background: none;
-  color: #4caf50;
+  color: var(--brand);
   font-size: 12px;
   cursor: pointer;
 }

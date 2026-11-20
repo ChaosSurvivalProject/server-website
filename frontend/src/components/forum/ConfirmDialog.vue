@@ -56,7 +56,7 @@ export default {
   padding: 20px;
 }
 .cd-box {
-  background: #fff;
+  background: var(--fx-card);
   border-radius: 14px;
   box-shadow: var(--fx-shadow-l);
   width: 440px;
@@ -79,13 +79,13 @@ export default {
   margin: 0 0 8px;
   font-size: 15.5px;
   font-weight: 800;
-  color: #1f2937;
+  color: var(--fx-text);
 }
 .cd-text {
   margin: 0;
   font-size: 13.5px;
   line-height: 1.7;
-  color: #5b6676;
+  color: var(--fx-text-2);
   white-space: pre-wrap;
 }
 .cd-foot {
@@ -95,23 +95,23 @@ export default {
   margin-top: 18px;
 }
 .btn-danger-solid {
-  background: #ef4444;
-  border-color: #ef4444;
-  color: #fff;
+  background: var(--fx-danger);
+  border-color: var(--fx-danger);
+  color: var(--text-on-brand);
 }
 .btn-danger-solid:hover:not(:disabled) {
-  background: #dc2626;
-  border-color: #dc2626;
-  color: #fff;
+  background: var(--danger-text);
+  border-color: var(--danger-text);
+  color: var(--text-on-brand);
 }
 .fx-btn-primary {
-  background: #4caf50;
-  border-color: #4caf50;
-  color: #fff;
+  background: var(--fx-brand);
+  border-color: var(--fx-brand);
+  color: var(--text-on-brand);
 }
 .fx-btn-primary:hover:not(:disabled) {
-  background: #388e3c;
-  border-color: #388e3c;
-  color: #fff;
+  background: var(--fx-brand-d);
+  border-color: var(--fx-brand-d);
+  color: var(--text-on-brand);
 }
 </style>

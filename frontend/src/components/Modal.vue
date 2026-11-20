@@ -89,7 +89,7 @@ export default {
 }
 
 .modal-content {
-  background-color: white;
+  background-color: var(--surface);
   margin: 5% auto;
   padding: 20px;
   border: 4px solid var(--border-color);
@@ -132,12 +132,12 @@ export default {
 
 .modal-date {
   font-size: 12px;
-  color: #666;
+  color: var(--text-2);
   margin-bottom: 15px;
 }
 
 .close {
-  color: #aaa;
+  color: var(--text-3);
   float: right;
   font-size: 28px;
   font-weight: bold;
@@ -149,7 +149,7 @@ export default {
 
 .close:hover,
 .close:focus {
-  color: black;
+  color: var(--text);
 }
 
 .loading {
@@ -158,7 +158,7 @@ export default {
 }
 
 .spinner {
-  border: 4px solid rgba(0, 0, 0, 0.1);
+  border: 4px solid color-mix(in srgb, var(--text) 10%, transparent);
   border-radius: 50%;
   border-top: 4px solid var(--primary-color);
   width: 30px;

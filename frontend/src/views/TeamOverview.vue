@@ -174,11 +174,11 @@ export default {
 
 .to-head p {
   font-size: 14px;
-  color: #666;
+  color: var(--text-2);
 }
 
 .to-head code {
-  background: #eee;
+  background: var(--code-inline-bg);
   padding: 1px 6px;
   font-family: inherit;
   font-size: 13px;
@@ -188,7 +188,7 @@ export default {
 .to-error,
 .to-empty {
   text-align: center;
-  color: #666;
+  color: var(--text-2);
   font-size: 15px;
 }
 
@@ -197,7 +197,7 @@ export default {
   padding: 8px 22px;
   border: 3px solid var(--border-color);
   background: var(--secondary-color);
-  color: #fff;
+  color: var(--text-on-brand);
   font-family: inherit;
   font-size: 14px;
   cursor: pointer;
@@ -237,7 +237,7 @@ export default {
   border: 3px solid var(--border-color);
   /* MC 皮肤头像按像素渲染（规格 §3.1；与 NavBar.vue 同款样式） */
   image-rendering: pixelated;
-  background: #fff;
+  background: var(--surface);
   flex-shrink: 0;
 }
 
@@ -264,7 +264,7 @@ export default {
 .to-nickname {
   display: block;
   font-size: 12px;
-  color: #777;
+  color: var(--text-2);
 }
 
 .to-role-chip {
@@ -277,7 +277,7 @@ export default {
 
 .to-duty {
   font-size: 13px;
-  color: #555;
+  color: var(--text-2);
   line-height: 1.7;
   word-break: break-word;
 }
@@ -313,12 +313,12 @@ export default {
 }
 
 .to-anti-fraud {
-  background-color: rgba(255, 249, 226, 0.95);
+  background-color: var(--warn-soft);
 }
 
 .to-anti-fraud p {
   font-size: 13px;
-  color: #6b5900;
+  color: var(--warn-text);
   line-height: 1.8;
 }
 
@@ -332,7 +332,7 @@ export default {
 .to-footer-btn {
   display: inline-block;
   background-color: var(--primary-color);
-  color: #fff;
+  color: var(--text-on-brand);
   padding: 10px 26px;
   border-radius: 6px;
   font-size: 14px;
@@ -340,8 +340,8 @@ export default {
 }
 
 .to-footer-btn:hover {
-  color: #fff;
-  background-color: #43a047;
+  color: var(--text-on-brand);
+  background-color: var(--brand-hover);
 }
 
 .to-footer-btn:active {

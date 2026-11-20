@@ -169,13 +169,9 @@ export default {
 </script>
 
 <style>
-/* 全局样式 */
+/* 全局样式：语义令牌统一在 src/style.css 定义（含浅/深两套 + 主题色派生），
+   这里只保留页面级布局规则，避免重复声明 :root 变量导致覆盖主题令牌。 */
 :root {
-  --primary-color: #4caf50;
-  --secondary-color: #8bc34a;
-  --background-color: #f0f0f0;
-  --text-color: #333;
-  --border-color: #000;
   --pixel-size: 4px;
 }
 
@@ -199,7 +195,7 @@ export default {
 .pixel-border {
   border: 4px solid var(--border-color);
   box-shadow: 4px 4px 0 0 var(--border-color);
-  background-color: rgba(255, 255, 255, 0.9);
+  background-color: var(--surface);
   padding: 20px;
   margin-bottom: 20px;
 }
@@ -208,8 +204,8 @@ export default {
 .hero {
   text-align: center;
   padding: 40px 20px;
-  background-color: rgba(76, 175, 80, 0.8);
-  color: white;
+  background-color: color-mix(in srgb, var(--brand) 82%, transparent);
+  color: var(--text-on-brand);
   margin-bottom: 30px;
 }
 
@@ -226,8 +222,8 @@ export default {
 
 .btn {
   display: inline-block;
-  background-color: var(--secondary-color);
-  color: white;
+  background-color: var(--brand-secondary);
+  color: var(--text-on-brand);
   padding: 12px 24px;
   text-decoration: none;
   border: 3px solid var(--border-color);
@@ -259,9 +255,16 @@ export default {
 .btn-qq:hover {
   background-color: #00a6ff;
 }
+[data-theme='dark'] .btn-qq {
+  background-color: #0288d1;
+  color: #0f1319;
+}
+[data-theme='dark'] .btn-qq:hover {
+  background-color: #03a9f4;
+}
 
 .btn:hover {
-  background-color: #7cb342;
+  background-color: var(--brand-hover);
 }
 
 /* 内容卡片 */
@@ -283,7 +286,7 @@ export default {
 
 .detail-item {
   padding: 10px;
-  border: 2px solid #eee;
+  border: 2px solid var(--border-soft);
   width: 100%;
   text-align: center;
 }
@@ -445,9 +448,9 @@ html {
   left: 50%;
   transform: translateX(-50%);
   margin-top: 10px;
-  background: white;
+  background: var(--surface);
   padding: 10px;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-soft);
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 1000;
@@ -465,7 +468,7 @@ html {
 .qq-qrcode p {
   margin: 0;
   font-size: 14px;
-  color: #666;
+  color: var(--text-2);
 }
 
 .qq-qrcode::before {
@@ -475,7 +478,7 @@ html {
   left: 50%;
   transform: translateX(-50%);
   border: 8px solid transparent;
-  border-bottom-color: white;
+  border-bottom-color: var(--surface);
 }
 
 .qq-group-container:hover .qq-qrcode {

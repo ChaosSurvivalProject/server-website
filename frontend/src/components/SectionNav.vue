@@ -82,7 +82,7 @@ export default {
 }
 
 .section-nav-inner {
-  background: rgba(255, 255, 255, 0.95);
+  background: var(--surface);
   border: 4px solid var(--border-color, #000);
   box-shadow: 4px 4px 0 0 var(--border-color, #000);
   padding: 16px 20px;
@@ -120,7 +120,7 @@ export default {
   gap: 8px;
   padding: 6px 8px;
   text-decoration: none;
-  color: #666;
+  color: var(--text-2);
   font-size: 13px;
   font-weight: 500;
   border-radius: 0;
@@ -130,20 +130,20 @@ export default {
 
 .nav-item a:hover {
   color: var(--primary-color, #4caf50);
-  background: rgba(76, 175, 80, 0.08);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
 }
 
 .nav-item.active a {
   color: var(--primary-color, #4caf50);
   font-weight: 700;
-  background: rgba(76, 175, 80, 0.12);
+  background: color-mix(in srgb, var(--brand) 12%, transparent);
 }
 
 .nav-dot {
   width: 8px;
   height: 8px;
   border-radius: 0;
-  border: 2px solid #ccc;
+  border: 2px solid var(--border-strong);
   background: transparent;
   flex-shrink: 0;
   transition: all 0.2s ease;

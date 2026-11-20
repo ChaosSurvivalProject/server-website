@@ -245,7 +245,7 @@ export default {
 
 .sv-server {
   font-size: 13px;
-  color: #666;
+  color: var(--text-2);
   margin-top: 6px;
 }
 
@@ -264,29 +264,29 @@ export default {
 }
 
 .sv-banner.is-valid {
-  background: #e6f6e6;
-  color: #1b5e20;
+  background: var(--success-soft);
+  color: var(--success-text);
 }
 
 .sv-banner.is-revoked {
-  background: #fdecea;
-  color: #b71c1c;
+  background: var(--danger-soft);
+  color: var(--danger-text);
 }
 
 .sv-banner.is-expired {
-  background: #fff7e0;
-  color: #8a6d00;
+  background: var(--warn-soft);
+  color: var(--warn-text);
 }
 
 .sv-banner.is-notfound {
-  background: #eeeeee;
-  color: #555;
+  background: var(--surface-3);
+  color: var(--text-2);
 }
 
 .sv-banner-reason {
   font-size: 13px;
   font-weight: normal;
-  background: rgba(183, 28, 28, 0.12);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
   padding: 2px 10px;
   border: 2px solid currentColor;
 }
@@ -299,7 +299,7 @@ export default {
 .sv-loading,
 .sv-error-card {
   text-align: center;
-  color: #666;
+  color: var(--text-2);
   font-size: 15px;
 }
 
@@ -308,7 +308,7 @@ export default {
   padding: 8px 22px;
   border: 3px solid var(--border-color);
   background: var(--secondary-color);
-  color: #fff;
+  color: var(--text-on-brand);
   font-family: inherit;
   font-size: 14px;
   cursor: pointer;
@@ -326,7 +326,7 @@ export default {
   align-items: center;
   gap: 16px;
   padding-bottom: 14px;
-  border-bottom: 2px dashed #ccc;
+  border-bottom: 2px dashed var(--border-strong);
   margin-bottom: 14px;
 }
 
@@ -341,7 +341,7 @@ export default {
   border: 3px solid var(--border-color);
   /* MC 皮肤头像按像素渲染（规格 §3.1 像素头像位；NavBar.vue 同款样式） */
   image-rendering: pixelated;
-  background: #fff;
+  background: var(--surface);
 }
 
 .sv-avatar-fallback {
@@ -373,7 +373,7 @@ export default {
 
 .sv-nickname {
   font-size: 14px;
-  color: #666;
+  color: var(--text-2);
 }
 
 .sv-role-chip {
@@ -397,7 +397,7 @@ export default {
 
 .sv-field dt {
   font-size: 12px;
-  color: #888;
+  color: var(--text-3);
   margin-bottom: 2px;
 }
 
@@ -419,7 +419,7 @@ export default {
 }
 
 .sv-hint-sub {
-  color: #777;
+  color: var(--text-2);
   font-size: 13px;
   margin: 8px 0 14px;
 }
@@ -427,7 +427,7 @@ export default {
 .sv-link-btn {
   display: inline-block;
   background: var(--secondary-color);
-  color: #fff;
+  color: var(--text-on-brand);
   padding: 10px 22px;
   border: 3px solid var(--border-color);
   box-shadow: 3px 3px 0 0 var(--border-color);
@@ -466,7 +466,7 @@ export default {
 .sv-official-label {
   flex-shrink: 0;
   font-size: 12px;
-  color: #888;
+  color: var(--text-3);
   width: 76px;
 }
 
@@ -476,12 +476,12 @@ export default {
 
 /* ── 防伪提示 ── */
 .sv-anti-fraud {
-  background-color: rgba(255, 249, 226, 0.95);
+  background-color: var(--warn-soft);
 }
 
 .sv-anti-fraud p {
   font-size: 13px;
-  color: #6b5900;
+  color: var(--warn-text);
   line-height: 1.8;
 }
 
@@ -495,7 +495,7 @@ export default {
 .sv-footer-btn {
   display: inline-block;
   background-color: var(--primary-color);
-  color: #fff;
+  color: var(--text-on-brand);
   padding: 10px 26px;
   border-radius: 6px;
   font-size: 14px;
@@ -503,8 +503,8 @@ export default {
 }
 
 .sv-footer-btn:hover {
-  color: #fff;
-  background-color: #43a047;
+  color: var(--text-on-brand);
+  background-color: var(--brand-hover);
 }
 
 .sv-footer-btn:active {

@@ -2,17 +2,139 @@
    用系统自带的等宽字体栈模拟 Minecraft 像素/终端风格：
    拉丁与数字 → ui-monospace/Cascadia Mono(Win11)/Consolas(Win10)/Menlo(macOS)；
    中文 → 前面均无中文字形，回退 Microsoft YaHei（与原 fallback 行为一致）。 */
+
+/* ══════════════════════════════════════════════════════════════════
+   全站主题令牌（浅色 = 官网现状；深色由 [data-theme="dark"] 覆盖）
+   ──────────────────────────────────────────────────────────────────
+   约定：
+   - 组件只消费语义令牌，不直接写两套颜色；[data-theme] 切换即全站生效。
+   - --brand-* 系列由 JS 运行时派生（单一主色 → hover/active/tint/对比文字）。
+     未自定义主题色时不写入内联变量，下面的兜底值即官网现状，视觉零差异。
+   - 旧的 --primary-color / --text-color / --background-color / --border-color
+     保留为语义令牌的别名，存量组件无需改一处即可跟随主题。
+   ══════════════════════════════════════════════════════════════════ */
 :root {
   --font-mc: ui-monospace, 'Cascadia Mono', Consolas, Menlo, 'Microsoft YaHei', monospace;
+
+  /* 页面与容器 */
+  --bg-page: #f0f0f0;
+  --bg-image: url('https://img.fastmirror.net/s/2025/12/06/6933b516a7e0c.png');
+  --surface: #ffffff;
+  --surface-2: #f7f9fc;
+  --surface-3: #eef2f7;
+  --surface-hover: rgba(0, 0, 0, 0.05);
+
+  /* 文字三级 */
+  --text: #1f2937;
+  --text-2: #5b6676;
+  --text-3: #93a0b1;
+
+  /* 描边 */
+  --border: #000000;
+  --border-strong: #c7d2e0;
+  --border-soft: #e3e8ef;
+
+  /* 品牌色阶梯（兜底值 = 官网现状绿） */
+  --brand: var(--brand-lt, #4caf50);
+  --brand-hover: var(--brand-lt-hover, #43a047);
+  --brand-active: var(--brand-lt-active, #388e3c);
+  --brand-tint: var(--brand-lt-tint, #e8f5e9);
+  --brand-tint-2: var(--brand-lt-tint-2, #a5d6a7);
+  --brand-secondary: var(--brand-lt-secondary, #8bc34a);
+  --text-on-brand: var(--brand-lt-on, #ffffff);
+  --brand-ring: var(--brand-lt-ring, rgba(76, 175, 80, 0.35));
+
+  /* 语义色 */
+  --danger: #ef4444;
+  --danger-soft: #feecec;
+  --danger-text: #b91c1c;
+  --warn: #f59e0b;
+  --warn-soft: #fff7e6;
+  --warn-text: #92400e;
+  --success: #22c55e;
+  --success-soft: #eafaf0;
+  --success-text: #15803d;
+  --info: #3b82f6;
+  --info-soft: #eff6ff;
+  --accent-purple: #7c3aed;
+
+  /* 代码块 / Markdown */
+  --code-bg: #f6f8fa;
+  --code-border: #e5e7eb;
+  --code-inline-bg: #f1f5f9;
+  --code-inline-text: #b91c1c;
+  --code-text: #334155;
+
+  /* 兼容旧变量：语义令牌别名 */
+  --primary-color: var(--brand);
+  --secondary-color: var(--brand-secondary);
+  --background-color: var(--bg-page);
+  --text-color: var(--text);
+  --border-color: var(--border);
 }
 
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-page: #0f1319;
+  /* 深色下压暗原有背景图（叠加半透明黑），避免浅色图片在深色模式刺眼/出现白底 */
+  --bg-image: linear-gradient(rgba(9, 12, 17, 0.86), rgba(9, 12, 17, 0.86)),
+    url('https://img.fastmirror.net/s/2025/12/06/6933b516a7e0c.png');
+  --surface: #1b212a;
+  --surface-2: #232b36;
+  --surface-3: #2b3441;
+  --surface-hover: rgba(255, 255, 255, 0.07);
+
+  --text: #e6e9ef;
+  --text-2: #aeb8c6;
+  --text-3: #7d8999;
+
+  --border: #05070b;
+  --border-strong: #4a5566;
+  --border-soft: #333c48;
+
+  --brand: var(--brand-dk, #66bb6a);
+  --brand-hover: var(--brand-dk-hover, #7bc87f);
+  --brand-active: var(--brand-dk-active, #55a55a);
+  --brand-tint: var(--brand-dk-tint, rgba(102, 187, 106, 0.16));
+  --brand-tint-2: var(--brand-dk-tint-2, rgba(102, 187, 106, 0.28));
+  --brand-secondary: var(--brand-dk-secondary, #9ccc65);
+  --text-on-brand: var(--brand-dk-on, #0f1319);
+  --brand-ring: var(--brand-dk-ring, rgba(102, 187, 106, 0.45));
+
+  --danger: #f87171;
+  --danger-soft: rgba(239, 68, 68, 0.16);
+  --danger-text: #fca5a5;
+  --warn: #fbbf24;
+  --warn-soft: rgba(245, 158, 11, 0.16);
+  --warn-text: #fcd34d;
+  --success: #4ade80;
+  --success-soft: rgba(34, 197, 94, 0.16);
+  --success-text: #86efac;
+  --info: #60a5fa;
+  --info-soft: rgba(59, 130, 246, 0.16);
+  --accent-purple: #a78bfa;
+
+  --code-bg: #171d25;
+  --code-border: #323c49;
+  --code-inline-bg: #232b36;
+  --code-inline-text: #fca5a5;
+  --code-text: #cbd5e1;
+
+  /* 旧变量别名随主题解析（声明在 [data-theme] 下，值仍是 var() 引用，自动跟随） */
+  --primary-color: var(--brand);
+  --secondary-color: var(--brand-secondary);
+  --background-color: var(--bg-page);
+  --text-color: var(--text);
+  --border-color: var(--border);
+}
 
 /* 重置默认样式，避免与App.vue中的样式冲突 */
 body {
-  background-color: var(--background-color);
-  color: var(--text-color);
+  background-color: var(--bg-page);
+  color: var(--text);
   line-height: 1.6;
-  background-image: url('https://img.fastmirror.net/s/2025/12/06/6933b516a7e0c.png');
+  background-image: var(--bg-image);
   background-size: cover;
   background-attachment: fixed;
   margin: 0;
@@ -21,6 +143,7 @@ body {
   font-family: var(--font-mc);
   min-width: 320px;
   min-height: 100vh;
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 /* 设置全局字体和基础样式 */
@@ -47,4 +170,52 @@ a {
 
 a:hover::after {
   width: 100%;
+}
+
+/* 深色模式通用：正文内图片轻微降亮，避免纯白插画/截图出现生硬白块。
+   只作用于内容区图片，不影响 logo / 头像 / 图标。 */
+[data-theme='dark'] .fx-md img,
+[data-theme='dark'] .announcement-content img,
+[data-theme='dark'] .content-text img {
+  filter: brightness(0.82) contrast(0.96);
+}
+
+/* 全局滚动条（浅色/深色） */
+* {
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-width: thin;
+}
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: var(--border-strong);
+  border-radius: 6px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-3);
+}
+
+/* 统一焦点环：主题色派生，键盘可访问性（WCAG 2.4.7 / 2.4.11） */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* 尊重用户的减少动效偏好 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }

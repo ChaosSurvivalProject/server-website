@@ -515,7 +515,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--fx-line);
   border-radius: 10px;
   padding: 0 12px;
@@ -554,7 +554,7 @@ export default {
 }
 .res-filter-count {
   background: var(--fx-brand);
-  color: #fff;
+  color: var(--text-on-brand);
   border-radius: 8px;
   font-size: 11px;
   padding: 0 6px;
@@ -572,7 +572,7 @@ export default {
   padding: 7px 18px;
   border-radius: 999px;
   border: 1px solid var(--fx-line);
-  background: #fff;
+  background: var(--surface);
   color: var(--fx-text-2);
   font-family: inherit;
   font-size: 13.5px;
@@ -581,13 +581,13 @@ export default {
   transition: all 0.15s ease;
 }
 .res-type-tab:hover {
-  border-color: #a5d6a7;
+  border-color: var(--brand-tint-2);
   color: var(--fx-brand-d);
 }
 .res-type-tab.on {
   background: var(--fx-brand);
   border-color: var(--fx-brand);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 /* ── 筛选分组卡片（详情页 fx-card 同款：白底 + 圆角 + 描边 + 阴影） ── */
@@ -783,8 +783,8 @@ export default {
   align-items: center;
   justify-content: center;
   border: none;
-  background: var(--fx-card, #fff);
-  color: var(--fx-text-3, #909399);
+  background: var(--fx-card, var(--surface));
+  color: var(--fx-text-3, var(--text-3));
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
@@ -792,11 +792,11 @@ export default {
   border-left: 1px solid var(--fx-line);
 }
 .res-view-btn.on {
-  background: #4caf50;
-  color: #fff;
+  background: var(--brand);
+  color: var(--text-on-brand);
 }
 .res-view-btn:not(.on):hover {
-  color: #4caf50;
+  color: var(--brand);
 }
 .res-clear-all {
   width: 100%;
@@ -857,7 +857,7 @@ export default {
     width: 300px;
     max-width: 86vw;
     z-index: 2100;
-    background: #fff;
+    background: var(--surface);
     padding: 16px;
     overflow-y: auto;
     transform: translateX(-100%);

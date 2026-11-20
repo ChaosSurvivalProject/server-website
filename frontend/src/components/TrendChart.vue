@@ -11,6 +11,22 @@
 <script>
 import * as echarts from 'echarts';
 
+/**
+ * ECharts 在 canvas 上绘制，无法直接解析 var()/color-mix()；
+ * 这里读取主题令牌并归一化为 rgb()/rgba() 供图表使用，令牌缺失时回退原字面量。
+ */
+function themeColor(name, fallback, alpha) {
+  const raw = (getComputedStyle(document.documentElement).getPropertyValue(name) || '').trim() || fallback;
+  const probe = document.createElement('span');
+  probe.style.color = raw;
+  document.body.appendChild(probe);
+  const normalized = getComputedStyle(probe).color || raw;
+  probe.remove();
+  if (alpha == null) return normalized;
+  const m = normalized.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+  return m ? `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})` : normalized;
+}
+
 export default {
   name: 'TrendChart',
   props: {
@@ -65,6 +81,18 @@ export default {
       // 获取响应式配置
       const responsiveConfig = this.getResponsiveConfig();
       
+      // 从主题令牌读取颜色（canvas 无法解析 var()，见 themeColor），回退值为原字面量
+      const cText2 = themeColor('--text-2', '#666');
+      const cText3 = themeColor('--text-3', '#999');
+      const cBorderSoft = themeColor('--border-soft', '#eee');
+      const cBorderStrong = themeColor('--border-strong', '#333');
+      const cBrand = themeColor('--brand', '#4caf50');
+      const cBrandSecondary = themeColor('--brand-secondary', '#8bc34a');
+      const cBrand50 = themeColor('--brand', '#4caf50', 0.5);
+      const cSurface = themeColor('--surface', '#fff');
+      const cWarn = themeColor('--warn', '#ff6600');
+      const cWarn80 = themeColor('--warn', '#ff6600', 0.8);
+
       // 图表配置
         const option = {
           // 添加标题，显示统计日期
@@ -93,7 +121,7 @@ export default {
             right: responsiveConfig.toolbox.right,
             top: responsiveConfig.toolbox.top,
             iconStyle: {
-              borderColor: '#666'
+              borderColor: cText2
             },
             iconSize: responsiveConfig.toolbox.iconSize
           },
@@ -101,21 +129,21 @@ export default {
           tooltip: {
             trigger: 'axis',
             backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            borderColor: '#333',
+            borderColor: cBorderStrong,
             textStyle: {
               color: '#fff'
             },
             axisPointer: {
               type: 'line',
               lineStyle: {
-                color: '#4CAF50',
+                color: cBrand,
                 width: 2,
                 type: 'dashed'
               }
             },
             formatter: function(params) {
               const data = params[0];
-              return `${data.axisValue}<br/>在线人数：<strong style="color: #4CAF50;">${data.value}人</strong>`;
+              return `${data.axisValue}<br/>在线人数：<strong style="color: ${cBrand};">${data.value}人</strong>`;
             }
           },
           // 网格配置
@@ -125,7 +153,7 @@ export default {
             bottom: responsiveConfig.grid.bottom,
             top: responsiveConfig.grid.top,
             containLabel: responsiveConfig.grid.containLabel,
-            borderColor: '#eee'
+            borderColor: cBorderSoft
           },
           // X轴配置
           xAxis: {
@@ -134,11 +162,11 @@ export default {
             data: xAxisData,
             axisLine: {
               lineStyle: {
-                color: '#999'
+                color: cText3
               }
             },
             axisLabel: {
-              color: '#666',
+              color: cText2,
               rotate: responsiveConfig.xAxis.axisLabel.rotate,
               interval: responsiveConfig.xAxis.axisLabel.interval,
               fontSize: responsiveConfig.xAxis.axisLabel.fontSize,
@@ -151,7 +179,7 @@ export default {
               show: true,
               lineStyle: {
                 type: 'dashed',
-                color: '#eee'
+                color: cBorderSoft
               }
             }
           },
@@ -160,24 +188,24 @@ export default {
             type: 'value',
             name: '在线人数',
             nameTextStyle: {
-              color: '#666'
+              color: cText2
             },
             min: 0,
             axisLine: {
               show: true,
               lineStyle: {
-                color: '#999'
+                color: cText3
               }
             },
             axisLabel: {
-              color: '#666',
+              color: cText2,
               fontSize: responsiveConfig.yAxis.axisLabel.fontSize,
               formatter: '{value}人'
             },
             splitLine: {
               lineStyle: {
                 type: 'dashed',
-                color: '#eee'
+                color: cBorderSoft
               }
             }
           },
@@ -195,32 +223,32 @@ export default {
               lineStyle: {
                 width: responsiveConfig.series.lineStyle.width,
                 color: new echarts.graphic.LinearGradient(0, 0, 1, 0, [
-                  { offset: 0, color: '#4CAF50' },
-                  { offset: 1, color: '#8BC34A' }
+                  { offset: 0, color: cBrand },
+                  { offset: 1, color: cBrandSecondary }
                 ])
               },
               // 区域填充样式
               areaStyle: {
                 color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-                  { offset: 0, color: 'rgba(76, 175, 80, 0.5)' },
-                  { offset: 1, color: '#4CAF50' }
+                  { offset: 0, color: cBrand50 },
+                  { offset: 1, color: cBrand }
                 ])
               },
               // 数据点样式
               itemStyle: {
-                color: '#4CAF50',
+                color: cBrand,
                 borderWidth: responsiveConfig.series.itemStyle.borderWidth,
-                borderColor: '#fff',
-                shadowColor: 'rgba(76, 175, 80, 0.5)',
+                borderColor: cSurface,
+                shadowColor: cBrand50,
                 shadowBlur: responsiveConfig.series.itemStyle.shadowBlur
               },
               // 鼠标悬停时的数据点样式
               emphasis: {
                 itemStyle: {
-                  color: '#ff6600',
+                  color: cWarn,
                   borderWidth: 3,
-                  borderColor: '#fff',
-                  shadowColor: 'rgba(255, 102, 0, 0.8)',
+                  borderColor: cSurface,
+                  shadowColor: cWarn80,
                   shadowBlur: 10
                 }
               },
@@ -232,10 +260,10 @@ export default {
                   { type: 'min', name: '最小在线人数' }
                 ],
                 label: {
-                  color: '#666'
+                  color: cText2
                 },
                 itemStyle: {
-                  color: '#ff6600'
+                  color: cWarn
                 }
               },
               // 标记线（平均值）
@@ -245,11 +273,11 @@ export default {
                   { type: 'average', name: '平均在线人数' }
                 ],
                 lineStyle: {
-                  color: '#999',
+                  color: cText3,
                   type: 'dashed'
                 },
                 label: {
-                  color: '#666'
+                  color: cText2
                 }
               }
             }
@@ -372,7 +400,7 @@ export default {
   height: 250px;
   position: relative;
   border: 2px solid var(--border-color);
-  background-color: rgba(255, 255, 255, 0.95);
+  background-color: var(--surface);
   padding: 10px;
   overflow: hidden;
 }

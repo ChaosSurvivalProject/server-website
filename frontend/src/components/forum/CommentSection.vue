@@ -547,7 +547,7 @@ export default {
 }
 /* 评论正文：纯文本 + 保留换行（§8-D5），用 white-space 而不是 <br> 拼接 */
 .cmt-text {
-  color: #334155;
+  color: var(--fx-text);
   font-size: 14px;
   white-space: pre-wrap;
   word-break: break-word;
@@ -633,7 +633,7 @@ export default {
 .cmt-form-textarea {
   min-height: 64px;
   font-size: 13.5px;
-  background: #fff;
+  background: var(--fx-card);
 }
 .cmt-form-foot {
   display: flex;
@@ -667,14 +667,14 @@ export default {
   color: var(--fx-text-2);
 }
 .cmt-act.on {
-  color: #dc2626;
+  color: var(--danger-text);
   font-weight: 600;
 }
 .cmt-act-danger {
-  color: #dc2626;
+  color: var(--danger-text);
 }
 .cmt-act-danger:hover {
-  background: #fef2f2;
-  color: #b91c1c;
+  background: var(--fx-danger-soft);
+  color: var(--danger-text);
 }
 </style>

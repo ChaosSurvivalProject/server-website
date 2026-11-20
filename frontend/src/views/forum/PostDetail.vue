@@ -472,7 +472,7 @@ export default {
   text-decoration: none;
 }
 .back-link:hover {
-  background: #fff;
+  background: var(--fx-card);
   color: var(--fx-brand-d);
 }
 .detail-grid {
@@ -569,7 +569,7 @@ export default {
   height: 46px;
   border-radius: 11px;
   border: 1px solid var(--fx-line);
-  background: #fff;
+  background: var(--fx-card);
   color: var(--fx-text-2);
   font-family: inherit;
   font-size: 13.5px;
@@ -578,18 +578,18 @@ export default {
   transition: 0.15s;
 }
 .act:hover {
-  border-color: #c7d2e0;
+  border-color: var(--border-strong);
   background: var(--fx-bg-soft);
 }
 .act.on {
-  border-color: #fca5a5;
-  background: #fff5f5;
-  color: #dc2626;
+  border-color: var(--danger);
+  background: var(--fx-danger-soft);
+  color: var(--danger-text);
 }
 .act.on-fav {
-  border-color: #fcd34d;
-  background: #fffbeb;
-  color: #b45309;
+  border-color: var(--warn);
+  background: var(--fx-warn-soft);
+  color: var(--warn-text);
 }
 .mini-empty {
   font-size: 12.5px;

@@ -167,7 +167,7 @@ export default {
 }
 .user-level.is-admin {
   background: var(--fx-warn-soft);
-  color: #b45309;
+  color: var(--warn-text);
 }
 .user-stats {
   display: grid;

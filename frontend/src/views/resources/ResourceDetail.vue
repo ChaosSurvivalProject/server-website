@@ -596,7 +596,7 @@ export default {
   padding: 7px 15px;
   border: 1px solid var(--fx-line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
   box-shadow: var(--fx-shadow);
   transition: all 0.15s ease;
   text-decoration: none;
@@ -606,8 +606,8 @@ export default {
   transition: transform 0.15s ease;
 }
 .back-link:hover {
-  background: #fff;
-  border-color: #a5d6a7;
+  background: var(--surface);
+  border-color: var(--brand-tint-2);
   color: var(--fx-brand-d);
   box-shadow: var(--fx-shadow-l);
 }
@@ -741,7 +741,7 @@ export default {
 }
 .res-tab.on .res-tab-count {
   background: var(--fx-brand-soft);
-  border-color: #a5d6a7;
+  border-color: var(--brand-tint-2);
   color: var(--fx-brand-d);
 }
 
@@ -788,20 +788,20 @@ export default {
 }
 .res-vfilter-select:focus {
   outline: none;
-  border-color: #4caf50;
+  border-color: var(--brand);
 }
 .res-vfilter-clear {
   height: 32px;
   padding: 0 12px;
   border: none;
   background: transparent;
-  color: #4caf50;
+  color: var(--brand);
   font-size: 13px;
   cursor: pointer;
   border-radius: 8px;
 }
 .res-vfilter-clear:hover {
-  background: rgba(76, 175, 80, 0.08);
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
 }
 .res-vfilter-right {
   display: flex;
@@ -823,8 +823,8 @@ export default {
   transition: border-color 0.15s ease, color 0.15s ease;
 }
 .res-vpage-btn:hover:not(:disabled) {
-  border-color: #4caf50;
-  color: #4caf50;
+  border-color: var(--brand);
+  color: var(--brand);
 }
 .res-vpage-btn:disabled {
   opacity: 0.4;
@@ -919,7 +919,7 @@ export default {
   height: 30px;
   border-radius: 8px;
   border: 1px solid var(--fx-line);
-  background: #fff;
+  background: var(--surface);
   color: var(--fx-text-3);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -945,7 +945,7 @@ export default {
   top: calc(100% + 6px);
   z-index: 60;
   min-width: 176px;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--fx-line);
   border-radius: 10px;
   box-shadow: var(--fx-shadow-l);

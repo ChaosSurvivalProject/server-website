@@ -152,8 +152,8 @@ export default {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.8);
-  color: #333;
+  background-color: color-mix(in srgb, var(--surface) 80%, transparent);
+  color: var(--text);
   border: none;
   display: flex;
   align-items: center;
@@ -165,7 +165,7 @@ export default {
 
 .carousel-control-prev:hover,
 .carousel-control-next:hover {
-  background-color: rgba(255, 255, 255, 1);
+  background-color: var(--surface);
   transform: scale(1.1);
 }
 
@@ -183,14 +183,14 @@ export default {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background-color: rgba(255, 255, 255, 0.5);
+  background-color: color-mix(in srgb, var(--surface) 50%, transparent);
   border: none;
   cursor: pointer;
   transition: all 0.3s ease;
 }
 
 .carousel-indicator.active {
-  background-color: white;
+  background-color: var(--surface);
   width: 32px;
   border-radius: 6px;
 }

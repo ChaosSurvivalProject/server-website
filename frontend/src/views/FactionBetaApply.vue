@@ -435,7 +435,7 @@ export default {
 
 .fb-rules li {
   font-size: 14px;
-  color: #555;
+  color: var(--text-2);
   text-align: left;
 }
 
@@ -453,7 +453,7 @@ export default {
 .fb-loading {
   text-align: center;
   padding: 30px 0;
-  color: #777;
+  color: var(--text-2);
   font-size: 14px;
 }
 
@@ -463,9 +463,9 @@ export default {
 
 /* 提示条（成功绿 / 错误红） */
 .fb-notice {
-  background-color: #e8f5e9;
+  background-color: var(--brand-tint);
   border: 2px solid var(--primary-color);
-  color: #2e7d32;
+  color: var(--success-text);
   font-size: 14px;
   padding: 10px 12px;
   margin-bottom: 16px;
@@ -473,9 +473,9 @@ export default {
 }
 
 .fb-notice.error {
-  background-color: #fdecea;
-  border-color: #e53935;
-  color: #c62828;
+  background-color: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* ── 未登录引导 ── */
@@ -503,11 +503,11 @@ export default {
 }
 
 .btn-gate-register {
-  background-color: #0099ff;
+  background-color: var(--info);
 }
 
 .btn-gate-register:hover {
-  background-color: #00a6ff;
+  background-color: color-mix(in srgb, var(--info) 88%, white);
 }
 
 /* ── 申请状态卡 ── */
@@ -529,12 +529,12 @@ export default {
   padding: 4px 14px;
   font-size: 14px;
   font-weight: bold;
-  color: white;
+  color: var(--text-on-brand);
   border: 2px solid var(--border-color);
 }
 
 .status-tag.is-pending {
-  background-color: #ff9800;
+  background-color: var(--warn);
 }
 
 .status-tag.is-approved {
@@ -542,7 +542,7 @@ export default {
 }
 
 .status-tag.is-rejected {
-  background-color: #e53935;
+  background-color: var(--danger);
 }
 
 .fb-summary {
@@ -554,8 +554,8 @@ export default {
 
 .summary-item {
   padding: 10px 12px;
-  border: 2px solid #e0e0e0;
-  background-color: #fafafa;
+  border: 2px solid var(--border-soft);
+  background-color: var(--surface-2);
   min-width: 0;
 }
 
@@ -580,7 +580,7 @@ export default {
 
 .status-tip {
   font-size: 14px;
-  color: #666;
+  color: var(--text-2);
   margin: 0;
 }
 
@@ -590,7 +590,7 @@ export default {
 }
 
 .status-tip-ok {
-  color: #2e7d32;
+  color: var(--success-text);
 }
 
 .status-actions {
@@ -634,7 +634,7 @@ export default {
 }
 
 .required {
-  color: #e53935;
+  color: var(--danger);
   margin-left: 2px;
 }
 
@@ -642,7 +642,7 @@ export default {
   margin-left: auto;
   font-size: 12px;
   font-weight: normal;
-  color: #999;
+  color: var(--text-3);
 }
 
 .input-wrap {
@@ -650,7 +650,7 @@ export default {
   align-items: center;
   gap: 8px;
   border: 3px solid var(--border-color);
-  background-color: #fff;
+  background-color: var(--surface);
   padding: 0 12px;
   transition: box-shadow 0.2s ease;
 }
@@ -691,12 +691,12 @@ export default {
 
 .input-wrap select:invalid,
 .input-wrap select option[value=""] {
-  color: #9e9e9e;
+  color: var(--text-3);
 }
 
 .input-wrap input::placeholder,
 .input-wrap select:invalid {
-  color: #9e9e9e;
+  color: var(--text-3);
 }
 
 .textarea-wrap {
@@ -724,7 +724,7 @@ export default {
 }
 
 .textarea-wrap textarea::placeholder {
-  color: #9e9e9e;
+  color: var(--text-3);
 }
 
 .fb-submit {
@@ -749,12 +749,12 @@ export default {
   height: 92px;
   margin-top: 2px;
   border: 3px solid var(--border-color);
-  background-color: #fbfbf6;
+  background-color: var(--surface-2);
   /* 主题绿极淡棋盘格纹理 */
   background-image: conic-gradient(
-    rgba(76, 175, 80, 0.08) 25%,
+    color-mix(in srgb, var(--brand) 8%, transparent) 25%,
     transparent 0 50%,
-    rgba(76, 175, 80, 0.08) 0 75%,
+    color-mix(in srgb, var(--brand) 8%, transparent) 0 75%,
     transparent 0
   );
   background-size: 16px 16px;
@@ -781,7 +781,7 @@ export default {
   height: 3px;
   border-radius: 0;
   background: transparent;
-  color: rgba(76, 175, 80, 0.55);
+  color: color-mix(in srgb, var(--brand) 55%, transparent);
   box-shadow:
     8px 5px 0 currentColor, 46px 15px 0 currentColor, 95px 7px 0 currentColor,
     152px 19px 0 currentColor, 210px 9px 0 currentColor, 264px 17px 0 currentColor,
@@ -792,7 +792,7 @@ export default {
 }
 
 .ft-stars::after {
-  color: rgba(0, 0, 0, 0.3);
+  color: color-mix(in srgb, var(--text) 30%, transparent);
   box-shadow:
     26px 25px 0 currentColor, 80px 41px 0 currentColor, 134px 31px 0 currentColor,
     186px 45px 0 currentColor, 246px 35px 0 currentColor, 298px 47px 0 currentColor,
@@ -821,7 +821,7 @@ export default {
   transform: translateX(-50%);
   background: repeating-linear-gradient(
     180deg,
-    rgba(0, 0, 0, 0.38) 0 4px,
+    color-mix(in srgb, var(--text) 38%, transparent) 0 4px,
     transparent 4px 9px
   );
   opacity: 1;
@@ -961,7 +961,7 @@ export default {
   gap: 8px;
   font-size: 13px;
   letter-spacing: 2px;
-  color: #666;
+  color: var(--text-2);
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s ease;
@@ -996,7 +996,7 @@ export default {
   background: transparent;
   cursor: pointer;
   font-family: inherit;
-  color: #6f7468;
+  color: var(--text-2);
   transition: color 0.3s ease, text-shadow 0.3s ease, transform 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
@@ -1022,11 +1022,11 @@ export default {
 }
 
 .ft-side:hover {
-  color: #3d4139;
+  color: var(--text);
 }
 
 .ft-dawn.active {
-  color: #fff;
+  color: var(--text-on-brand);
   text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.35);
 }
 
@@ -1070,7 +1070,7 @@ export default {
   font-family: inherit;
   font-size: 12px;
   letter-spacing: 1px;
-  color: #999;
+  color: var(--text-3);
   text-decoration: underline dotted;
   text-underline-offset: 3px;
   transition: color 0.3s ease;
