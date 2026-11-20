@@ -349,7 +349,12 @@ onBeforeUnmount(() => {
 
 @media (max-width: 768px) {
   .theme-panel {
-    right: -8px;
+    /* 触发按钮在导航中部，absolute + right:0 会把面板左半裁出屏幕。
+       窄屏改为相对视口固定到右侧，保证面板完整可见（top 越过 sticky 导航）。 */
+    position: fixed;
+    top: 60px;
+    right: 12px;
+    left: auto;
     width: min(268px, calc(100vw - 24px));
   }
   .theme-trigger {

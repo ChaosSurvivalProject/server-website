@@ -7,14 +7,16 @@
  * 3. 主题色以单一 HEX 为输入，运行时派生浅色 / 深色两套阶梯变量（hover / active / tint / 对比文字）。
  *    默认（未自定义）时不写入任何内联变量，CSS 里的兜底值与官网现状逐像素一致。
  * 4. index.html 的 <head> 内联脚本负责首屏无闪烁：它读取 localStorage 并同步写入
- *    data-theme 与派生变量（theme.js 在选色时把派生结果另存一份到 XQ_theme_vars）。
+ *    data-theme 与派生变量（theme.js 在选色时把派生结果另存一份到 XQ_theme_vars_v2）。
  * 5. 跟随系统：监听 prefers-color-scheme，系统切换时实时重算，无需刷新。
  */
 import { reactive } from "vue";
 
 const MODE_KEY = "XQ_theme_mode";
 const COLOR_KEY = "XQ_theme_color";
-const VARS_KEY = "XQ_theme_vars";
+/** 派生变量缓存键：v2 使旧缓存（对比文字阈值 / 缺少 ring 变量）自动失效 */
+const VARS_KEY = "XQ_theme_vars_v2";
+const LEGACY_VARS_KEY = "XQ_theme_vars";
 const SYSTEM_QUERY = "(prefers-color-scheme: dark)";
 
 /** 官网现状主色：未自定义时视觉与现状完全一致 */
@@ -103,9 +105,21 @@ function luminance({ r, g, b }) {
   return 0.2126 * a[0] + 0.7152 * a[1] + 0.0722 * a[2];
 }
 
-/** 按对比度自动选择黑/白文字，避免浅色主题色导致按钮文字不可读 */
+/**
+ * 按 WCAG 对比度自动选择黑/白文字：计算派生色与「纯白」和「深墨色」的对比度，
+ * 取较大者。旧实现用 luminance > 0.42 的经验阈值，导致 #4caf50 / #00bcd4 /
+ * #65b0ec 等中等亮度主色误配白字（2.3~2.8:1），低于 WCAG AA。
+ * 深色端用纯黑（即需求所述「按对比度选黑/白」），实测全部预设在主色与深色派生色下
+ * 对比度均 ≥ 4.5:1；阈值等价于 luminance 约 0.179。
+ */
+const ON_DARK = "#000000";
+const ON_DARK_LUM = 0;
+
 function contrastText(rgb) {
-  return luminance(rgb) > 0.42 ? "#10151c" : "#ffffff";
+  const l = luminance(rgb);
+  const ratioWhite = 1.05 / (l + 0.05);
+  const ratioDark = (l + 0.05) / (ON_DARK_LUM + 0.05);
+  return ratioDark > ratioWhite ? ON_DARK : "#ffffff";
 }
 
 /**
@@ -138,6 +152,8 @@ export function deriveThemeVars(hex) {
     "--brand-lt-tint-2": ltTint2,
     "--brand-lt-secondary": ltSecondary,
     "--brand-lt-on": contrastText(base),
+    // 焦点环 / 选中阴影：按主色 HSL 派生半透明色，供 style.css 的 --brand-ring 消费
+    "--brand-lt-ring": `hsla(${h.toFixed(1)}, ${s.toFixed(1)}%, ${l.toFixed(1)}%, 0.35)`,
     "--brand-dk": mk(h, dkS, dkL),
     "--brand-dk-hover": dkHover,
     "--brand-dk-active": dkActive,
@@ -145,6 +161,7 @@ export function deriveThemeVars(hex) {
     "--brand-dk-tint-2": `hsla(${h.toFixed(1)}, ${dkS.toFixed(1)}%, ${dkL.toFixed(1)}%, 0.28)`,
     "--brand-dk-secondary": dkSecondary,
     "--brand-dk-on": contrastText(hslToRgb(h, dkS, dkL)),
+    "--brand-dk-ring": `hsla(${h.toFixed(1)}, ${dkS.toFixed(1)}%, ${dkL.toFixed(1)}%, 0.45)`,
   };
 }
 
@@ -211,13 +228,15 @@ function applyToDom() {
   if (themeState.color) {
     const vars = deriveThemeVars(themeState.color);
     Object.keys(vars).forEach((key) => root.style.setProperty(key, vars[key]));
-    // 供首屏内联脚本直接读取，避免重复计算/闪烁
+    // 供首屏内联脚本直接读取，避免重复计算/闪烁；清理旧版缓存防止回退到旧派生规则
     safeSet(VARS_KEY, JSON.stringify(vars));
+    safeRemove(LEGACY_VARS_KEY);
   } else {
     Object.keys(deriveThemeVars(DEFAULT_COLOR)).forEach((key) =>
       root.style.removeProperty(key)
     );
     safeRemove(VARS_KEY);
+    safeRemove(LEGACY_VARS_KEY);
   }
 }
 
