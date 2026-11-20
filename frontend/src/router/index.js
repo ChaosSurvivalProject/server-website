@@ -68,7 +68,9 @@ const routes = [
     path: '/resources',
     name: 'Resources',
     // 资源中心列表页（搜索 / 筛选 / 排序写进 URL query，可分享可回退）
-    component: () => import('../views/resources/ResourceList.vue')
+    component: () => import('../views/resources/ResourceList.vue'),
+    // 筛选/排序/翻页只改 query，须保持当前滚动位置，不跳回页面顶部
+    meta: { keepScrollOnQuery: true }
   },
   {
     path: '/resources/:slug',
@@ -110,10 +112,14 @@ const router = createRouter({
     // 如果有保存的位置，使用它（如浏览器前进/后退按钮）
     if (savedPosition) {
       return savedPosition
-    } else {
-      // 否则滚动到页面顶部
-      return { top: 0 }
     }
+    // 同一路由内仅 query 变化（筛选/排序/翻页）时保持滚动位置，由页面自己决定锚点；
+    // 否则（跨页面跳转）回到顶部
+    if (to.path === from.path && to.meta.keepScrollOnQuery) {
+      return false
+    }
+    // 否则滚动到页面顶部
+    return { top: 0 }
   }
 })
 
