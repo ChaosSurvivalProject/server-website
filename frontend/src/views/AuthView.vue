@@ -372,7 +372,7 @@ export default {
   font-size: 22px;
   font-weight: bold;
   color: var(--text-color);
-  text-shadow: 2px 2px 0 rgba(76, 175, 80, 0.35);
+  text-shadow: 2px 2px 0 color-mix(in srgb, var(--brand) 35%, transparent);
 }
 
 /* 登录 / 注册切换 */
@@ -388,7 +388,7 @@ export default {
   font-size: 15px;
   font-family: inherit;
   cursor: pointer;
-  background-color: #fff;
+  background-color: var(--surface);
   color: var(--text-color);
   border: 3px solid var(--border-color);
   transition: background-color 0.2s ease, color 0.2s ease;
@@ -396,19 +396,19 @@ export default {
 
 .auth-tab.active {
   background-color: var(--primary-color);
-  color: white;
+  color: var(--text-on-brand);
   font-weight: bold;
 }
 
 .auth-tab:hover:not(.active) {
-  background-color: #e8f5e9;
+  background-color: var(--brand-tint);
 }
 
 /* 成功/轻量提示 */
 .auth-notice {
-  background-color: #e8f5e9;
+  background-color: var(--brand-tint);
   border: 2px solid var(--primary-color);
-  color: #2e7d32;
+  color: var(--success-text);
   font-size: 14px;
   padding: 10px 12px;
   margin-bottom: 16px;
@@ -433,7 +433,7 @@ export default {
   align-items: center;
   gap: 8px;
   border: 3px solid var(--border-color);
-  background-color: #fff;
+  background-color: var(--surface);
   padding: 0 12px;
   transition: box-shadow 0.2s ease;
 }
@@ -461,7 +461,7 @@ export default {
 }
 
 .input-wrap input::placeholder {
-  color: #9e9e9e;
+  color: var(--text-3);
 }
 
 /* 密码可见性切换按钮（眼睛图标） */

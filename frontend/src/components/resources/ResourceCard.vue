@@ -113,7 +113,7 @@ export default {
 }
 .res-card:hover {
   transform: translateY(-2px);
-  border-color: #a5d6a7;
+  border-color: var(--brand-tint-2);
   box-shadow: var(--fx-shadow-l);
 }
 /* 列表视图（P1）：横向布局，封面缩为左侧小图，简介隐藏、标签收敛 */
@@ -162,15 +162,15 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 30px;
-  color: #c3ccda;
-  background: linear-gradient(135deg, #f2f6fb, #e8f0e9);
+  color: var(--text-3);
+  background: linear-gradient(135deg, var(--surface-2), var(--brand-tint));
 }
 .res-card-badge {
   position: absolute;
   top: 8px;
   left: 8px;
   background: var(--fx-warn);
-  color: #fff;
+  color: var(--text-on-brand);
   font-size: 11px;
   font-weight: 700;
   padding: 2px 8px;

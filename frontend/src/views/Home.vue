@@ -150,7 +150,7 @@
          enabled=false 时整个区块隐藏 -->
     <section v-if="siteConfig.faction.enabled" class="faction-showcase" id="factions">
         <h2 class="home-content-title">
-          选择 <span style="color: #4caf50">你的阵营</span>
+          选择 <span style="color: var(--brand)">你的阵营</span>
         </h2>
         <p class="home-content-subtitle" style="margin-bottom: 16px">
           黎明誓约与暮夜同盟争夺星穹界的未来——你的立场，决定这个世界的样子
@@ -193,7 +193,7 @@
       <section class="why-choose-us" id="features">
         <div class="why-choose-us-content">
           <h2 class="home-content-title">
-            保障 <span style="color: #4caf50">完善游戏体验</span>
+            保障 <span style="color: var(--brand)">完善游戏体验</span>
           </h2>
           <p class="home-content-subtitle">
             从稳定的联机环境到昼夜拉锯的阵营战场，我们致力于提供最佳的游戏体验
@@ -296,7 +296,7 @@
       <section class="join-us" id="join-us">
         <div class="join-us-content">
           <h2 class="home-content-title">
-            即刻 <span style="color: #4caf50">开启冒险旅程</span>
+            即刻 <span style="color: var(--brand)">开启冒险旅程</span>
           </h2>
           <p class="home-content-subtitle" id="join">
             只需简单几步，即可开始你的Minecraft冒险之旅
@@ -317,7 +317,7 @@
                 >
                   <path
                     d="M544.256 605.184l244.224-244.224a31.744 31.744 0 0 1 45.056 45.056l-295.424 295.424a36.864 36.864 0 0 1-51.2 0L190.464 406.528a31.744 31.744 0 1 1 45.056-45.056l244.224 244.224V111.104a32.256 32.256 0 1 1 64 0zM153.6 902.656a32.256 32.256 0 0 1 0-64h716.8a32.256 32.256 0 0 1 0 64z"
-                    fill="#4caf50"
+                    fill="currentColor"
                     p-id="5367"
                   ></path>
                 </svg>
@@ -351,7 +351,7 @@
                   <path
                     d="M939.696 268.753c-14.637-13.726-37.719-13.071-51.445 1.602l-485.551 516.969-265.238-261.344c-14.342-14.127-37.392-13.98-51.519 0.364-14.127 14.309-13.945 37.393 0.402 51.483l291.818 287.485c0.109 0.109 0.254 0.144 0.364 0.254s0.144 0.255 0.254 0.364c2.293 2.185 5.062 3.425 7.719 4.88 1.311 0.766 2.438 1.892 3.823 2.438 4.295 1.676 8.846 2.548 13.361 2.548 4.769 0 9.539-0.948 13.98-2.839 1.494-0.619 2.658-1.892 4.043-2.695 2.731-1.603 5.569-2.949 7.901-5.315 0.109-0.109 0.144-0.291 0.255-0.4 0.071-0.11 0.219-0.146 0.326-0.255l511.071-544.096c13.838-14.597 13.074-37.644-1.561-51.441z"
                     p-id="6910"
-                    fill="#4caf50"
+                    fill="currentColor"
                   ></path>
                 </svg>
               </div>
@@ -377,12 +377,12 @@
                 >
                   <path
                     d="M776 187.2c92.8 76.8 152 192 152 321.6 0 230.4-185.6 416-416 416S96 739.2 96 508.8c0-129.6 59.2-244.8 152-321.6 6.4-4.8 12.8-8 20.8-8 17.6 0 32 14.4 32 32 0 11.2-6.4 20.8-14.4 27.2-78.4 64-128 161.6-128 272 0 195.2 156.8 352 352 352s352-156.8 352-352c0-110.4-51.2-209.6-131.2-275.2-6.4-6.4-9.6-14.4-9.6-22.4 0-17.6 14.4-32 32-32 9.6-1.6 17.6 1.6 22.4 6.4z"
-                    fill="#4caf50"
+                    fill="currentColor"
                     p-id="7932"
                   ></path>
                   <path
                     d="M512 99.2c17.6 0 32 14.4 32 32v448c0 17.6-14.4 32-32 32s-32-14.4-32-32v-448c0-17.6 14.4-32 32-32z"
-                    fill="#4caf50"
+                    fill="currentColor"
                     p-id="7933"
                   ></path>
                 </svg>
@@ -405,12 +405,12 @@
                 >
                   <path
                     d="M552 471h145v80H552v145h-80V551H327v-80h145V326h80v145z"
-                    fill="#4caf50"
+                    fill="currentColor"
                     p-id="9154"
                   ></path>
                   <path
                     d="M961 512.5C961 760.2 760.2 961 512.5 961S64 760.2 64 512.5 264.8 64 512.5 64 961 264.8 961 512.5z m-88 0C873 313.401 711.599 152 512.5 152S152 313.401 152 512.5 313.401 873 512.5 873 873 711.599 873 512.5z"
-                    fill="#4caf50"
+                    fill="currentColor"
                     p-id="9155"
                   ></path>
                 </svg>
@@ -437,7 +437,7 @@
                 >
                   <path
                     d="M582.239997 663.142968c-56.713997 0-113.426994-21.589999-156.609992-64.772997-11.728999-11.726999-11.728999-30.792998 0-42.520998 11.728999-11.726999 30.791998-11.726999 42.520998 0 62.910997 62.909997 165.212992 62.909997 228.121989 0L914.94998 337.169984c62.910997-62.909997 62.910997-165.211992 0-228.121989-62.907997-62.909997-165.210992-62.909997-228.119989 0L502.313 293.565986c-11.728999 11.727999-30.792998 11.727999-42.521998 0-11.726999-11.727999-11.726999-30.792998 0-42.520998L644.308994 66.527997c86.364996-86.364996 226.858989-86.364996 313.163985 0 86.304996 86.363996 86.363996 226.857989 0 313.163985L738.794989 598.368971c-43.183998 43.183998-99.898995 64.772997-156.612992 64.772997L582.239997 663.141968zM221.386014 1023.99995c-56.714997 0-113.429994-21.591999-156.611992-64.772997-86.363996-86.364996-86.363996-226.856989 0-313.163985l218.678989-218.678989c86.364996-86.364996 226.858989-86.364996 313.162985 0 11.727999 11.727999 11.727999 30.791998 0 42.520998-11.727999 11.726999-30.792998 11.726999-42.518998 0-62.910997-62.909997-165.213992-62.909997-228.122989 0L107.29402 688.583966c-62.909997 62.907997-62.909997 165.212992 0 228.120989 62.908997 62.907997 165.211992 62.907997 228.121989 0l184.516991-184.517991c11.728999-11.728999 30.793998-11.728999 42.520998 0 11.728999 11.726999 11.728999 30.790998 0 42.520998L377.938007 959.226953C334.755009 1002.407951 278.040011 1023.99995 221.325014 1023.99995L221.386014 1023.99995z"
-                    fill="#4caf50"
+                    fill="currentColor"
                     p-id="10212"
                   ></path>
                 </svg>
@@ -454,7 +454,7 @@
       <!-- 玩家社区 -->
       <section class="player-forum" id="forum">
         <h2 class="home-content-title">
-          分享 <span style="color: #4caf50">游戏精彩瞬间</span>
+          分享 <span style="color: var(--brand)">游戏精彩瞬间</span>
         </h2>
         <p class="home-content-subtitle" style="margin-bottom: 30px;">
           加入我们的玩家社区，与其他玩家互动，分享游戏经验
@@ -472,7 +472,7 @@
       <!-- 最新 / 精选资源（资源中心 P1：复用公开列表接口，精选优先、最新补位；仅在有已发布资源时渲染） -->
       <section v-if="homeResources.length" class="home-resources" id="resources">
         <h2 class="home-content-title">
-          最新 <span style="color: #4caf50">资源</span>
+          最新 <span style="color: var(--brand)">资源</span>
         </h2>
         <p class="home-content-subtitle" style="margin-bottom: 24px">
           本组织自研的模组、插件等资源，文件由 GitHub 托管
@@ -511,7 +511,7 @@
       <!-- 服务器地址卡片 -->
       <section class="server-address" id="status">
         <h2 class="home-content-title">
-          实时 <span style="color: #4caf50">查看服务状态</span>
+          实时 <span style="color: var(--brand)">查看服务状态</span>
         </h2>
         <p class="home-content-subtitle" id="join" style="margin-bottom: 20px">
           服务器当前状态，实时更新
@@ -1015,7 +1015,7 @@ export default {
 }
 
 .faction-poster {
-  background-color: #fff;
+  background-color: var(--surface);
   border: 3px solid var(--border-color);
   box-shadow: 4px 4px 0 0 var(--border-color);
   overflow: hidden;
@@ -1060,7 +1060,7 @@ export default {
 
 .faction-poster-slogan {
   font-size: 13px;
-  color: #555;
+  color: var(--text-2);
   margin: 0 0 6px;
   line-height: 1.7;
 }
@@ -1096,13 +1096,13 @@ export default {
 .home-content-title {
   font-size: 40px;
   font-weight: bold;
-  color: #333;
+  color: var(--text);
   margin-bottom: 16px;
 }
 
 .home-content-subtitle {
   font-size: 20px;
-  color: #666;
+  color: var(--text-2);
   margin-bottom: 60px;
 }
 
@@ -1114,7 +1114,7 @@ export default {
 }
 
 .why-card {
-  background-color: white;
+  background-color: var(--surface);
   padding: 40px 30px;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -1140,13 +1140,13 @@ export default {
 }
 
 .why-card-icon.blue {
-  background-color: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+  background-color: color-mix(in srgb, var(--info) 10%, transparent);
+  color: var(--info);
 }
 
 .why-card-icon.green {
-  background-color: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  background-color: color-mix(in srgb, var(--success) 10%, transparent);
+  color: var(--success);
 }
 
 .why-card-icon.purple {
@@ -1155,20 +1155,20 @@ export default {
 }
 
 .why-card-icon.red {
-  background-color: rgba(239, 68, 68, 0.1);
-  color: #ef4444;
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent);
+  color: var(--danger);
 }
 
 .why-card-title {
   font-size: 18px;
   font-weight: 600;
-  color: #333;
+  color: var(--text);
   margin-bottom: 16px;
 }
 
 .why-card-description {
   font-size: 14px;
-  color: #666;
+  color: var(--text-2);
   line-height: 1.6;
 }
 
@@ -1195,7 +1195,7 @@ export default {
 }
 
 .join-step {
-  background-color: white;
+  background-color: var(--surface);
   padding: 30px 20px;
   border-radius: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
@@ -1216,23 +1216,23 @@ export default {
   transform: translateX(-50%);
   width: 30px;
   height: 30px;
-  background-color: #4caf50;
-  color: white;
+  background-color: var(--brand);
+  color: var(--text-on-brand);
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: bold;
   font-size: 14px;
-  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--brand) 30%, transparent);
 }
 
 .join-step-icon {
   width: 60px;
   height: 60px;
   border-radius: 50%;
-  background-color: rgba(76, 175, 80, 0.1);
-  color: #4caf50;
+  background-color: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--brand);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1242,30 +1242,30 @@ export default {
 .join-step-title {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--text);
   margin-bottom: 12px;
 }
 
 .join-step-description {
   font-size: 14px;
-  color: #666;
+  color: var(--text-2);
   line-height: 1.6;
 }
 
 .join-step-link {
-  color: #4caf50;
+  color: var(--brand);
   text-decoration: none;
   font-weight: 500;
   transition: color 0.3s ease;
 }
 
 .join-step-link:hover {
-  color: #45a049;
+  color: var(--brand-hover);
   text-decoration: underline;
 }
 
 .join-step-highlight {
-  color: #4caf50;
+  color: var(--brand);
   font-weight: 600;
 }
 
@@ -1335,8 +1335,8 @@ export default {
 .home-res-card {
   display: flex;
   flex-direction: column;
-  background: var(--fx-card, #fff);
-  border: 1px solid var(--fx-line, #e0e0e0);
+  background: var(--fx-card, var(--surface));
+  border: 1px solid var(--fx-line, var(--border-soft));
   border-radius: 12px;
   overflow: hidden;
   text-decoration: none;
@@ -1346,13 +1346,13 @@ export default {
 }
 .home-res-card:hover {
   transform: translateY(-3px);
-  border-color: #a5d6a7;
-  box-shadow: 0 6px 18px rgba(76, 175, 80, 0.15);
+  border-color: var(--brand-tint-2);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--brand) 15%, transparent);
 }
 .home-res-cover {
   position: relative;
   aspect-ratio: 16 / 7;
-  background: #f0f4f0;
+  background: var(--surface-3);
 }
 .home-res-cover img {
   width: 100%;
@@ -1367,14 +1367,14 @@ export default {
   align-items: center;
   justify-content: center;
   font-size: 32px;
-  color: #a5d6a7;
+  color: var(--brand-tint-2);
 }
 .home-res-badge {
   position: absolute;
   top: 10px;
   left: 10px;
-  background: #4caf50;
-  color: #fff;
+  background: var(--brand);
+  color: var(--text-on-brand);
   font-size: 12px;
   padding: 2px 10px;
   border-radius: 10px;
@@ -1389,7 +1389,7 @@ export default {
   gap: 8px;
   font-size: 16px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text);
 }
 .home-res-name img {
   width: 22px;
@@ -1398,12 +1398,12 @@ export default {
   object-fit: cover;
 }
 .home-res-name i {
-  color: #4caf50;
+  color: var(--brand);
 }
 .home-res-summary {
   margin: 8px 0;
   font-size: 13px;
-  color: #909399;
+  color: var(--text-3);
   line-height: 1.5;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1415,7 +1415,7 @@ export default {
   display: flex;
   justify-content: space-between;
   font-size: 12px;
-  color: #b0b3b8;
+  color: var(--text-3);
 }
 .home-res-meta i {
   margin-right: 4px;
@@ -1441,21 +1441,21 @@ export default {
 
 .forum-link {
   display: inline-block;
-  background-color: #4caf50;
-  color: white;
+  background-color: var(--brand);
+  color: var(--text-on-brand);
   padding: 12px 24px;
   border-radius: 6px;
   font-size: 16px;
   font-weight: 500;
   text-decoration: none;
   transition: all 0.3s ease;
-  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 30%, transparent);
 }
 
 .forum-link:hover {
-  background-color: #45a049;
+  background-color: var(--brand-hover);
   transform: translateY(-2px);
-  box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--brand) 40%, transparent);
 }
 
 /* 响应式设计 */
@@ -1529,7 +1529,7 @@ export default {
 /* ── 阵营内测提示横幅（首页内容区最上方，与菜单栏、下方内容保持间距；常驻显示） ── */
 /* 外层整条白底：与下方 home-hero 白色背景衔接（页面 body 是 #f0f0f0 灰底，不包白底会把白底"挤下去"） */
 .faction-banner-wrap {
-  background-color: white;
+  background-color: var(--surface);
   /* 顶部 16px 与绿色菜单栏保持间距（白底内）；下方间距由 home-hero 的 padding-top 提供 */
   padding: 16px 0 0;
 }
@@ -1542,14 +1542,14 @@ export default {
   width: 80%;
   margin: 0 auto;
   padding: 12px 18px;
-  background-color: #3b82f6;
-  color: white;
+  background-color: var(--info);
+  color: var(--text-on-brand);
   font-size: 15px;
   font-weight: 500;
   text-align: center;
   white-space: nowrap;
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--info) 30%, transparent);
 }
 
 .faction-banner-text {
@@ -1558,7 +1558,7 @@ export default {
 
 .faction-banner-link {
   margin-left: 8px;
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 3px;
@@ -1591,8 +1591,8 @@ export default {
   height: 100%;
   text-align: left;
   overflow: hidden;
-  color: black;
-  background-color: white;
+  color: var(--text);
+  background-color: var(--surface);
   padding-top: 100px;
 }
 
@@ -1601,8 +1601,8 @@ export default {
   height: 100%;
   text-align: center;
   overflow: hidden;
-  color: black;
-  background-color: white;
+  color: var(--text);
+  background-color: var(--surface);
 }
 
 .home-hero::before {
@@ -1614,8 +1614,8 @@ export default {
   height: 100%;
   background: radial-gradient(
     circle at 70% 30%,
-    rgba(76, 175, 80, 0.1) 0%,
-    rgba(76, 175, 80, 0) 70%
+    color-mix(in srgb, var(--brand) 10%, transparent) 0%,
+    color-mix(in srgb, var(--brand) 0%, transparent) 70%
   );
   z-index: 0;
 }
@@ -1644,8 +1644,8 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background-color: rgba(76, 175, 80, 0.1);
-  color: #4caf50;
+  background-color: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--brand);
   padding: 8px 16px;
   border-radius: 20px;
   font-size: 14px;
@@ -1664,7 +1664,7 @@ export default {
 .hero h1 {
   font-size: 42px;
   font-weight: bold;
-  color: #333;
+  color: var(--text);
   margin: 0 0 16px 0;
   line-height: 1.2;
 }
@@ -1675,7 +1675,7 @@ export default {
 
 .hero-subtitle {
   font-size: 36px;
-  color: #666;
+  color: var(--text-2);
   margin: 0 0 16px 0;
 }
 
@@ -1689,8 +1689,8 @@ export default {
 
 .feature-tag {
   display: inline-block;
-  background-color: rgba(76, 175, 80, 0.1);
-  color: #4caf50;
+  background-color: color-mix(in srgb, var(--brand) 10%, transparent);
+  color: var(--brand);
   padding: 8px 16px;
   border-radius: 20px;
   font-size: 14px;
@@ -1699,14 +1699,14 @@ export default {
 }
 
 .feature-tag:hover {
-  background-color: rgba(76, 175, 80, 0.2);
+  background-color: color-mix(in srgb, var(--brand) 20%, transparent);
   transform: translateY(-2px);
-  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.2);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--brand) 20%, transparent);
 }
 
 .hero-description {
   font-size: 18px;
-  color: #666;
+  color: var(--text-2);
   margin: 0 0 32px 0;
   line-height: 1.6;
 }
@@ -1718,8 +1718,8 @@ export default {
   gap: 30px;
   margin-bottom: 32px;
   padding: 20px 0;
-  border-top: 1px solid #eee;
-  border-bottom: 1px solid #eee;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
 }
 
 .stat-item {
@@ -1729,19 +1729,19 @@ export default {
 .stat-number {
   font-size: 24px;
   font-weight: bold;
-  color: #333;
+  color: var(--text);
   margin-bottom: 4px;
 }
 
 .stat-label {
   font-size: 14px;
-  color: #888;
+  color: var(--text-3);
 }
 
 .stat-divider {
   width: 1px;
   height: 40px;
-  background-color: #eee;
+  background-color: var(--border-soft);
 }
 
 /* 按钮区域样式 */
@@ -1766,24 +1766,24 @@ export default {
 }
 
 .btn-primary {
-  background-color: #4caf50;
-  color: white;
+  background-color: var(--brand);
+  color: var(--text-on-brand);
 }
 
 .btn-primary:hover {
-  background-color: #45a049;
+  background-color: var(--brand-hover);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--brand) 30%, transparent);
 }
 
 .btn-secondary {
-  background-color: #f0f0f0;
-  color: #333;
-  border: 1px solid #ddd;
+  background-color: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--border-soft);
 }
 
 .btn-secondary:hover {
-  background-color: #e0e0e0;
+  background-color: var(--surface-hover);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
@@ -1839,11 +1839,11 @@ export default {
   width: 100px;
   height: 100px;
   border-radius: 50%;
-  background: rgba(76, 175, 80, 0.9);
+  background: color-mix(in srgb, var(--brand) 90%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: var(--text-on-brand);
   cursor: pointer;
   transition: all 0.3s ease;
   margin-bottom: 20px;
@@ -1851,8 +1851,8 @@ export default {
 
 .hero-image-play:hover {
   transform: scale(1.1);
-  background: rgba(76, 175, 80, 1);
-  box-shadow: 0 4px 16px rgba(76, 175, 80, 0.4);
+  background: var(--brand);
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--brand) 40%, transparent);
 }
 
 .hero-video-title {
@@ -1867,7 +1867,7 @@ export default {
 
 /* QQ群区域样式 */
 .hero-qq-container {
-  background-color: #f9f9f9;
+  background-color: var(--surface);
   border-radius: 8px;
   padding: 20px;
   text-align: center;
@@ -1876,7 +1876,7 @@ export default {
 .hero-qq-title {
   font-size: 16px;
   font-weight: bold;
-  color: #333;
+  color: var(--text);
   margin-bottom: 16px;
 }
 
@@ -1894,7 +1894,7 @@ export default {
 
 .hero-qq-qrcode p {
   font-size: 14px;
-  color: #666;
+  color: var(--text-2);
   margin: 0;
 }
 
@@ -1909,19 +1909,19 @@ export default {
   margin: 0 auto;
   width: 100%;
   text-align: center;
-  background-color: #dbeafe;
-  color: rgb(30 64 175);
+  background-color: var(--info-soft);
+  color: var(--info);
 }
 
 .hero-join-us:hover {
-  background-color: #dbeafe;
-  color: rgb(30 64 175);
+  background-color: var(--info-soft);
+  color: var(--info);
 }
 
 /* 响应式设计 */
 @media (max-width: 1200px) {
   .home-hero::before {
-    background: white;
+    background: var(--surface);
   }
 
   .hero-content {
@@ -1952,7 +1952,7 @@ export default {
 
 @media (max-width: 992px) {
   .home-hero::before {
-    background: white;
+    background: var(--surface);
   }
 
   .hero-content {
@@ -1989,7 +1989,7 @@ export default {
 
 @media (max-width: 768px) {
   .home-hero::before {
-    background: white;
+    background: var(--surface);
   }
 
   .home-hero {
@@ -2052,7 +2052,7 @@ export default {
 
 @media (max-width: 480px) {
   .home-hero::before {
-    background: white;
+    background: var(--surface);
   }
 
   .home-hero h1 {
@@ -2076,5 +2076,10 @@ export default {
     width: 100px;
     height: 100px;
   }
+}
+
+/* 步骤图标：跟随主题色（SVG fill 已改为 currentColor，此处提供颜色来源） */
+.icon {
+  color: var(--brand);
 }
 </style>

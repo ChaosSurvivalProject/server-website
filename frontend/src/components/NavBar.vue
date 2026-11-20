@@ -78,6 +78,9 @@
         >
       </div>
 
+      <!-- 主题设置：浅色 / 深色 / 跟随系统 + 自定义主题色（桌面端与移动端均常驻） -->
+      <ThemeSwitcher />
+
       <!-- 移动端菜单按钮 -->
       <button class="mobile-menu-btn" @click="toggleMenu" aria-label="菜单">
         <svg
@@ -90,7 +93,7 @@
           <path
             v-if="!mobileMenuOpen"
             d="M3 12H21M3 6H21M3 18H21"
-            stroke="white"
+            stroke="currentColor"
             stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -98,7 +101,7 @@
           <path
             v-else
             d="M18 6L6 18M6 6L18 18"
-            stroke="white"
+            stroke="currentColor"
             stroke-width="2"
             stroke-linecap="round"
             stroke-linejoin="round"
@@ -174,10 +177,11 @@ import { siteBranding } from "../utils/siteBranding.js";
 import { showForumToast } from "../utils/forumToast.js";
 import { messagesAPI } from "../api/api.js";
 import MessagesPopup from "../views/Messages.vue";
+import ThemeSwitcher from "./ThemeSwitcher.vue";
 
 export default {
   name: "NavBar",
-  components: { MessagesPopup },
+  components: { MessagesPopup, ThemeSwitcher },
   data() {
     return {
       mobileMenuOpen: false,
@@ -318,7 +322,7 @@ export default {
 /* 导航栏样式 */
 
 nav {
-  background-color: #4caf50;
+  background-color: var(--brand);
   padding: 8px 0;
   position: sticky;
   top: 0;
@@ -354,7 +358,7 @@ nav {
 
 .logo {
   font-size: 16px;
-  color: white;
+  color: var(--text-on-brand);
   text-decoration: none;
   font-weight: bold;
   display: flex;
@@ -388,14 +392,14 @@ nav {
 }
 
 .nav-links a {
-  color: #ccc;
+  color: color-mix(in srgb, var(--text-on-brand) 78%, transparent);
   text-decoration: none;
   font-size: 15px;
   transition: color 0.3s ease;
 }
 
 .nav-links a:hover {
-  color: white;
+  color: var(--text-on-brand);
 }
 
 /* 桌面端：三个菜单项绝对定位水平居中（不随左侧 logo 挤占布局；≤768px 时随 .desktop-menu 隐藏） */
@@ -410,7 +414,7 @@ nav {
 }
 
 .nav-icon {
-  color: #ccc;
+  color: color-mix(in srgb, var(--text-on-brand) 78%, transparent);
   text-decoration: none;
   font-size: 16px;
   cursor: pointer;
@@ -435,7 +439,7 @@ nav {
 }
 
 .nav-icon:hover {
-  color: white;
+  color: var(--text-on-brand);
   border-color: rgba(255, 255, 255, 0.5);
   /* 半透明白叠在绿色底上：悬浮时边框内区域提亮，与导航栏底色形成层次感 */
   background-color: rgba(255, 255, 255, 0.12);
@@ -446,9 +450,9 @@ nav {
    手动加——平级路由（/resources 与 /resources/:slug）不会命中 active，两者样式保持一致。 */
 .nav-icon.active,
 .nav-icon.nav-current {
-  color: white;
+  color: var(--text-on-brand);
   font-weight: bold;
-  border-color: white;
+  border-color: var(--text-on-brand);
   /* 半透明黑叠在导航绿底上：只加深边框内的绿色间隙，与悬浮的提亮底形成明暗层次 */
   background-color: rgba(0, 0, 0, 0.15);
 }
@@ -467,12 +471,12 @@ nav {
   align-items: center;
   gap: 6px;
   padding: 5px 16px;
-  border: 1px solid white;
+  border: 1px solid var(--text-on-brand);
   border-radius: 10px;
   font-size: 16px;
   text-decoration: none;
   color: var(--primary-color);
-  background-color: white;
+  background-color: var(--surface);
   white-space: nowrap;
   transition: all 0.3s ease;
 }
@@ -487,8 +491,8 @@ nav {
 }
 
 .nav-auth-login:hover {
-  background-color: #e8f5e9;
-  border-color: white;
+  background-color: var(--brand-tint);
+  border-color: var(--text-on-brand);
 }
 
 /* ── 已登录：站内信按钮（头像左侧，占位待第二阶段） ── */
@@ -502,7 +506,7 @@ nav {
   border-radius: 10px;
   border: 1px solid transparent;
   background: none;
-  color: white;
+  color: var(--text-on-brand);
   font-family: inherit;
   font-size: 16px;
   cursor: pointer;
@@ -523,7 +527,7 @@ nav {
   padding: 0 4px;
   border-radius: 8px;
   background: #f56c6c;
-  color: white;
+  color: var(--text-on-brand);
   font-size: 11px;
   text-align: center;
   font-weight: bold;
@@ -552,7 +556,7 @@ nav {
 
 /* 与 .nav-icon 的悬浮态保持一致 */
 .nav-avatar-btn:hover {
-  color: white;
+  color: var(--text-on-brand);
   border-color: rgba(255, 255, 255, 0.5);
   background-color: rgba(255, 255, 255, 0.12);
 }
@@ -562,14 +566,14 @@ nav {
   height: 28px;
   display: block;
   flex-shrink: 0;
-  border: 2px solid white;
+  border: 2px solid var(--text-on-brand);
   border-radius: 2px; /* 像素风：近直角方块头像 */
   background-color: var(--primary-color);
   image-rendering: pixelated;
 }
 
 .nav-avatar-name {
-  color: white;
+  color: var(--text-on-brand);
   font-size: 15px;
   max-width: 160px;
   white-space: nowrap;
@@ -578,7 +582,7 @@ nav {
 }
 
 .nav-avatar-caret {
-  color: rgba(255, 255, 255, 0.85);
+  color: color-mix(in srgb, var(--text-on-brand) 85%, transparent);
   font-size: 12px;
   transition: transform 0.2s ease;
 }
@@ -593,7 +597,7 @@ nav {
   top: calc(100% + 10px);
   right: 0;
   min-width: 210px;
-  background-color: white;
+  background-color: var(--surface);
   border: 4px solid var(--border-color);
   box-shadow: 4px 4px 0 0 var(--border-color);
   z-index: 1002; /* 浮于移动端下拉菜单之上 */
@@ -652,7 +656,7 @@ nav {
 
 .avatar-menu-divider {
   height: 1px;
-  background-color: #e0e0e0;
+  background-color: var(--border-soft);
 }
 
 .avatar-menu-item {
@@ -672,13 +676,13 @@ nav {
 }
 
 .avatar-menu-item i {
-  color: #c62828;
+  color: var(--danger-text);
   width: 16px;
   text-align: center;
 }
 
 .avatar-menu-item:hover {
-  background-color: #f5f5f5;
+  background-color: var(--surface-hover);
 }
 
 /* 移动端：头像仅保留图片（用户名收进下拉菜单），与三横线间距 6px */
@@ -712,7 +716,7 @@ nav {
 
 /* 移动端同款：.active 由 vue-router 加，:is() 覆盖 isSection() 手动加的 nav-current */
 .mobile-nav-links a:is(.active, .nav-current) {
-  color: white;
+  color: var(--text-on-brand);
   font-weight: bold;
   background-color: rgba(255, 255, 255, 0.1);
 }
@@ -722,7 +726,7 @@ nav {
   display: none;
   background: none;
   border: none;
-  color: white;
+  color: var(--text-on-brand);
   cursor: pointer;
   padding: 8px;
   margin-left: auto;
@@ -738,7 +742,7 @@ nav {
   top: 100%;
   left: 0;
   right: 0;
-  background-color: #4caf50;
+  background-color: var(--brand);
   border-top: 1px solid rgba(255, 255, 255, 0.2);
   z-index: 999;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -763,7 +767,7 @@ nav {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #ccc;
+  color: color-mix(in srgb, var(--text-on-brand) 78%, transparent);
   text-decoration: none;
   font-size: 16px;
   padding: 15px 20px;
@@ -778,7 +782,7 @@ nav {
 
 .mobile-nav-links a:hover {
   background-color: rgba(255, 255, 255, 0.1);
-  color: white;
+  color: var(--text-on-brand);
 }
 
 /* 响应式设计 */

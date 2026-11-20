@@ -291,7 +291,7 @@ export default {
 .tabs-inline {
   display: flex;
   gap: 4px;
-  background: #fff;
+  background: var(--fx-card);
   border: 1px solid var(--fx-line);
   border-radius: 10px;
   padding: 4px;
@@ -315,7 +315,7 @@ export default {
 }
 .tabs-inline button.on {
   background: var(--fx-brand);
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 600;
 }
 .tabs-inline .cnt {
@@ -344,8 +344,8 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  background: #f5f3ff;
-  color: #7c3aed;
+  background: color-mix(in srgb, var(--fx-purple) 10%, var(--fx-card));
+  color: var(--fx-purple);
   border-radius: 5px;
   padding: 1px 7px;
   font-size: 11px;

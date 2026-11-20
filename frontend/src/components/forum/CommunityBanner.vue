@@ -244,7 +244,7 @@ export default {
   height: 34px;
   border-radius: 8px;
   border: none;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--fx-bg-soft);
   padding: 0 12px;
   font-family: inherit;
   font-size: 13px;
@@ -281,7 +281,7 @@ export default {
   border: none;
   border-radius: 0 8px 8px 0;
   background: var(--fx-brand);
-  color: #fff;
+  color: var(--text-on-brand);
   font-size: 14px;
   cursor: pointer;
   transition: background 0.15s ease;

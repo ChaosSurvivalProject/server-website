@@ -198,7 +198,7 @@ export default {
 
 <style scoped>
 .online-count-container {
-  background-color: rgba(255, 255, 255, 0.95);
+  background-color: var(--surface);
   border: 4px solid var(--border-color);
   padding: 20px;
   margin-bottom: 20px;
@@ -244,7 +244,7 @@ export default {
 
 .server-details-btn {
   background-color: var(--secondary-color);
-  color: white;
+  color: var(--text-on-brand);
   border: none;
   padding: 8px 16px;
   font-size: 12px;
@@ -254,7 +254,7 @@ export default {
 }
 
 .server-details-btn:hover {
-  background-color: #7cb342;
+  background-color: var(--brand-hover);
 }
 
 .collapse-controls {
@@ -303,13 +303,13 @@ export default {
 
 .detail-label {
   font-size: 14px;
-  color: #666;
+  color: var(--text-2);
   font-weight: bold;
 }
 
 .detail-value {
   font-size: 16px;
-  color: #333;
+  color: var(--text);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -320,27 +320,27 @@ export default {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background-color: #ccc;
+  background-color: var(--border-strong);
 }
 
 .ping-indicator.ping-good {
-  background-color: #4CAF50;
+  background-color: var(--success);
   animation: pulse 2s infinite;
 }
 
 .ping-indicator.ping-bad {
-  background-color: #F44336;
+  background-color: var(--danger);
 }
 
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 70%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--brand) 0%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--brand) 0%, transparent);
   }
 }
 

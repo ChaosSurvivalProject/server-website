@@ -32,7 +32,7 @@ export default {
         .then(() => {
           // 显示复制成功状态
           this.copied = true;
-          button.style.color = "#4CAF50";
+          button.style.color = "var(--brand)";
 
           setTimeout(() => {
             this.copied = false;
@@ -50,11 +50,11 @@ export default {
 <style scoped>
 .copy-button {
   background: none;
-  border: 1px solid #ddd;
+  border: 1px solid var(--border-soft);
   border-radius: 4px;
   padding: 4px 8px;
   cursor: pointer;
-  color: #666;
+  color: var(--text-2);
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
@@ -64,9 +64,9 @@ export default {
 }
 
 .copy-button:hover {
-  background-color: #f5f5f5;
-  border-color: #999;
-  color: #333;
+  background-color: var(--surface);
+  border-color: var(--border-strong);
+  color: var(--text);
 }
 
 .copy-button:active {

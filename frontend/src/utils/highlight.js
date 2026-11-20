@@ -1,4 +1,4 @@
-// 高亮标记解析：[[绿字]] → 主题绿（#4caf50，与全站主题一致）、{{紫字}} → 暮夜紫（#7c3aed）。
+// 高亮标记解析：[[绿字]] → 主题色（跟随自定义主题色）、{{紫字}} → 暮夜紫（随明暗模式调整）。
 // 服务于「系统管理-网站配置」的富文本字段（hero.title / hero.subtitle / hero.description）：
 // 后台用标记语法代替富文本编辑器，前端解析成 {text, color} 段数组、模板 v-for 渲染 span，
 // 不走 v-html，天然无注入风险。
@@ -6,8 +6,8 @@
 // 此处对未闭合标记按原样输出兜底（不吞字）。
 
 const MARKS = [
-  { open: "[[", close: "]]", color: "#4caf50" },
-  { open: "{{", close: "}}", color: "#7c3aed" },
+  { open: "[[", close: "]]", color: "var(--brand)" },
+  { open: "{{", close: "}}", color: "var(--accent-purple)" },
 ];
 
 /**

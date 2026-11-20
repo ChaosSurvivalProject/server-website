@@ -32,15 +32,15 @@
 .announcement-content pre.hljs,
 .fx-md pre,
 .fx-md pre.hljs {
-  background-color: #f6f8fa;
-  border: 1px solid #e5e7eb;
+  background-color: var(--code-bg);
+  border: 1px solid var(--code-border);
   border-radius: 6px;
 }
 
 /* 代码块包装：header 含语言标签（左上）与复制按钮（右上），v-html 注入节点需非 scoped 样式 */
 .announcement-code-block {
   margin: 15px 0;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--code-border);
   border-radius: 6px;
   overflow: hidden;
 }
@@ -49,15 +49,15 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: #f6f8fa;
-  border-bottom: 1px solid #e5e7eb;
+  background-color: var(--code-bg);
+  border-bottom: 1px solid var(--code-border);
   padding: 6px 12px;
 }
 
 .announcement-code-block .announcement-code-lang {
   font-size: 12px;
   font-weight: 600;
-  color: #666;
+  color: var(--text-2);
   letter-spacing: 0.4px;
   text-transform: uppercase;
 }
@@ -69,8 +69,8 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  color: #666;
-  background-color: rgba(0, 0, 0, 0.05);
+  color: var(--text-2);
+  background-color: var(--surface-hover);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -83,8 +83,8 @@
 }
 
 .announcement-code-block .announcement-code-copy:hover {
-  background-color: rgba(0, 0, 0, 0.1);
-  color: #333;
+  background-color: var(--border-soft);
+  color: var(--text);
 }
 
 .announcement-code-block .announcement-code-copy .icon-check {
@@ -92,8 +92,8 @@
 }
 
 .announcement-code-block .announcement-code-copy.copied {
-  color: #4caf50;
-  background-color: rgba(76, 175, 80, 0.15);
+  color: var(--brand);
+  background-color: var(--brand-tint);
   animation: copy-btn-pulse 0.45s ease;
 }
 
@@ -148,6 +148,72 @@
 /* 社区侧的外层包装底色也要跟着统一（forum.css 里曾设成 #fbfcfe）——
    与 pre 本体保持同一个 #f6f8fa，否则会出现"外浅内白"的色差。 */
 .fx-md .announcement-code-block {
-  background-color: #f6f8fa;
-  border-color: #e5e7eb;
+  background-color: var(--code-bg);
+  border-color: var(--code-border);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   深色模式下的 highlight.js 语法配色
+   github.css 的 token 颜色是为浅底设计的，深底下会变成深字不可读；
+   这里按 github-dark 的色阶覆盖常用 token，保证代码块对比度。
+   ══════════════════════════════════════════════════════════════════ */
+[data-theme='dark'] .hljs {
+  color: #c9d1d9;
+  background: var(--code-bg);
+}
+[data-theme='dark'] .hljs-comment,
+[data-theme='dark'] .hljs-quote {
+  color: #8b949e;
+  font-style: italic;
+}
+[data-theme='dark'] .hljs-keyword,
+[data-theme='dark'] .hljs-selector-tag,
+[data-theme='dark'] .hljs-literal,
+[data-theme='dark'] .hljs-section,
+[data-theme='dark'] .hljs-doctag {
+  color: #ff7b72;
+}
+[data-theme='dark'] .hljs-string,
+[data-theme='dark'] .hljs-regexp,
+[data-theme='dark'] .hljs-addition,
+[data-theme='dark'] .hljs-attribute,
+[data-theme='dark'] .hljs-meta .hljs-string {
+  color: #a5d6ff;
+}
+[data-theme='dark'] .hljs-number,
+[data-theme='dark'] .hljs-symbol,
+[data-theme='dark'] .hljs-bullet,
+[data-theme='dark'] .hljs-link {
+  color: #79c0ff;
+}
+[data-theme='dark'] .hljs-title,
+[data-theme='dark'] .hljs-title.class_,
+[data-theme='dark'] .hljs-title.function_ {
+  color: #d2a8ff;
+}
+[data-theme='dark'] .hljs-type,
+[data-theme='dark'] .hljs-built_in,
+[data-theme='dark'] .hljs-class .hljs-title {
+  color: #ffa657;
+}
+[data-theme='dark'] .hljs-variable,
+[data-theme='dark'] .hljs-template-variable,
+[data-theme='dark'] .hljs-params {
+  color: #ffa657;
+}
+[data-theme='dark'] .hljs-attr,
+[data-theme='dark'] .hljs-property {
+  color: #79c0ff;
+}
+[data-theme='dark'] .hljs-meta {
+  color: #ff7b72;
+}
+[data-theme='dark'] .hljs-deletion {
+  color: #ffa198;
+}
+[data-theme='dark'] .hljs-emphasis {
+  font-style: italic;
+}
+[data-theme='dark'] .hljs-strong {
+  font-weight: 700;
 }

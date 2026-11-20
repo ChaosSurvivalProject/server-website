@@ -311,27 +311,27 @@ export default {
   margin: 14px 0 10px;
   padding: 8px 12px;
   border-radius: 8px;
-  background: #fff7e6;
-  color: #b45309;
+  background: var(--fx-warn-soft);
+  color: var(--warn-text);
   font-size: 12.5px;
   font-weight: 500;
 }
 .recycle-link {
-  color: #b45309;
+  color: var(--warn-text);
   font-weight: 600;
   text-decoration: underline;
   text-underline-offset: 3px;
 }
 .recycle-link:hover {
-  color: #8c6b12;
+  color: color-mix(in srgb, var(--warn-text) 80%, black);
 }
 .fx-btn-ghost {
-  background: #fff;
+  background: var(--fx-card);
   border-color: var(--fx-line);
   color: var(--fx-text-2);
 }
 .fx-btn-ghost:hover:not(:disabled) {
-  border-color: #c7d2e0;
+  border-color: var(--border-strong);
   color: var(--fx-text);
 }
 .toolbar {
@@ -344,7 +344,7 @@ export default {
 .tabs-inline {
   display: flex;
   gap: 4px;
-  background: #fff;
+  background: var(--fx-card);
   border: 1px solid var(--fx-line);
   border-radius: 10px;
   padding: 4px;
@@ -368,7 +368,7 @@ export default {
 }
 .tabs-inline button.on {
   background: var(--fx-brand);
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 600;
 }
 .tabs-inline .cnt {
@@ -398,7 +398,7 @@ export default {
   align-items: center;
   gap: 3px;
   background: var(--fx-warn-soft);
-  color: #b45309;
+  color: var(--warn-text);
   border-radius: 5px;
   padding: 1px 7px;
   font-size: 11px;
@@ -413,7 +413,7 @@ export default {
 }
 .reason-box {
   background: var(--fx-danger-soft);
-  color: #991b1b;
+  color: var(--danger-text);
   border-radius: 7px;
   padding: 7px 11px;
   font-size: 12.5px;
@@ -421,8 +421,8 @@ export default {
   line-height: 1.6;
 }
 .reason-box.gray {
-  background: #eef2f7;
-  color: #475569;
+  background: var(--fx-bg);
+  color: var(--fx-text-2);
 }
 .reason-box i {
   margin-right: 4px;

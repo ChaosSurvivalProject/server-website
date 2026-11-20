@@ -47,7 +47,7 @@ export default {
   width: 50px;
   height: 50px;
   background-color: var(--primary-color);
-  color: white;
+  color: var(--text-on-brand);
   border: 4px solid var(--border-color);
   border-radius: 0;
   font-size: 24px;

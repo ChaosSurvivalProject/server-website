@@ -2,8 +2,44 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
+    <meta name="color-scheme" content="light dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!--
+      主题首屏脚本：必须在样式表与 Vue 挂载之前同步执行，杜绝白屏闪过再变暗（FOUC）。
+      只读取 localStorage 并写 data-theme / CSS 变量，无网络请求、体积可忽略。
+      与 src/utils/theme.js 的键名（XQ_theme_*）严格对应。
+    -->
+    <script>
+      (function () {
+        try {
+          var root = document.documentElement;
+          var mode = localStorage.getItem("XQ_theme_mode") || "system";
+          var prefersDark =
+            window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var resolved =
+            mode === "dark" || (mode === "system" && prefersDark) ? "dark" : "light";
+          root.setAttribute("data-theme", resolved);
+          root.style.colorScheme = resolved;
+
+          // 自定义主题色的派生变量由 theme.js 在选色时算好并缓存，这里只回放，避免重复计算
+          var vars = localStorage.getItem("XQ_theme_vars");
+          if (vars) {
+            var parsed = JSON.parse(vars);
+            for (var key in parsed) {
+              if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+                root.style.setProperty(key, parsed[key]);
+              }
+            }
+          }
+        } catch (e) {
+          // 隐私模式 / 存储不可用时静默回退到 CSS 兜底值（官网默认绿 + 浅色）
+        }
+      })();
+    </script>
+
     <link rel="stylesheet" href="/src/style.css" />
     <title>星穹旅驿 | 生存服务器</title>
   </head>
