@@ -25,7 +25,7 @@
           root.style.colorScheme = resolved;
 
           // 自定义主题色的派生变量由 theme.js 在选色时算好并缓存，这里只回放，避免重复计算
-          var vars = localStorage.getItem("XQ_theme_vars");
+          var vars = localStorage.getItem("XQ_theme_vars_v2");
           if (vars) {
             var parsed = JSON.parse(vars);
             for (var key in parsed) {

@@ -26,10 +26,11 @@
   --fx-text-2: #5b6676;
   --fx-text-3: #93a0b1;
 
-  /* 主色与语义色 */
-  --fx-brand: #4caf50;
-  --fx-brand-d: #388e3c;
-  --fx-brand-soft: #e8f5e9;
+  /* 主色与语义色：品牌位跟随全站主题色（深色块在文件底部同名覆盖）。
+     兜底值与官网现状一致，未自定义时视觉零差异；自定义后浅色模式同样生效。 */
+  --fx-brand: var(--brand, #4caf50);
+  --fx-brand-d: var(--brand-active, #388e3c);
+  --fx-brand-soft: var(--brand-tint, #e8f5e9);
   --fx-warn: #f59e0b;
   --fx-warn-soft: #fff7e6;
   --fx-danger: #ef4444;
