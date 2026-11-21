@@ -309,15 +309,23 @@ export default {
         detailVisible.value = true;
         return;
       }
-      if (msg.type === "reply" && msg.relatedArticleId) {
-        window.location.href = `/forum/post/${msg.relatedArticleId}${msg.relatedCommentId ? `?commentId=${msg.relatedCommentId}` : ""}`;
-      } else if (msg.type === "like" && msg.relatedArticleId) {
-        // 点赞通知：跳转到被点赞的文章；评论点赞额外定位到该评论
-        window.location.href = `/forum/post/${msg.relatedArticleId}${msg.relatedCommentId ? `?commentId=${msg.relatedCommentId}` : ""}`;
+      // reply / 评论点赞：直达单条评论详情页，不依赖文章页评论区的分页与 DOM 定位
+      // （FLPR-30；文章点赞 relatedCommentId 为空，仍回文章页）
+      if (
+        (msg.type === "reply" || msg.type === "like") &&
+        msg.relatedCommentId
+      ) {
+        window.location.href = `/forum/comment/${msg.relatedCommentId}`;
       } else if (msg.type === "article_review" && msg.relatedArticleId) {
         window.location.href = `/forum/post/${msg.relatedArticleId}`;
       } else if (msg.type === "beta_review") {
         window.location.href = "/faction-beta";
+      } else if (
+        (msg.type === "reply" || msg.type === "like") &&
+        msg.relatedArticleId
+      ) {
+        // 兜底：历史消息缺 relatedCommentId 时仍能回到文章页
+        window.location.href = `/forum/post/${msg.relatedArticleId}`;
       }
       messagesAPI.markRead(msg.id).catch(() => {});
       loadUnreadCount();

@@ -14,6 +14,7 @@
   GET    /forum/articles                   文章列表（category/sort/q/tag/page）
   GET    /forum/articles/{id}              详情（未公开文章对非作者/管理员按 404 处理）
   GET    /forum/articles/{id}/comments     评论列表（只对顶层评论分页，每条内嵌 replies）
+  GET    /forum/comments/{id}               单条评论详情（顶层/回复均可；含顶层上下文 + 全部回复 + 文章摘要，匿名可读）
   GET    /forum/articles/{id}/author-posts 作者其他已发布文章（最多 5 条）
   POST   /forum/articles/{id}/view         浏览量 +1（原子自增，重复刷新重复计，已接受）
 
@@ -1066,6 +1067,110 @@ async def list_comments(
         nodes = await _comment_nodes(db, top_rows + reply_rows, user)
 
     return _ok(_page_payload(nodes, page, page_size, total))
+
+
+async def _comment_node_map(
+    db: AsyncSession, comments: list[ForumComment], viewer: Optional[User]
+) -> dict[int, dict]:
+    """为任意一组评论构造 {id: node}，复用 _comment_node（保留 liked / replyToName）。
+
+    评论列表的 _comment_nodes() 只处理"顶层 + 其回复"的树形结构并做顶层分页；
+    单条详情还要渲染"回复作为主评论"与"顶层作为上下文"，故抽一层更通用的映射，
+    避免把 liked / replyToName 的口径复制第二份。
+    """
+    if not comments:
+        return {}
+    user_map = await _get_users(
+        db,
+        {c.author_id for c in comments} | {c.reply_to_user_id or 0 for c in comments},
+    )
+    liked_ids: set[int] = set()
+    if viewer is not None:
+        r = await db.execute(
+            select(ForumCommentLike.comment_id).where(
+                ForumCommentLike.user_id == viewer.id,
+                ForumCommentLike.comment_id.in_([c.id for c in comments]),
+            )
+        )
+        liked_ids = set(r.scalars().all())
+    out: dict[int, dict] = {}
+    for c in comments:
+        reply_to = user_map.get(c.reply_to_user_id) if c.reply_to_user_id else None
+        out[c.id] = _comment_node(
+            c,
+            user_map.get(c.author_id),
+            liked_ids,
+            reply_to_name=(reply_to.nickname or reply_to.username) if reply_to else None,
+        )
+    return out
+
+
+@router.get("/comments/{comment_id}")
+async def get_comment_detail(
+    comment_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """单条评论详情（站内信直达 /forum/comment/:id 的取数口，匿名可读）。
+
+    - :id 可以是顶层评论，也可以是回复：回复同样作为主评论渲染，所属顶层评论作为
+      `rootComment` 上下文一并下发；顶层评论的 `rootComment` 为 null。
+    - `replies` 是所属顶层评论下的**全部**正常回复，(create_time, id) 正序、不分页，
+      解决原方案"目标评论在第 11 条以后，文章页第 1 页 DOM 里找不到"的问题。
+    - 可见性与文章详情同口径：评论 status != 1 或文章 _can_view_article 不放行 → 404；
+      前端按 404 展示明确空态（"该评论已被删除"），不静默白屏。
+      **不要顺手放宽到未公开文章**——那会成为枚举未公开文章 id 的新入口。
+    """
+    comment = (
+        await db.execute(select(ForumComment).where(ForumComment.id == comment_id))
+    ).scalar_one_or_none()
+    if comment is None or comment.status != COMMENT_NORMAL:
+        raise HTTPException(status_code=404, detail="评论不存在或已被删除")
+    article = await _get_article(db, comment.article_id)
+    if article is None or not _can_view_article(article, user):
+        raise HTTPException(status_code=404, detail="评论不存在或已被删除")
+
+    root = comment
+    if comment.parent_id:
+        root = (
+            await db.execute(select(ForumComment).where(ForumComment.id == comment.parent_id))
+        ).scalar_one_or_none()
+        # 两级楼中楼的硬约束：顶层必须存在、正常、确实属于同一篇文章（parent_id==0）
+        if (
+            root is None
+            or root.status != COMMENT_NORMAL
+            or root.parent_id != 0
+            or root.article_id != article.id
+        ):
+            raise HTTPException(status_code=404, detail="评论不存在或已被删除")
+
+    r = await db.execute(
+        select(ForumComment)
+        .where(
+            ForumComment.article_id == article.id,
+            ForumComment.parent_id == root.id,
+            ForumComment.status == COMMENT_NORMAL,
+        )
+        .order_by(ForumComment.create_time.asc(), ForumComment.id.asc())
+    )
+    replies = list(r.scalars().all())
+
+    nodes = await _comment_node_map(db, [comment, root] + replies, user)
+    article_author = (await _get_users(db, {article.author_id})).get(article.author_id)
+    return _ok(
+        {
+            "comment": nodes[comment.id],
+            "rootComment": nodes[root.id] if comment.parent_id else None,
+            "replies": [nodes[rc.id] for rc in replies],
+            "article": {
+                "id": article.id,
+                "title": article.title,
+                "status": article.status,
+                "publishTime": article.publish_time,
+                "author": _author_brief(article_author),
+            },
+        }
+    )
 
 
 @router.get("/articles/{article_id}/author-posts")

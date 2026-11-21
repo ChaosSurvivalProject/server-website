@@ -41,7 +41,7 @@
 
 ### 3.2 本次不包含
 
-- 评论详情展开（点击回复通知仅跳转到文章评论区，评论详情后做）。
+- ~~评论详情展开（已由 FLPR-30 实现：点击回复/评论点赞通知直达 `/forum/comment/{id}`）~~。
 - 头像上传（使用默认头像占位，上传功能延后到个人中心模块）。
 - 消息推送实时通道（如 WebSocket / SSE 通知）。
 
@@ -239,8 +239,8 @@ messages
 
 | 消息类型 | 点击行为 |
 |---|---|
-| reply | 跳转到 `/forum/post/{related_article_id}`，路由 query 携带 `commentId={related_comment_id}` |
-| like | 跳转到 `/forum/post/{related_article_id}`；评论点赞（`related_comment_id` 非空）额外携带 `commentId={related_comment_id}` |
+| reply | 跳转到 `/forum/comment/{related_comment_id}`（评论详情页，含全部回复；FLPR-30 后生效） |
+| like | 评论点赞（`related_comment_id` 非空）跳转到 `/forum/comment/{related_comment_id}`；文章点赞仍跳 `/forum/post/{related_article_id}` |
 | article_review | 跳转到 `/forum/post/{related_article_id}` |
 | beta_review | 跳转到 `/faction-beta`（或申请详情页） |
 | system_announcement / activity_announcement | 抽屉展开正文（Markdown 渲染） |
@@ -293,7 +293,7 @@ messages
 | ID | 事项 | 优先级 | 备注 |
 |---|---|---|---|
 | ~~TODO-01~~ | ~~收到点赞 Tab~~ | ~~P1~~ | **v1.1 已交付**（2026-10-09） |
-| TODO-02 | 评论详情展开 | P1 | 点击回复/点赞通知仅跳转到文章页并定位评论，评论详情报后期 |
+| ~~TODO-02~~ | ~~评论详情展开~~ | ~~P1~~ | **FLPR-30 已实现**（回复/评论点赞通知直达 `/forum/comment/{id}`） |
 | TODO-03 | 头像上传功能 | P2 | 延后到个人中心模块统一实现 |
 | TODO-04 | 消息实时推送 | P2 | WebSocket / SSE 可选方案待评估 |
 | TODO-05 | 消息搜索与筛选 | P3 | 支持按关键词、时间范围搜索 |
