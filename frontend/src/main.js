@@ -11,9 +11,14 @@ import './assets/styles/forum.css'
 // index.html 的首屏内联脚本已同步应用过一次，这里补齐响应式状态与监听。
 import { initTheme } from './utils/theme.js'
 initTheme()
+// 头像加载失败统一回退内置默认图（FLPR-31），各组件只需在 img 上挂 @error="onAvatarError"
+import { onAvatarError } from './utils/avatar.js'
 
 // 创建Vue应用实例
 const app = createApp(App)
+
+// 全局注入头像兜底方法（与各组件本地 defaultAvatar 导入解耦）
+app.mixin({ methods: { onAvatarError } })
 
 // 集成vue-router
 app.use(router)

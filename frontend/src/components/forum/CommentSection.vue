@@ -20,7 +20,7 @@
       <!-- 发表评论输入区 -->
       <div class="cmt-input">
         <span class="fx-avatar fx-av-36" :class="{ 'fx-avatar-guest': !loggedIn }">
-          <img v-if="loggedIn && myAvatar" :src="myAvatar" alt="" />
+          <img v-if="loggedIn && myAvatar" :src="myAvatar" alt="" @error="onAvatarError" />
           <template v-else>{{ loggedIn ? (myName || "?").slice(0, 1) : "?" }}</template>
         </span>
         <div class="cmt-input-main">
@@ -66,7 +66,7 @@
       <div v-else class="cmt-list">
         <div v-for="c in comments" :key="c.id" :id="'comment-' + c.id" class="cmt">
           <span class="fx-avatar fx-av-36" :class="{ 'fx-avatar-admin': c.author?.badge === '管理员' }">
-            <img v-if="c.author?.avatar" :src="c.author.avatar" :alt="c.author.name" />
+            <img v-if="c.author?.avatar" :src="c.author.avatar" :alt="c.author.name" @error="onAvatarError" />
             <template v-else>{{ (c.author?.name || "?").slice(0, 1) }}</template>
           </span>
 
@@ -135,7 +135,7 @@
                   class="fx-avatar fx-av-28"
                   :class="{ 'fx-avatar-admin': r.author?.badge === '管理员' }"
                 >
-                  <img v-if="r.author?.avatar" :src="r.author.avatar" :alt="r.author.name" />
+                  <img v-if="r.author?.avatar" :src="r.author.avatar" :alt="r.author.name" @error="onAvatarError" />
                   <template v-else>{{ (r.author?.name || "?").slice(0, 1) }}</template>
                 </span>
                 <div class="cmt-body">
@@ -253,7 +253,8 @@ export default {
       return authState.user?.nickname || authState.user?.username || "";
     },
     myAvatar() {
-      return null; // users 表暂无头像字段，统一回退内置默认头像
+      // FLPR-31：登录用户有真实头像时展示，空值回退首字默认头像
+      return authState.user?.avatar || null;
     },
     totalCount() {
       // 实时跟随本地增删（发表评论/删除后由父级或本组件更新 commentCount）

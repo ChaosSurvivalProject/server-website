@@ -26,8 +26,9 @@
 | GET | `/api/auth/captcha` | 获取注册用滑块拼图验证码（返回 `{captchaId, backgroundImage, pieceImage, sliderY}`，5 分钟有效；横向答案不下发仅存服务端） |
 | POST | `/api/auth/captcha/verify` | 校验滑块位置（body: `{captchaId, x}`，误差 ≤5px 通过并标记该 captchaId；失败即作废，一次性防爆破） |
 | POST | `/api/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId}`，captchaId 须已通过滑块校验，注册时消费；邮箱作为账号，昵称默认取邮箱前缀，角色为普通用户） |
-| POST | `/api/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, username, nickname, role}`；禁用/已删除用户无法登录） |
-| GET | `/api/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{username, nickname, email, role}`；禁用/已删除用户的旧 token 一律失效） |
+| POST | `/api/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, id, username, nickname, role, avatar}`；禁用/已删除用户无法登录） |
+| GET | `/api/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{id, username, nickname, email, role, avatar}`；禁用/已删除用户的旧 token 一律失效） |
+| POST | `/api/auth/avatar` | 上传头像（**登录用户**；`FormData` 字段 `file`，须显式 `Content-Type: multipart/form-data` 否则 422；仅 jpg/png/webp ≤2MB，后端中心裁剪 256×256，文件名含用户 id，覆盖上传自动删除旧文件；返回 `{url}`，落盘 `uploads/avatar/YYYYMM/`，URL 为 `/api/announcement/uploads/avatar/...`；头像非发言，**不受禁言限制**） |
 
 - JWT 默认 24 小时有效，环境变量 `JWT_EXPIRE_HOURS` 可调；签名密钥取环境变量 `JWT_SECRET`，未设置时自动生成并持久化到数据目录。
 - 系统管理员 `xqly-admin` 在后端首次启动时自动初始化，随机强密码写入数据目录 `admin_initial_password.txt`（仅首次初始化时写入，请妥善保管并及时删除）。
@@ -41,11 +42,14 @@
 | PUT | `/api/auth/admin/users/{id}` | 编辑用户（body: `{nickname?, role?, email?, password?}`；**账号 username 不允许修改**；昵称/角色/邮箱可改，密码留空=不修改（忘记密码重置场景）；已删除用户禁止编辑） |
 | PUT | `/api/auth/admin/users/{id}/status` | 切换用户状态（body: `{status: 1\|0\|2}`；1=启用, 0=禁用, 2=删除（软删除，数据保留可恢复）） |
 | DELETE | `/api/auth/admin/users/{id}` | 软删除用户（status 置为已删除，无法登录，数据保留可恢复） |
+| POST | `/api/auth/admin/users/{id}/avatar/reset` | 重置头像为默认（清空 `avatar` 列并删除头像文件；前台回退默认头像，返回更新后的用户对象） |
 
 - 所有接口需 `Authorization: Bearer <JWT>` 且角色为 `admin`，无 token 返回 401，普通用户返回 403。
 - 用户 `status` 三态：`1=正常`、`0=禁用`（无法登录，可重新启用）、`2=已删除`（软删除，无法登录，数据保留可恢复）。
 - 用户表 `username`（账号）为登录标识，创建后不可修改；`nickname`（昵称）为展示名，可随时修改。
-- 存量数据库首次启动自动补 `users.status` / `users.nickname` 列（status 默认 1=正常，nickname 默认为空）。
+- 用户列表 / 详情（含 `/api/auth/admin/users` 的 `items`）下发 `avatar`（头像相对 URL，空串 = 未上传）。
+- 存量数据库首次启动自动补 `users.status` / `users.nickname` 列（status 默认 1=正常，nickname 默认为空）与 `users.avatar` 列（默认空串 = 未上传头像）。
+- 作者简卡（`_author_brief()`，文章 / 评论 / 消息各处下发）的 `avatar` 读 `users.avatar`：空串下发 `null`，前端回退内置默认图；站内信里已存的消息是**下发时点快照**，不回溯改历史消息。
 
 ## 阵营对战内测申请
 

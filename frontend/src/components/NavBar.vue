@@ -29,7 +29,7 @@
           aria-label="用户菜单"
           @click.stop="toggleAvatarMenu"
         >
-          <img class="nav-avatar-img" :src="defaultAvatar" alt="头像" />
+          <img class="nav-avatar-img" :src="avatarUrl" alt="头像" @error="onAvatarError" />
           <span
             class="nav-avatar-name"
             :title="displayNickname"
@@ -44,7 +44,7 @@
         <!-- 头像下拉菜单 -->
         <div v-show="avatarMenuOpen" class="avatar-menu" @click.stop>
           <div class="avatar-menu-header">
-            <img class="avatar-menu-avatar" :src="defaultAvatar" alt="" />
+            <img class="avatar-menu-avatar" :src="avatarUrl" alt="" @error="onAvatarError" />
             <div class="avatar-menu-user">
               <span class="avatar-menu-name" :title="displayNickname">{{
                 displayNickname
@@ -53,6 +53,22 @@
             </div>
           </div>
           <div class="avatar-menu-divider"></div>
+          <!-- 上传头像（FLPR-31）：显式 accept 限制类型，前端先拦一道，后端再兜底校验/裁剪 -->
+          <button
+            type="button"
+            class="avatar-menu-item"
+            :disabled="avatarUploading"
+            @click="triggerAvatarUpload"
+          >
+            <i class="fa-solid fa-camera"></i>{{ avatarUploading ? '上传中…' : '上传头像' }}
+          </button>
+          <input
+            ref="avatarFileInput"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            class="avatar-file-input"
+            @change="onAvatarSelected"
+          />
           <a
             v-if="isAdmin"
             :href="adminUrl"
@@ -172,10 +188,10 @@
 <script>
 import defaultAvatar from "../assets/images/avatar-default.svg";
 import McConfig from "../config/mc-config.js";
-import { authState, clearAuth } from "../utils/auth.js";
+import { authState, clearAuth, updateAuthUser } from "../utils/auth.js";
 import { siteBranding } from "../utils/siteBranding.js";
 import { showForumToast } from "../utils/forumToast.js";
-import { messagesAPI } from "../api/api.js";
+import { messagesAPI, authAPI } from "../api/api.js";
 import MessagesPopup from "../views/Messages.vue";
 import ThemeSwitcher from "./ThemeSwitcher.vue";
 
@@ -190,6 +206,7 @@ export default {
       unreadCount: 0,
       unreadTimer: null,
       showMessagesPopup: false,
+      avatarUploading: false,
     };
   },
   computed: {
@@ -206,6 +223,10 @@ export default {
     },
     currentUser() {
       return authState.user;
+    },
+    /** 真实头像（authState.user.avatar 由 /auth/me 与登录响应下发）；空串回退默认图 */
+    avatarUrl() {
+      return this.currentUser?.avatar || this.defaultAvatar;
     },
     /** 角色显示名 */
     roleText() {
@@ -290,6 +311,41 @@ export default {
     },
     closeAvatarMenu() {
       this.avatarMenuOpen = false;
+    },
+    /** 头像加载失败回退内置默认图（只回退一次，避免 404 触发死循环） */
+    onAvatarError(e) {
+      if (e.target.dataset.avatarFallback) return;
+      e.target.dataset.avatarFallback = "1";
+      e.target.src = this.defaultAvatar;
+    },
+    /** 打开本机文件选择框（隐藏 input 由模板持有） */
+    triggerAvatarUpload() {
+      this.$refs.avatarFileInput?.click();
+    },
+    /** 上传头像：前端先拦类型/大小，后端再兜底校验、裁剪并清理旧文件（FLPR-31） */
+    async onAvatarSelected(e) {
+      const file = e.target.files?.[0];
+      e.target.value = ""; // 清空以便重复选择同一文件
+      if (!file) return;
+      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+        showForumToast("头像仅支持 jpg / png / webp 格式");
+        return;
+      }
+      if (file.size > 2 * 1024 * 1024) {
+        showForumToast("头像大小不能超过 2MB");
+        return;
+      }
+      this.avatarUploading = true;
+      try {
+        const data = await authAPI.uploadAvatar(file);
+        updateAuthUser({ avatar: data.url || "" });
+        showForumToast("头像上传成功");
+        this.closeAvatarMenu();
+      } catch (err) {
+        // 错误提示由 axios 拦截器统一弹出（含后端 400 明确原因）
+      } finally {
+        this.avatarUploading = false;
+      }
     },
     logout() {
       clearAuth();
@@ -657,6 +713,11 @@ nav {
 .avatar-menu-divider {
   height: 1px;
   background-color: var(--border-soft);
+}
+
+/* 上传头像用的隐藏 file input（由菜单项 click 触发，不占据布局） */
+.avatar-file-input {
+  display: none;
 }
 
 .avatar-menu-item {
