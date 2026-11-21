@@ -45,7 +45,7 @@ export default {
   display: flex;
   justify-content: space-between;
   padding: 10px 0;
-  border-bottom: 1px dashed #ccc;
+  border-bottom: 1px dashed var(--border-strong);
 }
 
 .leaderboard-item:last-child {

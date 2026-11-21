@@ -158,12 +158,14 @@ export default {
   color: #fff;
 }
 .banner-l h1 span {
-  color: #a5d6a7;
+  /* 原 #a5d6a7：按主色 50% 兑白，默认绿下逐像素等价，自定义色下同步跟随 */
+  color: color-mix(in srgb, var(--brand) 50%, #ffffff);
   font-weight: 600;
   font-size: 19px;
 }
 .banner-l p {
-  color: #c8e6c9;
+  /* 原 #c8e6c9：按主色 31% 兑白，默认绿下逐像素等价 */
+  color: color-mix(in srgb, var(--brand) 31%, #ffffff);
   font-size: 13.5px;
   max-width: 440px;
   line-height: 1.75;
@@ -217,7 +219,7 @@ export default {
   top: auto;
   width: auto;
   height: auto;
-  color: #a5d6a7;
+  color: color-mix(in srgb, var(--brand) 50%, #ffffff);
   font-size: 12px;
   border: 1px dashed #2e7d32;
   border-radius: 10px;
@@ -244,7 +246,7 @@ export default {
   height: 34px;
   border-radius: 8px;
   border: none;
-  background: rgba(255, 255, 255, 0.94);
+  background: var(--fx-bg-soft);
   padding: 0 12px;
   font-family: inherit;
   font-size: 13px;
@@ -281,7 +283,7 @@ export default {
   border: none;
   border-radius: 0 8px 8px 0;
   background: var(--fx-brand);
-  color: #fff;
+  color: var(--text-on-brand);
   font-size: 14px;
   cursor: pointer;
   transition: background 0.15s ease;

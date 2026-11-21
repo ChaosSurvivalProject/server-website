@@ -26,10 +26,11 @@
   --fx-text-2: #5b6676;
   --fx-text-3: #93a0b1;
 
-  /* 主色与语义色 */
-  --fx-brand: #4caf50;
-  --fx-brand-d: #388e3c;
-  --fx-brand-soft: #e8f5e9;
+  /* 主色与语义色：品牌位跟随全站主题色（深色块在文件底部同名覆盖）。
+     兜底值与官网现状一致，未自定义时视觉零差异；自定义后浅色模式同样生效。 */
+  --fx-brand: var(--brand, #4caf50);
+  --fx-brand-d: var(--brand-active, #388e3c);
+  --fx-brand-soft: var(--brand-tint, #e8f5e9);
   --fx-warn: #f59e0b;
   --fx-warn-soft: #fff7e6;
   --fx-danger: #ef4444;
@@ -60,9 +61,13 @@
   font-size: 14px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-  /* 底色 + 极淡的斜向纹理，避免大面积纯灰显得死板 */
+  /* 底色 + 极淡的斜向纹理，避免大面积纯灰显得死板（跟随主题） */
   background-color: var(--fx-bg);
-  background-image: linear-gradient(180deg, rgba(238, 242, 247, 0.92), rgba(238, 242, 247, 0.98));
+  background-image: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--fx-bg) 92%, transparent),
+    color-mix(in srgb, var(--fx-bg) 98%, transparent)
+  );
 }
 
 /* ── 通用容器 ── */
@@ -111,14 +116,14 @@
   font-size: 13.5px;
   font-weight: 600;
   border: 1px solid var(--fx-line);
-  background: #fff;
+  background: var(--fx-card);
   color: var(--fx-text-2);
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.15s ease;
 }
 .fx-btn:hover:not(:disabled) {
-  border-color: #c7d2e0;
+  border-color: var(--border-strong);
   color: var(--fx-text);
 }
 .fx-btn:disabled {
@@ -128,27 +133,27 @@
 .fx-btn-primary {
   background: var(--fx-brand);
   border-color: var(--fx-brand);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 .fx-btn-primary:hover:not(:disabled) {
   background: var(--fx-brand-d);
   border-color: var(--fx-brand-d);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 /* 打赏按钮用金色而不是 --fx-ok：品牌已改为绿色，再用相近的绿两者会分不清，
    且"金币/打赏"的语义本就贴近金色 */
 .fx-btn-ok {
-  background: #f59e0b;
-  border-color: #f59e0b;
-  color: #fff;
+  background: var(--warn);
+  border-color: var(--warn);
+  color: #241a00;
 }
 .fx-btn-ok:hover:not(:disabled) {
   filter: brightness(0.94);
-  color: #fff;
+  color: #241a00;
 }
 .fx-btn-danger {
-  background: #fff;
-  border-color: #f7c6c6;
+  background: var(--fx-card);
+  border-color: color-mix(in srgb, var(--danger) 45%, transparent);
   color: var(--fx-danger);
 }
 .fx-btn-danger:hover:not(:disabled) {
@@ -180,9 +185,9 @@
 }
 .fx-input:focus {
   outline: none;
-  border-color: #a5d6a7;
-  background: #fff;
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.09);
+  border-color: var(--brand-tint-2);
+  background: var(--fx-card);
+  box-shadow: 0 0 0 3px var(--brand-ring);
 }
 textarea.fx-input {
   height: auto;
@@ -208,12 +213,12 @@ select.fx-input {
   white-space: nowrap;
 }
 .fx-tag-top {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: var(--danger-soft);
+  color: var(--danger-text);
 }
 .fx-tag-featured {
-  background: #fef3c7;
-  color: #b45309;
+  background: var(--warn-soft);
+  color: var(--warn-text);
 }
 .fx-tag-cat {
   background: var(--fx-bg-soft);
@@ -234,7 +239,7 @@ select.fx-input {
 }
 .fx-tag-hash.on {
   background: var(--fx-brand-soft);
-  border-color: #a5d6a7;
+  border-color: var(--brand-tint-2);
   color: var(--fx-brand-d);
   font-weight: 600;
 }
@@ -261,28 +266,28 @@ select.fx-input {
 }
 .fx-banner-wait {
   background: var(--fx-warn-soft);
-  color: #92400e;
-  border: 1px solid #fcd34d;
+  color: var(--warn-text);
+  border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
 }
 .fx-banner-reject {
   background: var(--fx-danger-soft);
-  color: #991b1b;
-  border: 1px solid #fca5a5;
+  color: var(--danger-text);
+  border: 1px solid color-mix(in srgb, var(--danger) 55%, transparent);
 }
 .fx-banner-offline {
-  background: #eef2f7;
-  color: #475569;
-  border: 1px solid #cbd5e1;
+  background: var(--surface-3);
+  color: var(--text-2);
+  border: 1px solid var(--border-strong);
 }
 
 /* ── 空状态 ── */
 .fx-empty {
-  border: 1.5px dashed #d3dbe6;
+  border: 1.5px dashed var(--border-strong);
   border-radius: var(--fx-radius);
   padding: 46px 20px;
   text-align: center;
   color: var(--fx-text-3);
-  background: rgba(255, 255, 255, 0.6);
+  background: color-mix(in srgb, var(--fx-card) 60%, transparent);
 }
 .fx-empty-title {
   font-size: 15px;
@@ -301,10 +306,10 @@ select.fx-input {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 700;
   flex: 0 0 auto;
-  background: linear-gradient(135deg, #a5d6a7, #4caf50);
+  background: linear-gradient(135deg, var(--brand-tint-2), var(--brand));
   overflow: hidden;
 }
 .fx-avatar img {
@@ -314,7 +319,7 @@ select.fx-input {
   display: block;
 }
 .fx-avatar-admin {
-  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  background: linear-gradient(135deg, var(--warn-text), var(--warn));
 }
 .fx-avatar-guest {
   background: linear-gradient(135deg, #cbd5e1, #94a3b8);
@@ -355,7 +360,7 @@ select.fx-input {
   padding: 0 8px;
   border-radius: 8px;
   border: 1px solid var(--fx-line);
-  background: #fff;
+  background: var(--fx-card);
   color: var(--fx-text-2);
   font-family: inherit;
   font-size: 13px;
@@ -364,12 +369,12 @@ select.fx-input {
   transition: 0.15s;
 }
 .fx-pager button:hover:not(:disabled):not(.on) {
-  border-color: #c7d2e0;
+  border-color: var(--border-strong);
 }
 .fx-pager button.on {
   background: var(--fx-brand);
   border-color: var(--fx-brand);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 .fx-pager button:disabled {
   opacity: 0.45;
@@ -470,7 +475,7 @@ select.fx-input {
 .fx-md {
   font-size: 15px;
   line-height: 1.85;
-  color: #2b3648;
+  color: var(--text);
   word-break: break-word;
 }
 .fx-md h1,
@@ -503,7 +508,7 @@ select.fx-input {
 .fx-md blockquote {
   margin: 14px 0;
   padding: 10px 16px;
-  border-left: 3px solid #a5d6a7;
+  border-left: 3px solid var(--brand-tint-2);
   background: var(--fx-brand-soft);
   border-radius: 0 8px 8px 0;
   color: var(--fx-text-2);
@@ -513,13 +518,13 @@ select.fx-input {
   margin: 0;
 }
 .fx-md code {
-  background: #f1f5f9;
+  background: var(--code-inline-bg);
   border: 1px solid var(--fx-line);
   border-radius: 5px;
   padding: 1px 6px;
   font-family: var(--fx-mono);
   font-size: 13px;
-  color: #b91c1c;
+  color: var(--code-inline-text);
   /* 行内长代码 token（超长标识符/URL）允许在词内断行，不撑破所在段落/单元格 */
   overflow-wrap: anywhere;
 }
@@ -528,7 +533,7 @@ select.fx-input {
   background: none;
   border: none;
   padding: 0;
-  color: #334155;
+  color: var(--code-text);
   font-size: 12.8px;
   line-height: 1.65;
 }
@@ -542,7 +547,7 @@ select.fx-input {
 }
 .fx-md a {
   color: var(--fx-brand-d);
-  border-bottom: 1px solid #a5d6a7;
+  border-bottom: 1px solid var(--brand-tint-2);
 }
 /* 宽表格横向滚动，不撑破容器（PRD §10.5 移动端验收项） */
 /* display:block 让 table 成为普通块盒，其上 overflow-x:auto 就是表格自己的
@@ -576,12 +581,107 @@ select.fx-input {
 }
 /* markdown.js 产出的代码块包装（类名由该文件固定，勿单方面改这里） */
 .fx-md .announcement-code-block {
-  background: #fbfcfe;
+  background: var(--code-bg);
   border-color: var(--fx-line);
 }
 .fx-md .announcement-code-block pre {
   padding: 14px;
   overflow-x: auto;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   评论互动共享样式：内联回复框（ReplyForm.vue）+ 赞/回复/删除操作
+   ══════════════════════════════════════════════════════════════════
+   ReplyForm 是独立子组件，Vue 只给其根节点补父组件的 data-v；
+   它内部节点拿不到父组件的 scoped 样式。这些类又被文章页评论区与
+   /forum/comment/:id 详情页共用，因此统一放全局 stylesheet 只定义一份
+   （原先挂在 CommentSection.vue 的非 scoped <style> 里，详情页无法复用）。
+   类名沿用 cmt- 前缀不动，避免改动既有组件模板。 */
+.cmt-form {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 6px;
+  padding: 12px;
+  background: var(--fx-bg-soft);
+  border: 1px solid var(--fx-line);
+  border-radius: 10px;
+}
+.cmt-form-main {
+  flex: 1;
+  min-width: 0;
+}
+.cmt-form-tip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--fx-text-2);
+  margin-bottom: 7px;
+}
+/* 「回复 @某人」中的 @某人（评论列表里也用同一个类） */
+.reply-to {
+  color: var(--fx-brand);
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+.cmt-form-quote {
+  display: inline-block;
+  max-width: 260px;
+  margin-left: 6px;
+  color: var(--fx-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.cmt-form-textarea {
+  min-height: 64px;
+  font-size: 13.5px;
+  background: var(--fx-card);
+}
+.cmt-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+/* 字数提示（顶部输入区与回复框共用） */
+.cmt-hint {
+  font-size: 12px;
+  color: var(--fx-text-3);
+}
+/* 赞 / 回复 / 取消 这类图标文字的裸按钮 */
+.cmt-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--fx-text-3);
+  background: none;
+  border: none;
+  padding: 2px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.14s;
+}
+.cmt-act:hover {
+  background: var(--fx-bg-soft);
+  color: var(--fx-text-2);
+}
+.cmt-act.on {
+  color: var(--danger-text);
+  font-weight: 600;
+}
+.cmt-act-danger {
+  color: var(--danger-text);
+}
+.cmt-act-danger:hover {
+  background: var(--fx-danger-soft);
+  color: var(--danger-text);
 }
 
 /* ══════════════════════════════════════════════════════════════════
@@ -598,4 +698,39 @@ select.fx-input {
   .fx-wrap-narrow {
     padding: 0;
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   深色模式：论坛 / 资源中心共享令牌覆盖
+   上面的组件样式只引用 --fx-* 令牌，这里一处切换即可全站生效，
+   不需要给每个组件写两套样式。
+   ══════════════════════════════════════════════════════════════════ */
+[data-theme='dark'] .forum-root {
+  --fx-bg: #0f1319;
+  --fx-bg-soft: #1b212a;
+  --fx-card: #1b212a;
+  --fx-line: #333c48;
+  --fx-line-soft: #2b3441;
+
+  --fx-text: #e6e9ef;
+  --fx-text-2: #aeb8c6;
+  --fx-text-3: #7d8999;
+
+  --fx-brand: var(--brand);
+  --fx-brand-d: var(--brand-hover);
+  --fx-brand-soft: var(--brand-tint);
+  --fx-warn: var(--warn);
+  --fx-warn-soft: var(--warn-soft);
+  --fx-danger: var(--danger);
+  --fx-danger-soft: var(--danger-soft);
+  --fx-ok: var(--success);
+  --fx-ok-soft: var(--success-soft);
+
+  --fx-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 14px rgba(0, 0, 0, 0.35);
+  --fx-shadow-l: 0 8px 28px rgba(0, 0, 0, 0.55);
+}
+
+/* 论坛页底色在深色下用主题背景图（style.css 已叠暗） */
+[data-theme='dark'] .forum-page {
+  background-image: var(--bg-image);
 }

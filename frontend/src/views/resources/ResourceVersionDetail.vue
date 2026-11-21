@@ -310,12 +310,12 @@ export default {
   text-decoration: none;
   padding: 6px 12px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
   border: 1px solid var(--fx-line);
   transition: all 0.15s ease;
 }
 .res-vd-crumb-link:hover {
-  border-color: #a5d6a7;
+  border-color: var(--brand-tint-2);
   box-shadow: var(--fx-shadow);
 }
 .res-vd-crumb-link i {

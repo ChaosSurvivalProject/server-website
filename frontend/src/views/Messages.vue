@@ -309,15 +309,23 @@ export default {
         detailVisible.value = true;
         return;
       }
-      if (msg.type === "reply" && msg.relatedArticleId) {
-        window.location.href = `/forum/post/${msg.relatedArticleId}${msg.relatedCommentId ? `?commentId=${msg.relatedCommentId}` : ""}`;
-      } else if (msg.type === "like" && msg.relatedArticleId) {
-        // 点赞通知：跳转到被点赞的文章；评论点赞额外定位到该评论
-        window.location.href = `/forum/post/${msg.relatedArticleId}${msg.relatedCommentId ? `?commentId=${msg.relatedCommentId}` : ""}`;
+      // reply / 评论点赞：直达单条评论详情页，不依赖文章页评论区的分页与 DOM 定位
+      // （FLPR-30；文章点赞 relatedCommentId 为空，仍回文章页）
+      if (
+        (msg.type === "reply" || msg.type === "like") &&
+        msg.relatedCommentId
+      ) {
+        window.location.href = `/forum/comment/${msg.relatedCommentId}`;
       } else if (msg.type === "article_review" && msg.relatedArticleId) {
         window.location.href = `/forum/post/${msg.relatedArticleId}`;
       } else if (msg.type === "beta_review") {
         window.location.href = "/faction-beta";
+      } else if (
+        (msg.type === "reply" || msg.type === "like") &&
+        msg.relatedArticleId
+      ) {
+        // 兜底：历史消息缺 relatedCommentId 时仍能回到文章页
+        window.location.href = `/forum/post/${msg.relatedArticleId}`;
       }
       messagesAPI.markRead(msg.id).catch(() => {});
       loadUnreadCount();
@@ -418,7 +426,7 @@ export default {
   width: 640px;
   max-width: 94vw;
   max-height: 82vh;
-  background: white;
+  background: var(--surface);
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   display: flex;
@@ -429,7 +437,7 @@ export default {
   justify-content: space-between;
   align-items: center;
   padding: 14px 18px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-soft);
 }
 .messages-header h2 {
   margin: 0;
@@ -445,9 +453,9 @@ export default {
   width: 48px;
   min-height: 48px;
   border-radius: 12px;
-  border: 1px solid #c8e6c9;
-  background: #e8f5e9;
-  color: #4caf50;
+  border: 1px solid var(--brand-tint-2);
+  background: var(--brand-tint);
+  color: var(--brand);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -465,24 +473,24 @@ export default {
   margin: 0;
   font-size: 12px;
   line-height: 1.4;
-  color: #999;
+  color: var(--text-3);
 }
 .close-btn {
   background: none;
   border: none;
   font-size: 24px;
   cursor: pointer;
-  color: #666;
+  color: var(--text-2);
   line-height: 1;
 }
 .close-btn:hover {
-  color: #333;
+  color: var(--text);
 }
 .tabs {
   display: flex;
   gap: 8px;
   padding: 10px 18px 0;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-soft);
 }
 .tab-btn {
   background: none;
@@ -490,16 +498,16 @@ export default {
   padding: 8px 12px;
   cursor: pointer;
   font-size: 14px;
-  color: #666;
+  color: var(--text-2);
   position: relative;
 }
 .tab-btn.active {
-  color: #4caf50;
+  color: var(--brand);
   font-weight: bold;
 }
 .tab-unread {
   margin-left: 2px;
-  color: #f56c6c;
+  color: var(--danger);
   font-size: 13px;
   font-weight: 500;
 }
@@ -514,12 +522,12 @@ export default {
   padding: 4px 10px;
   cursor: pointer;
   font-size: 12px;
-  color: #999;
+  color: var(--text-3);
   border-radius: 4px;
 }
 .sub-tab-btn.active {
-  color: #4caf50;
-  background: #e8f5e9;
+  color: var(--brand);
+  background: var(--brand-tint);
   font-weight: 500;
 }
 .message-list {
@@ -536,10 +544,10 @@ export default {
   transition: background 0.2s;
 }
 .message-item:hover {
-  background: #f9f9f9;
+  background: var(--surface-hover);
 }
 .message-item.unread {
-  background: #f0f9f0;
+  background: var(--brand-tint);
 }
 .message-item.deleted {
   opacity: 0.5;
@@ -552,8 +560,8 @@ export default {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #e8f5e9;
-  color: #4caf50;
+  background: var(--brand-tint);
+  color: var(--brand);
   font-size: 14px;
   flex-shrink: 0;
 }
@@ -571,27 +579,27 @@ export default {
   font-size: 12px;
   padding: 2px 6px;
   border-radius: 4px;
-  background: #f0f0f0;
-  color: #666;
+  background: var(--surface-3);
+  color: var(--text-2);
   flex-shrink: 0;
 }
 .tag-reply {
-  background: #e3f2fd;
-  color: #1976d2;
+  background: var(--info-soft);
+  color: var(--info);
 }
 .tag-like {
-  background: #fce4ec;
-  color: #c2185b;
+  background: var(--danger-soft);
+  color: var(--danger-text);
 }
 .tag-system_announcement,
 .tag-activity_announcement {
-  background: #fff3e0;
-  color: #f57c00;
+  background: var(--warn-soft);
+  color: var(--warn);
 }
 .tag-article_review,
 .tag-beta_review {
-  background: #f3e5f5;
-  color: #7b1fa2;
+  background: var(--surface-3);
+  color: var(--text-2);
 }
 .msg-title-text {
   font-weight: 500;
@@ -601,7 +609,7 @@ export default {
 }
 .msg-content {
   font-size: 13px;
-  color: #666;
+  color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -609,14 +617,14 @@ export default {
 }
 .msg-meta {
   font-size: 12px;
-  color: #999;
+  color: var(--text-3);
 }
 .msg-quote {
   font-size: 12px;
-  color: #666;
-  background: #f5f5f5;
+  color: var(--text-2);
+  background: var(--surface);
   padding: 4px 8px;
-  border-left: 3px solid #ddd;
+  border-left: 3px solid var(--border-soft);
   margin-top: 4px;
   border-radius: 0 4px 4px 0;
   white-space: nowrap;
@@ -626,23 +634,23 @@ export default {
 .msg-delete {
   background: none;
   border: none;
-  color: #999;
+  color: var(--text-3);
   cursor: pointer;
   padding: 4px;
   font-size: 14px;
 }
 .msg-delete:hover {
-  color: #f56c6c;
+  color: var(--danger);
 }
 .loading,
 .empty {
   text-align: center;
   padding: 32px;
-  color: #999;
+  color: var(--text-3);
 }
 .empty-icon {
   font-size: 38px;
-  color: #bbb;
+  color: var(--text-3);
   margin-bottom: 8px;
 }
 .pagination {
@@ -654,8 +662,8 @@ export default {
 }
 .pagination button {
   padding: 6px 12px;
-  border: 1px solid #ddd;
-  background: white;
+  border: 1px solid var(--border-soft);
+  background: var(--surface);
   border-radius: 4px;
   cursor: pointer;
 }
@@ -665,20 +673,20 @@ export default {
 }
 .footer {
   padding: 10px 18px 14px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--border-soft);
 }
 .btn-block {
   width: 100%;
   padding: 10px;
   border: none;
   border-radius: 4px;
-  background: #4caf50;
-  color: white;
+  background: var(--brand);
+  color: var(--text-on-brand);
   font-size: 14px;
   cursor: pointer;
 }
 .btn-block:hover {
-  background: #43a047;
+  background: var(--brand-hover);
 }
 
 .msg-detail-overlay {
@@ -694,7 +702,7 @@ export default {
   width: 520px;
   max-width: 94vw;
   max-height: 78vh;
-  background: white;
+  background: var(--surface);
   border-radius: 10px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
   display: flex;
@@ -706,7 +714,7 @@ export default {
   align-items: center;
   gap: 12px;
   padding: 14px 18px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--border-soft);
 }
 .msg-detail-icon {
   width: 36px;
@@ -727,7 +735,7 @@ export default {
 .msg-detail-title {
   font-size: 15px;
   font-weight: 600;
-  color: #111827;
+  color: var(--text);
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -743,49 +751,49 @@ export default {
   display: inline-block;
   padding: 1px 8px;
   border-radius: 4px;
-  background: #fff3e0;
-  color: #f57c00;
+  background: var(--warn-soft);
+  color: var(--warn);
   font-size: 12px;
   line-height: 1.6;
 }
 .msg-detail-time {
   font-size: 12px;
-  color: #9ca3af;
+  color: var(--text-3);
 }
 .close-btn {
   background: none;
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #9ca3af;
+  color: var(--text-3);
   line-height: 1;
   padding: 4px;
 }
 .close-btn:hover {
-  color: #4b5563;
+  color: var(--text-2);
 }
 .msg-detail-body {
   padding: 18px;
   overflow-y: auto;
   line-height: 1.7;
-  color: #4b5563;
+  color: var(--text-2);
 }
 .msg-detail-body-title {
   font-size: 16px;
   font-weight: 700;
-  color: #111827;
+  color: var(--text);
   margin-bottom: 10px;
   line-height: 1.4;
 }
 .msg-detail-body-content {
   font-size: 14px;
-  color: #4b5563;
+  color: var(--text-2);
 }
 .msg-detail-body-content :deep(p) {
   margin: 0 0 10px;
 }
 .msg-detail-body-content :deep(pre) {
-  background: #f6f8fa;
+  background: var(--code-bg);
   padding: 10px;
   border-radius: 6px;
   overflow-x: auto;
@@ -802,12 +810,12 @@ export default {
 .msg-detail-body-content :deep(blockquote) {
   margin: 0 0 10px;
   padding: 8px 12px;
-  border-left: 4px solid #e5e7eb;
-  color: #6b7280;
-  background: #f9fafb;
+  border-left: 4px solid var(--border-soft);
+  color: var(--text-2);
+  background: var(--surface);
 }
 .msg-detail-body-content :deep(a) {
-  color: #2563eb;
+  color: var(--info);
   text-decoration: none;
 }
 .msg-detail-body-content :deep(a:hover) {
@@ -826,15 +834,15 @@ export default {
 .msg-detail-close-btn {
   background: none;
   border: none;
-  color: #6b7280;
+  color: var(--text-2);
   font-size: 14px;
   cursor: pointer;
   padding: 6px 10px;
   border-radius: 4px;
 }
 .msg-detail-close-btn:hover {
-  color: #111827;
-  background: #f3f4f6;
+  color: var(--text);
+  background: var(--surface-2);
 }
 
 /* 主弹窗过渡 */

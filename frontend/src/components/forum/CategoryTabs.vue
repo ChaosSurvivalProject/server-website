@@ -52,7 +52,7 @@ export default {
   gap: 7px;
   padding: 7px 15px;
   border-radius: 999px;
-  background: #fff;
+  background: var(--fx-card);
   border: 1px solid var(--fx-line);
   font-family: inherit;
   font-size: 13.5px;
@@ -64,17 +64,17 @@ export default {
   flex: 0 0 auto;
 }
 .cat-tab:hover {
-  border-color: #c7d2e0;
+  border-color: var(--border-strong);
 }
 .cat-tab.on {
   background: var(--fx-brand);
   border-color: var(--fx-brand);
-  color: #fff;
+  color: var(--text-on-brand);
   font-weight: 600;
 }
 /* 选中态的白点覆盖板块色，避免蓝底蓝点看不清 */
 .cat-tab.on .fx-dot {
-  background: #fff !important;
+  background: var(--text-on-brand) !important;
   opacity: 0.9;
 }
 </style>

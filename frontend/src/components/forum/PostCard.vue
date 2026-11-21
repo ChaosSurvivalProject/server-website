@@ -150,7 +150,7 @@ export default {
   cursor: pointer;
 }
 .fx-post-card:hover {
-  border-color: #c7d2e0;
+  border-color: var(--border-strong);
   box-shadow: 0 4px 18px rgba(16, 24, 40, 0.09);
   transform: translateY(-1px);
 }

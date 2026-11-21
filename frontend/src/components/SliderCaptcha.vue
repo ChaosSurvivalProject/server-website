@@ -210,7 +210,7 @@ export default {
   width: 100%;
   aspect-ratio: 300 / 150;
   border: 3px solid var(--border-color);
-  background-color: #eeeeee;
+  background-color: var(--surface-3);
   overflow: hidden;
   box-shadow: 3px 3px 0 0 rgba(0, 0, 0, 0.12);
 }
@@ -244,7 +244,7 @@ export default {
   justify-content: center;
   font-size: 13px;
   color: var(--text-color);
-  background: rgba(255, 255, 255, 0.92);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
   border: 2px solid var(--border-color);
   cursor: pointer;
   padding: 0;
@@ -252,7 +252,7 @@ export default {
 
 .sc-refresh:hover {
   background: var(--primary-color);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 /* ── 滑轨 ───────────────────────────────────────────────── */
@@ -261,7 +261,7 @@ export default {
   margin-top: 10px;
   height: 42px;
   border: 3px solid var(--border-color);
-  background-color: #fff;
+  background-color: var(--surface);
   overflow: hidden;
   touch-action: none;
   box-shadow: 3px 3px 0 0 rgba(0, 0, 0, 0.12);
@@ -273,12 +273,12 @@ export default {
 }
 
 .sc-track.fail {
-  border-color: #c62828;
+  border-color: var(--danger);
   animation: sc-shake 0.35s ease;
 }
 
 .sc-track.fail .sc-progress {
-  background-color: #ffebee;
+  background-color: var(--danger-soft);
 }
 
 @keyframes sc-shake {
@@ -299,7 +299,7 @@ export default {
   top: 0;
   bottom: 0;
   left: 0;
-  background-color: #e8f5e9;
+  background-color: var(--brand-tint);
 }
 
 .sc-hint {
@@ -310,17 +310,17 @@ export default {
   justify-content: center;
   font-size: 13px;
   letter-spacing: 2px;
-  color: #9e9e9e;
+  color: var(--text-3);
   pointer-events: none;
   user-select: none;
 }
 
 .sc-track.success .sc-hint {
-  color: #2e7d32;
+  color: var(--success-text);
 }
 
 .sc-track.fail .sc-hint {
-  color: #c62828;
+  color: var(--danger-text);
 }
 
 .sc-handle {
@@ -334,7 +334,7 @@ export default {
   justify-content: center;
   font-size: 15px;
   color: var(--text-color);
-  background-color: #fff;
+  background-color: var(--surface);
   border-right: 3px solid var(--border-color);
   cursor: grab;
   touch-action: none;
@@ -354,11 +354,11 @@ export default {
 .sc-track.success .sc-handle {
   background-color: var(--primary-color);
   border-right-color: var(--primary-color);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 .sc-track.fail .sc-handle {
-  background-color: #ffcdd2;
-  color: #c62828;
+  background-color: var(--danger-soft);
+  color: var(--danger-text);
 }
 </style>

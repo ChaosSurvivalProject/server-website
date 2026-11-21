@@ -322,6 +322,52 @@ def main() -> int:
             check("他人删我的消息 400（软删是全局标记，必须拦）",
                   client.delete(f"/api/messages/{target}", headers=H(bob)).status_code == 400)
 
+        print("\n[7c] 单条评论详情（FLPR-30：站内信直达页取数口）")
+        d1 = client.get(f"/api/forum/comments/{c1['id']}").json()["data"]
+        check("顶层 id 可查看详情", d1["comment"]["id"] == c1["id"], str(d1["comment"]["id"]))
+        check("顶层评论 rootComment 为 null", d1["rootComment"] is None)
+        check("全部回复正序不分页", [x["id"] for x in d1["replies"]] == [c2["id"], c3["id"]],
+              str([x["id"] for x in d1["replies"]]))
+        check("回复带 replyToName", d1["replies"][1]["replyToName"] == "爱丽丝",
+              str(d1["replies"][1].get("replyToName")))
+        check("匿名 liked 恒 false", all(x["liked"] is False for x in d1["replies"]))
+        check("文章摘要（id/title/author）",
+              d1["article"]["id"] == aid and d1["article"]["title"] == "红石密码门教程"
+              and d1["article"]["author"]["name"] == "爱丽丝", str(d1["article"]))
+        d3 = client.get(f"/api/forum/comments/{c3['id']}", headers=H(alice)).json()["data"]
+        check("回复 id 同样作为主评论", d3["comment"]["id"] == c3["id"], str(d3["comment"]["id"]))
+        check("回复主评论带所属顶层上下文",
+              d3["rootComment"] is not None and d3["rootComment"]["id"] == c1["id"],
+              str(d3["rootComment"]))
+        check("回复入参也返回全部兄弟回复",
+              [x["id"] for x in d3["replies"]] == [c2["id"], c3["id"]])
+        check("点赞态随 viewer 变化（Alice 赞过 c3）",
+              d3["comment"]["liked"] is True and d3["comment"]["likeCount"] == 1,
+              str(d3["comment"]["likeCount"]))
+        check("不存在的评论 id 返回 404", client.get("/api/forum/comments/999999").status_code == 404)
+        # 已删除：临时建一条再删，验证 404 空态口径且计数复原
+        tmp = client.post(f"/api/forum/articles/{aid}/comments", headers=H(bob),
+                          json={"content": "临时评论"}).json()["data"]
+        check("临时评论详情可读", client.get(f"/api/forum/comments/{tmp['id']}").status_code == 200)
+        check("删除临时评论 200",
+              client.delete(f"/api/forum/comments/{tmp['id']}", headers=H(bob)).status_code == 200)
+        check("已删除评论详情 404（前端据此给明确空态）",
+              client.get(f"/api/forum/comments/{tmp['id']}").status_code == 404)
+        check("评论计数复原",
+              client.get(f"/api/forum/articles/{aid}").json()["data"]["commentCount"] == 3)
+        # 可见性：评论挂在未公开文章下时同样按文章口径拦住
+        hidden_aid = client.post("/api/forum/articles", headers=H(alice), json={
+            "categoryId": cat_id, "title": "未公开文章上的评论",
+            "content": "x" * 20}).json()["data"]["id"]
+        hidden_c = client.post(f"/api/forum/articles/{hidden_aid}/comments", headers=H(alice),
+                               json={"content": "未公开文章上的评论内容"}).json()["data"]
+        check("未公开文章下评论详情匿名 404",
+              client.get(f"/api/forum/comments/{hidden_c['id']}").status_code == 404)
+        check("未公开文章下评论详情作者可读",
+              client.get(f"/api/forum/comments/{hidden_c['id']}", headers=H(alice)).status_code == 200)
+        check("清理临时文章 200",
+              client.delete(f"/api/forum/admin/articles/{hidden_aid}", headers=H(admin)).status_code == 200)
+
         print("\n[8] 越权与不可见性")
         check("非作者编辑回填 404",
               client.get(f"/api/forum/articles/{aid}/edit", headers=H(bob)).status_code == 404)

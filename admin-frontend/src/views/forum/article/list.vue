@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted, onBeforeUnmount } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import {
   Refresh,
@@ -437,6 +437,15 @@ const previewRow = ref<ForumArticleItem | null>(null);
  *  连着预览不同文章时必须换 id（或换 key），否则会显示上一篇文章的内容。 */
 const previewId = ref("forum-preview");
 
+/** 后台深色模式是 pure-admin 通过 <html class="dark"> 切换的（见
+ *  layout/hooks/useDataThemeChange.ts），没有现成的全局响应式 store 可订阅。
+ *  这里用 MutationObserver 监听 html 的 class，派生出 MdPreview 需要的
+ *  'light' / 'dark'：主题切换后预览抽屉即时跟随，无需重新打开抽屉。 */
+const previewTheme = ref<"light" | "dark">(
+  document.documentElement.classList.contains("dark") ? "dark" : "light"
+);
+let themeObserver: MutationObserver | null = null;
+
 const openPreview = async (row: ForumArticleItem) => {
   actingId.value = row.id;
   try {
@@ -550,6 +559,21 @@ const formatSize = (n: number) => {
 onMounted(() => {
   fetchOptions();
   fetchData();
+  // 跟随后台浅色/深色切换（pure-admin 只切 html.dark class，无响应式 store）
+  themeObserver = new MutationObserver(() => {
+    previewTheme.value = document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light";
+  });
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"]
+  });
+});
+
+onBeforeUnmount(() => {
+  themeObserver?.disconnect();
+  themeObserver = null;
 });
 </script>
 
@@ -976,14 +1000,20 @@ onMounted(() => {
           高度不加限制——让内容自然撑开，超出时由 el-drawer 的 body 滚动。
         -->
         <!--
-          code-theme="github"：**必须显式指定**。md-editor-v3 的默认 codeTheme 是
-          `atomOneDark`（深色），不指定就会渲染成深色代码块，与主站公告详情不一致；
-          github 是**浅色**变体。底色与文字色另由 assets/styles/markdown.css 显式钉死。
+          code-theme="github"：语法高亮 token 用 github 家族；配合 :theme 与
+          :code-style-reverse="false"，浅色加载 github / 深色加载 github-dark，
+          token 颜色随后台主题切换（与前台编辑器同一套做法）。
+
+          :theme 绑定后台深色模式：MdPreview 默认恒为 light（白底深字），
+          不绑定则在深色后台里仍是一整块白。previewTheme 由 html.dark 派生。
+          代码块底色另由下方 .md-preview :deep() 样式覆盖全局 markdown.css 的浅色钉死值。
         -->
         <MdPreview
           :id="previewId"
           :key="previewId"
           :model-value="previewRow.content || ''"
+          :theme="previewTheme"
+          :code-style-reverse="false"
           code-theme="github"
           class="md-preview"
         />
@@ -1254,6 +1284,44 @@ onMounted(() => {
 /* 预览区内的最后一块不留多余空白 */
 .md-preview :deep(.md-editor-preview-wrapper > *:last-child) {
   margin-bottom: 0;
+}
+
+/* ── 深色模式适配 ──────────────────────────────────────────────────
+   MdPreview 的 :theme 已由 previewTheme 绑定（随 html.dark 切换），
+   md-editor 自带的 [data-theme=dark] 色板会把整块底/字变深。
+   但全站 assets/styles/markdown.css 为了「与浅色公告详情一致」把代码块
+   底色/文字钉死成了浅色 hex（#f6f8fa / #24292e），深色下会是一块白，
+   必须用更高优先级的 :deep() 覆盖成 Element Plus 深色令牌。 */
+/* .md-preview 本身就在 .md-editor 根节点上（class="md-editor md-preview …"），
+   直接在本组件作用域内改它自己的变量即可，无需 :deep() 找后代。 */
+html.dark .md-preview {
+  --md-color: var(--el-text-color-primary);
+  --md-hover-color: var(--el-text-color-primary);
+}
+html.dark .md-preview :deep(.md-editor-preview pre),
+html.dark .md-preview :deep(.md-editor-preview pre.hljs),
+html.dark .md-preview :deep(.md-editor-preview .md-editor-code),
+html.dark .md-preview :deep(.md-editor-preview .md-editor-code-fold) {
+  background-color: var(--el-fill-color-blank);
+  border-color: var(--el-border-color);
+  color: var(--el-text-color-primary);
+}
+html.dark .md-preview :deep(.md-editor-preview .md-editor-code .md-editor-code-head) {
+  background-color: var(--el-fill-color-light);
+  border-bottom-color: var(--el-border-color);
+}
+html.dark .md-preview :deep(.md-editor-preview pre code),
+html.dark .md-preview :deep(.md-editor-preview .md-editor-code code) {
+  background-color: transparent;
+  color: var(--el-text-color-primary);
+}
+html.dark .md-preview :deep(.md-editor-preview .md-editor-code-line-number) {
+  color: var(--el-text-color-placeholder);
+}
+html.dark .md-preview :deep(.md-editor-preview :not(pre) > code) {
+  background-color: var(--el-fill-color-light);
+  color: #e6c07b;
+  border-color: var(--el-border-color);
 }
 
 .cmt-drawer-tip {

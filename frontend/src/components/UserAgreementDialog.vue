@@ -93,7 +93,7 @@ export default {
   line-height: 1.8;
   margin: 0 0 14px;
   padding: 10px 12px;
-  background-color: #fafafa;
+  background-color: var(--surface);
   border: 2px solid var(--border-color);
 }
 
@@ -112,7 +112,7 @@ export default {
 
 .ua-body li {
   font-size: 13px;
-  color: #555;
+  color: var(--text-2);
   line-height: 1.8;
   margin-bottom: 6px;
 }
@@ -123,7 +123,7 @@ export default {
 
 .ua-footnote {
   font-size: 12px;
-  color: #888;
+  color: var(--text-3);
   line-height: 1.7;
   margin: 16px 0 0;
   padding-top: 10px;
@@ -149,7 +149,7 @@ export default {
 
 .ua-btn-primary {
   background-color: var(--primary-color);
-  color: #fff;
+  color: var(--text-on-brand);
 }
 
 .ua-btn-primary:hover {
@@ -157,11 +157,11 @@ export default {
 }
 
 .ua-btn-ghost {
-  background-color: #fff;
+  background-color: var(--surface);
   color: var(--text-color);
 }
 
 .ua-btn-ghost:hover {
-  background-color: #f0f0f0;
+  background-color: var(--surface-3);
 }
 </style>

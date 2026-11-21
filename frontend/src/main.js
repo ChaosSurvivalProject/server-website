@@ -7,6 +7,10 @@ import '@fortawesome/fontawesome-free/css/all.min.css'
 import './assets/styles/markdown.css';
 // 社区（论坛）模块的设计令牌与 Markdown 正文排版（全局，组件私有样式仍各自 scoped）
 import './assets/styles/forum.css'
+// 主题：恢复持久化的主题模式 / 自定义主题色，并监听系统主题变化。
+// index.html 的首屏内联脚本已同步应用过一次，这里补齐响应式状态与监听。
+import { initTheme } from './utils/theme.js'
+initTheme()
 
 // 创建Vue应用实例
 const app = createApp(App)

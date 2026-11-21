@@ -5,8 +5,17 @@ export default defineConfig({
   title: "星穹旅驿Wiki",
   description: "星穹旅驿Wiki",
   base: '/wiki',
+  // 主题色与官网主站共用同一份 localStorage 派生变量（XQ_theme_vars_v2，v2 使旧缓存失效），
+  // 首屏同步写入，避免 wiki 与主站主题色不一致。
+  head: [
+    ['script', {}, `(function(){try{var v=localStorage.getItem('XQ_theme_vars_v2');if(!v)return;var s=JSON.parse(v);var r=document.documentElement;for(var k in s){if(Object.prototype.hasOwnProperty.call(s,k))r.style.setProperty(k,s[k]);}}catch(e){}})();`],
+    ['style', {}, `:root{--vp-c-brand-1:var(--brand-lt,#4caf50);--vp-c-brand-2:var(--brand-lt-hover,#43a047);--vp-c-brand-3:var(--brand-lt-active,#388e3c);--vp-c-brand-soft:var(--brand-lt-tint,#e8f5e9);}html.dark{--vp-c-brand-1:var(--brand-dk,#66bb6a);--vp-c-brand-2:var(--brand-dk-hover,#7bc87f);--vp-c-brand-3:var(--brand-dk-active,#55a55a);--vp-c-brand-soft:var(--brand-dk-tint,rgba(102,187,106,.16));}`]
+  ],
   themeConfig: {
     logo: '/favicon.ico',
+    // 文档站跟随 VitePress 内置的三态外观切换（自动 / 浅色 / 深色），
+    // 与主站一样支持系统偏好与持久化。
+    appearance: true,
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: '主页', link: '/' },
