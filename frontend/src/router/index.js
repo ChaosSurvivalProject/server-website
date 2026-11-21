@@ -40,6 +40,13 @@ const routes = [
     props: true
   },
   {
+    path: '/forum/comment/:id',
+    name: 'ForumComment',
+    // 单条评论详情（站内信回复/评论点赞直达；顶层评论 id 与回复 id 通用）
+    component: () => import('../views/forum/CommentDetail.vue'),
+    props: true
+  },
+  {
     path: '/forum/new',
     name: 'ForumNew',
     // 发布文章（需登录；未登录由页面内跳登录并带 redirect）

@@ -258,6 +258,22 @@ export const forumAPI = {
   getComments: (articleId, params = {}) =>
     axiosInstance.get(`/api/forum/articles/${articleId}/comments`, { params }),
 
+  /**
+   * 单条评论详情（站内信直达评论详情页使用；顶层评论 id 与回复 id 都可传入）。
+   * 匿名可读；评论已删除 / 所属文章不可见时后端 404（silent 交由页面展示明确空态）。
+   * @param {number} commentId
+   * @returns {Promise} - data: {
+   *   comment: 主评论节点,
+   *   rootComment: 所属顶层评论节点（主评论本身是回复时才有，否则 null）,
+   *   replies: [该顶层评论下的全部回复（正序、不分页）],
+   *   article: {id, title, status, publishTime, author}
+   * }
+   *   节点字段与 getComments 一致：{id, articleId, content, parentId, replyToUserId,
+   *   replyToName, likeCount, liked, status, author, createTime}
+   */
+  getCommentDetail: (commentId) =>
+    axiosInstance.get(`/api/forum/comments/${commentId}`, { silent: true }),
+
   /** 作者其他已发布文章（最多 5 条，不含当前文章） */
   getAuthorPosts: (articleId) =>
     axiosInstance.get(`/api/forum/articles/${articleId}/author-posts`),

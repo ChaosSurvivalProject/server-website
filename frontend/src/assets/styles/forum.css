@@ -585,6 +585,101 @@ select.fx-input {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   评论互动共享样式：内联回复框（ReplyForm.vue）+ 赞/回复/删除操作
+   ══════════════════════════════════════════════════════════════════
+   ReplyForm 是独立子组件，Vue 只给其根节点补父组件的 data-v；
+   它内部节点拿不到父组件的 scoped 样式。这些类又被文章页评论区与
+   /forum/comment/:id 详情页共用，因此统一放全局 stylesheet 只定义一份
+   （原先挂在 CommentSection.vue 的非 scoped <style> 里，详情页无法复用）。
+   类名沿用 cmt- 前缀不动，避免改动既有组件模板。 */
+.cmt-form {
+  display: flex;
+  gap: 10px;
+  margin: 12px 0 6px;
+  padding: 12px;
+  background: var(--fx-bg-soft);
+  border: 1px solid var(--fx-line);
+  border-radius: 10px;
+}
+.cmt-form-main {
+  flex: 1;
+  min-width: 0;
+}
+.cmt-form-tip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--fx-text-2);
+  margin-bottom: 7px;
+}
+/* 「回复 @某人」中的 @某人（评论列表里也用同一个类） */
+.reply-to {
+  color: var(--fx-brand);
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-right: 4px;
+}
+.cmt-form-quote {
+  display: inline-block;
+  max-width: 260px;
+  margin-left: 6px;
+  color: var(--fx-text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+.cmt-form-textarea {
+  min-height: 64px;
+  font-size: 13.5px;
+  background: #fff;
+}
+.cmt-form-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+/* 字数提示（顶部输入区与回复框共用） */
+.cmt-hint {
+  font-size: 12px;
+  color: var(--fx-text-3);
+}
+/* 赞 / 回复 / 取消 这类图标文字的裸按钮 */
+.cmt-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  font-size: 12.5px;
+  color: var(--fx-text-3);
+  background: none;
+  border: none;
+  padding: 2px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.14s;
+}
+.cmt-act:hover {
+  background: var(--fx-bg-soft);
+  color: var(--fx-text-2);
+}
+.cmt-act.on {
+  color: #dc2626;
+  font-weight: 600;
+}
+.cmt-act-danger {
+  color: #dc2626;
+}
+.cmt-act-danger:hover {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+/* ══════════════════════════════════════════════════════════════════
    响应式（PRD §10.5：≤768px 不得出现横向滚动）
    ══════════════════════════════════════════════════════════════════ */
 @media (max-width: 900px) {
