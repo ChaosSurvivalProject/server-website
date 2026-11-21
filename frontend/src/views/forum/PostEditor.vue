@@ -101,6 +101,8 @@
             <MdEditor
               v-model="form.content"
               class="md-editor"
+              :theme="mdTheme"
+              :code-style-reverse="false"
               :toolbars="mdToolbars"
               :sanitize="sanitizeHtml"
               :on-upload-img="onUploadImg"
@@ -176,6 +178,7 @@ import { forumAPI } from "../../api/api.js";
 import { authState } from "../../utils/auth.js";
 import { goLogin, showForumToast } from "../../utils/forumToast.js";
 import { sanitizeHtml } from "../../utils/markdown.js";
+import { themeState } from "../../utils/theme.js";
 
 const MAX_TAGS = 5;
 const DRAFT_KEY_CREATE = "forum:draft";
@@ -230,6 +233,14 @@ export default {
     },
     contentLen() {
       return (this.form.content || "").length;
+    },
+    /**
+     * md-editor-v3 自身按 `theme` prop 切换浅/深配色（内部给根节点加 data-theme）。
+     * 站点主题引擎的 themeState.resolved 已把「跟随系统」解析成实际 light/dark，
+     * 且是响应式的——切换主题后编辑器会即时跟随，无需刷新。
+     */
+    mdTheme() {
+      return themeState.resolved === "dark" ? "dark" : "light";
     },
     canSubmit() {
       return (
@@ -697,6 +708,32 @@ export default {
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--fx-line);
+}
+/* md-editor-v3 的深色默认色板是纯黑底（--md-bk-color:#000），与论坛深色卡片
+   #1b212a 反差过大。把库的主题变量映射到站点 --fx-* 令牌，浅色/深色两套都自动
+   跟随站点主题，编辑器与表单其余部分保持同一观感。
+   双写 .md-editor 提升优先级：库规则是 .md-editor[data-theme=dark]（0,2,0），
+   这里编译后为 .md-editor.md-editor[data-v-xxx]（0,3,0），确保稳定覆盖。 */
+.md-editor.md-editor {
+  --md-bk-color: var(--fx-card);
+  --md-bk-color-outstand: var(--fx-line-soft);
+  --md-bk-hover-color: var(--fx-line-soft);
+  --md-border-color: var(--fx-line);
+  --md-border-hover-color: var(--fx-line);
+  --md-border-active-color: var(--fx-line);
+  --md-color: var(--fx-text);
+  --md-hover-color: var(--fx-text-2);
+}
+/* 代码块的**底色 / 基础文字色**：预览主题（@vavt/markdown-theme default.css）
+   把 --md-theme-code-block-bg-color 钉死成 #282c34（浅色模式也是深色块），
+   与站点文章详情的代码块（var(--code-bg)：浅 #f6f8fa / 深 #171d25）不一致。
+   这里映射到全站令牌，代码块底色随主题切换；语法高亮的 token 颜色由上方的
+   :code-style-reverse=false + atom-one-light/dark 负责，两套一起随主题联动。
+   md-editor 内部 DOM 不带本组件的 data-v，必须 :deep() 才能命中。 */
+.md-editor.md-editor :deep(.md-editor-preview) {
+  --md-theme-code-block-bg-color: var(--code-bg);
+  --md-theme-code-before-bg-color: var(--code-bg);
+  --md-theme-code-block-color: var(--text);
 }
 .md-foot {
   display: flex;

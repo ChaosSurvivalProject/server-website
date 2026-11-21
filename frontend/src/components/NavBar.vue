@@ -697,8 +697,19 @@ nav {
     gap: 0;
   }
 
-  /* 头像存在时，三横线紧跟其后（覆盖其自身的 margin-left: auto） */
-  .nav-avatar-wrap + .mobile-menu-btn {
+  /* 已登录：头像组的 margin-left:auto 已把「铃铛+头像+主题+三横线」整组推到右缘，
+     三横线只需留 6px 间距。注意这里必须用 ~（一般性兄弟），因为头像组与三横线之间
+     夹着 ThemeSwitcher；原来写 +（相邻兄弟）永远不匹配，导致两个 auto 平分空间，
+     三个按钮被挤到导航栏中间。 */
+  .nav-avatar-wrap ~ .mobile-menu-btn {
+    margin-left: 6px;
+  }
+
+  /* 未登录：没有头像组，改由主题按钮把「主题+三横线」一起推到右缘 */
+  .nav-auth-area ~ .theme-switcher {
+    margin-left: auto;
+  }
+  .nav-auth-area ~ .theme-switcher ~ .mobile-menu-btn {
     margin-left: 6px;
   }
 

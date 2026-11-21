@@ -102,20 +102,20 @@
             </div>
 
             <div class="res-fgroup">
-              <FilterGroup title="平台 / 加载器" multi :options="filterDict.platform" :value="platformList" @change="onMultiChange('platform', $event)" />
+              <FilterGroup title="平台 / 加载器" multi collapsible :options="filterDict.platform" :value="platformList" @change="onMultiChange('platform', $event)" />
             </div>
             <div class="res-fgroup">
               <FilterGroup title="游戏版本" multi collapsible searchable :options="filterDict.game_version" :value="gameVersionList" @change="onMultiChange('game_version', $event)" />
             </div>
             <div class="res-fgroup">
               <!-- 运行环境（原"侧别"）：client/server 多选，双选即双端（需求 §5.2 调整） -->
-              <FilterGroup title="运行环境" multi :options="envOptions" :value="sideList" @change="onMultiChange('side', $event)" />
+              <FilterGroup title="运行环境" multi collapsible :options="envOptions" :value="sideList" @change="onMultiChange('side', $event)" />
             </div>
             <div class="res-fgroup">
-              <FilterGroup title="发布渠道" single :options="filterDict.release_channel" :value="channel" @change="onSingleChange('channel', $event)" />
+              <FilterGroup title="发布渠道" single collapsible :options="filterDict.release_channel" :value="channel" @change="onSingleChange('channel', $event)" />
             </div>
             <div v-if="filterDict.tag && filterDict.tag.length" class="res-fgroup">
-              <FilterGroup title="标签" multi :options="filterDict.tag" :value="tagList" @change="onMultiChange('tag', $event)" />
+              <FilterGroup title="标签" multi collapsible :options="filterDict.tag" :value="tagList" @change="onMultiChange('tag', $event)" />
             </div>
 
             <button v-if="activeFilterCount" type="button" class="fx-btn res-clear-all" @click="clearFilters">

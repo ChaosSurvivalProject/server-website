@@ -766,6 +766,12 @@ export default {
     }
   },
   methods: {
+    // 模板用到这两个从 forumFormat.js 导入的辅助函数；Options API 不会自动暴露
+    // 顶层 import 给模板，必须显式挂到 methods（与 PostCard.vue 一致）。
+    // 否则首页「最新资源」卡片渲染时抛 `formatCount is not a function`，
+    // 损坏的 vnode 树在卸载时报错并中断路由切换（首页点「资源中心」卡在首页）。
+    formatCount,
+    formatRelativeTime,
     /**
      * 从后端获取游戏服务器地址（单一数据源），取主服务器
      */
