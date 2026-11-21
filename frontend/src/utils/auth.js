@@ -47,6 +47,13 @@ export function setAuth(token, userInfo) {
   localStorage.setItem(USER_KEY, JSON.stringify(authState.user));
 }
 
+/** 局部更新当前用户信息（上传头像后即时点亮，不必重新登录；同步持久化） */
+export function updateAuthUser(patch) {
+  if (!authState.user) return;
+  authState.user = { ...authState.user, ...patch };
+  localStorage.setItem(USER_KEY, JSON.stringify(authState.user));
+}
+
 /** 清除登录态（退出登录 / 收到 401 时调用） */
 export function clearAuth() {
   authState.token = '';

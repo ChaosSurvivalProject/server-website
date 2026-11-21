@@ -35,7 +35,7 @@ export const authAPI = {
   /**
    * 登录
    * @param {{username: string, password: string}} payload
-   * @returns {Promise} - data: {token, username, role}
+   * @returns {Promise} - data: {token, id, username, nickname, role, avatar}
    */
   login: (payload) => {
     return axiosInstance.post('/api/auth/login', payload);
@@ -43,10 +43,28 @@ export const authAPI = {
 
   /**
    * 获取当前登录用户信息（校验 token、恢复会话）
-   * @returns {Promise} - data: {id, username, nickname, email, role}
+   * @returns {Promise} - data: {id, username, nickname, email, role, avatar}
    */
   getMe: () => {
     return axiosInstance.get('/api/auth/me');
+  },
+
+  /**
+   * 上传头像（仅 jpg/png/webp、≤2MB；后端中心裁剪 256×256 并清理旧文件，FLPR-31）
+   *
+   * ⚠️ 与 forumAPI.uploadImage 同理，必须显式声明 multipart/form-data，
+   * 否则 axiosInstance 的默认 JSON 头会把 FormData 序列化成 JSON → 422。
+   *
+   * @param {File} file
+   * @returns {Promise} - data: {url} 新头像相对 URL
+   */
+  uploadAvatar: (file) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return axiosInstance.post('/api/auth/avatar', fd, {
+      timeout: 30000,
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
   }
 };
 

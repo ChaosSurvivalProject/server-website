@@ -16,6 +16,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..crud import _TZ  # 统一北京时间（naive ISO 字符串，见 AGENTS.md 存储约定）
+from ..uploads import delete_avatar
 from ..database import (
     User,
     get_db,
@@ -48,6 +49,7 @@ def _dump_user(obj: User) -> dict:
         "role": obj.role,
         "status": obj.status,
         "muteUntil": obj.mute_until or "",
+        "avatar": obj.avatar or "",
         "createTime": obj.create_time,
     }
 
@@ -305,6 +307,29 @@ async def admin_set_user_mute(
     await db.refresh(user)
     msg = "已禁言" if value else "已解除禁言"
     return {"code": 0, "message": msg, "data": _dump_user(user)}
+
+
+# ── 重置头像为默认（FLPR-31） ───────────────────────────────────
+@router.post("/{user_id}/avatar/reset")
+async def admin_reset_user_avatar(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """管理员：清空用户头像并删除其头像文件（前端回退内置默认头像）。
+
+    与 status / 禁言正交，不影响登录；已删除用户也允许清理，避免残留孤儿文件。
+    """
+    user = await _get_user_by_id(db, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    old_url = user.avatar or ""
+    user.avatar = ""
+    await db.commit()
+    await db.refresh(user)
+    if old_url:
+        delete_avatar(old_url, user.id)
+    return {"code": 0, "message": "头像已重置为默认", "data": _dump_user(user)}
 
 
 # ── 删除（软删除） ───────────────────────────────────────────────

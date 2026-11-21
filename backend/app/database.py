@@ -98,6 +98,9 @@ class User(Base):
     # 禁言（论坛模块引入）：空串/None = 未禁言，now < mute_until 视为禁言中。
     # 与 status 正交——status=0 是「不能登录」，mute_until 是「能登录但不能发帖/评论」。
     mute_until: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    # 头像相对 URL（FLPR-31）：空串 = 未上传，前端回退内置默认头像。
+    # 落盘 uploads/avatar/YYYYMM/，对外 URL /api/announcement/uploads/avatar/...（复用公告 StaticFiles 挂载点）。
+    avatar: Mapped[str] = mapped_column(String(255), nullable=False, default="")
     create_time: Mapped[str] = mapped_column(String(30), nullable=False)
 
 
@@ -107,6 +110,7 @@ class User(Base):
 # announcements.content_type（公告 Markdown 支持引入）做幂等补列
 # （同步连接直接执行 PRAGMA / ALTER，不经异步池）。
 _user_extra_migrated = False
+_user_avatar_migrated = False
 _announcement_content_migrated = False
 _user_mute_migrated = False
 _forum_recycle_migrated = False
@@ -147,6 +151,38 @@ def migrate_user_extra_columns() -> None:
     except Exception as e:
         # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
         logger.warning("users 表 status/nickname 列迁移检查失败: %s", e)
+
+
+def migrate_user_avatar_column() -> None:
+    """users 表补 avatar 列（FLPR-31，幂等；已存在的表结构不受影响）。
+
+    存量行经 ALTER 的 DEFAULT '' 自动归为「未上传」，前端回退内置默认头像，
+    保证头像功能上线前后台展示行为不变。
+    """
+    global _user_avatar_migrated
+    if _user_avatar_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [
+                row[1] for row in con.execute("PRAGMA table_info('users')")
+            ]
+            if "avatar" not in col_names:
+                con.execute(
+                    "ALTER TABLE users ADD COLUMN avatar VARCHAR(255) "
+                    "NOT NULL DEFAULT ''"
+                )
+                con.commit()
+                logger.info("已为 users 表补充 avatar 列（头像相对 URL，默认空串=未上传）")
+        finally:
+            con.close()
+        _user_avatar_migrated = True
+    except Exception as e:
+        # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
+        logger.warning("users 表 avatar 列迁移检查失败: %s", e)
 
 
 def migrate_announcement_content_columns() -> None:
@@ -1131,6 +1167,7 @@ async def init_db():
             logger.error("SQLite 不支持 FTS5，知识库全文检索不可用（仅向量检索）: %s", e)
     # 存量库补列（新库 create_all 已含新列，迁移幂等直接跳过）
     migrate_user_extra_columns()
+    migrate_user_avatar_column()
     migrate_user_mute_column()
     migrate_forum_article_recycle_columns()
     # 资源中心：预置字典种子（幂等，按 type+key 判存，不覆盖后台改过的值）

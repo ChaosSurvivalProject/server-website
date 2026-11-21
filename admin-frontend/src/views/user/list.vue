@@ -9,7 +9,8 @@ import {
   updateUser,
   setUserStatus,
   removeUser,
-  setUserMute
+  setUserMute,
+  resetUserAvatar
 } from "@/api/user";
 import type { UserItem, UserPageResult, UserStatus } from "@/api/user";
 import { getUserStats } from "@/api/forum";
@@ -404,6 +405,26 @@ const handleUnmute = (row: UserItem) => {
   );
 };
 
+// ── 头像：重置为默认（FLPR-31；列表缩略点开即大图预览） ────────
+const handleResetAvatar = (row: UserItem) => {
+  ElMessageBox.confirm(
+    `确定将「${row.nickname || row.username}」的头像重置为默认吗？原头像文件会被删除，前台立即回退默认头像。`,
+    "重置头像",
+    { confirmButtonText: "确定重置", cancelButtonText: "取消", type: "warning" }
+  ).then(
+    async () => {
+      try {
+        await resetUserAvatar(row.id);
+        ElMessage.success("头像已重置为默认");
+        fetchData();
+      } catch (e: any) {
+        ElMessage.error(e.message || "重置头像失败");
+      }
+    },
+    () => {}
+  );
+};
+
 // ── 论坛：用户论坛数据（PRD §6.5.2） ────────────────────────────
 const forumVisible = ref(false);
 const forumLoading = ref(false);
@@ -482,6 +503,20 @@ onMounted(() => {
       style="width: 100%"
     >
       <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column label="头像" width="70">
+        <template #default="{ row }">
+          <el-image
+            v-if="row.avatar"
+            :src="row.avatar"
+            :preview-src-list="[row.avatar]"
+            fit="cover"
+            class="user-avatar-thumb"
+          >
+            <template #error><span class="sub-text">已失效</span></template>
+          </el-image>
+          <span v-else class="user-avatar-empty">默认</span>
+        </template>
+      </el-table-column>
       <el-table-column
         prop="username"
         label="账号"
@@ -544,7 +579,7 @@ onMounted(() => {
       <el-table-column label="创建时间" width="150">
         <template #default="{ row }">{{ formatDate(row.createTime) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="300" fixed="right">
+      <el-table-column label="操作" width="360" fixed="right">
         <template #default="{ row }">
           <el-button size="small" type="primary" link @click="openEdit(row)">
             编辑
@@ -556,6 +591,15 @@ onMounted(() => {
             @click="openForumStats(row)"
           >
             论坛数据
+          </el-button>
+          <el-button
+            v-if="row.avatar"
+            size="small"
+            link
+            type="warning"
+            @click="handleResetAvatar(row)"
+          >
+            重置头像
           </el-button>
           <!-- 禁言与 status 正交：禁用用户也可能有禁言记录，故两个分支都要给入口 -->
           <el-button
@@ -637,6 +681,22 @@ onMounted(() => {
             disabled
             placeholder="账号唯一标识，不可修改"
           />
+        </el-form-item>
+        <!-- 详情展示头像（FLPR-31）：只读预览，照片由用户在前台头像菜单上传 -->
+        <el-form-item v-if="formMode === 'edit'" label="头像">
+          <div class="dialog-avatar-row">
+            <el-image
+              v-if="editingRow?.avatar"
+              :src="editingRow.avatar"
+              :preview-src-list="[editingRow.avatar]"
+              fit="cover"
+              class="user-avatar-thumb"
+            >
+              <template #error><span class="sub-text">已失效</span></template>
+            </el-image>
+            <span v-else class="user-avatar-empty">默认</span>
+            <span class="sub-text">用户在前台头像菜单上传，此处只读</span>
+          </div>
         </el-form-item>
         <el-form-item label="账号" prop="username">
           <el-input
@@ -833,6 +893,32 @@ onMounted(() => {
 .sub-text {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+}
+
+/* 用户头像缩略图（FLPR-31）：点击可看大图，未上传显示占位 */
+.user-avatar-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--el-fill-color-light);
+}
+
+.user-avatar-empty {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+  background: var(--el-fill-color-light);
+}
+
+.dialog-avatar-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .mute-form {

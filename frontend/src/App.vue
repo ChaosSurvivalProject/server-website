@@ -154,7 +154,8 @@ export default {
             id: data.id,
             username: data.username,
             nickname: data.nickname,
-            role: data.role
+            role: data.role,
+            avatar: data.avatar || ""
           });
         })
         .catch(() => {

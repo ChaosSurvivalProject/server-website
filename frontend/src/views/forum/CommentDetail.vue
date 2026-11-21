@@ -84,7 +84,7 @@
                 class="fx-avatar fx-av-36"
                 :class="{ 'fx-avatar-admin': comment.author?.badge === '管理员' }"
               >
-                <img v-if="comment.author?.avatar" :src="comment.author.avatar" :alt="comment.author.name" />
+                <img v-if="comment.author?.avatar" :src="comment.author.avatar" :alt="comment.author.name" @error="onAvatarError" />
                 <template v-else>{{ (comment.author?.name || "?").slice(0, 1) }}</template>
               </span>
               <div class="cmt-body">
@@ -164,7 +164,7 @@
                   class="fx-avatar fx-av-28"
                   :class="{ 'fx-avatar-admin': r.author?.badge === '管理员' }"
                 >
-                  <img v-if="r.author?.avatar" :src="r.author.avatar" :alt="r.author.name" />
+                  <img v-if="r.author?.avatar" :src="r.author.avatar" :alt="r.author.name" @error="onAvatarError" />
                   <template v-else>{{ (r.author?.name || "?").slice(0, 1) }}</template>
                 </span>
                 <div class="cmt-body">
@@ -270,7 +270,8 @@ export default {
       return authState.user?.nickname || authState.user?.username || "";
     },
     myAvatar() {
-      return null; // users 表暂无头像字段，与评论区一致回退内置默认头像
+      // FLPR-31：与评论区同口径，读登录用户真实头像
+      return authState.user?.avatar || null;
     },
     /** 兼容兜底：回文章页时带与站内信相同的 commentId 定位参数 */
     originalLink() {

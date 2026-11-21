@@ -366,14 +366,16 @@ class ConfigUpdateRequest(BaseModel):
 
 # ── 响应构造（camelCase 契约，PRD §7.4） ─────────────────────────
 def _author_brief(user: Optional[User]) -> dict:
-    """作者简卡。第一阶段无用户头像字段（users 表无 avatar 列），avatar 恒为 None，
-    前端回退内置默认头像；徽章只区分管理员（等级/头衔属第二阶段，PRD §6.5.3）。"""
+    """作者简卡（FLPR-31：avatar 读 users.avatar，空串下发 None 由前端回退默认头像）。
+
+    徽章仍只区分管理员（等级/头衔属第二阶段，PRD §6.5.3）。
+    """
     if user is None:
         return {"id": 0, "name": "已注销用户", "avatar": None, "badge": None}
     return {
         "id": user.id,
         "name": user.nickname or user.username,
-        "avatar": None,
+        "avatar": user.avatar or None,
         "badge": "管理员" if user.role == "admin" else None,
     }
 
