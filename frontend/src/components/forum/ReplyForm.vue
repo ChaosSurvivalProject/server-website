@@ -1,7 +1,7 @@
 <template>
   <div class="cmt-form">
     <span class="fx-avatar fx-av-28" :class="{ 'fx-avatar-guest': !avatar }">
-      <img v-if="avatar" :src="avatar" alt="" />
+      <img v-if="avatar" :src="avatar" alt="" @error="onAvatarError" />
       <template v-else>{{ myInitial }}</template>
     </span>
     <div class="cmt-form-main">

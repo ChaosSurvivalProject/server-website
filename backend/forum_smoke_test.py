@@ -171,7 +171,10 @@ def main() -> int:
         check("公开列表出现", lst["total"] == 1 and lst["items"][0]["id"] == aid)
         check("publishTime 已写入", bool(lst["items"][0]["publishTime"]))
         check("公开列表 author 为作者", lst["items"][0]["author"]["name"] == "爱丽丝")
-        check("普通用户作者无徽章", lst["items"][0]["author"]["badge"] is None)
+        check("普通用户作者徽章为数组（含等级）",
+              isinstance(lst["items"][0]["author"]["badge"], list)
+              and any(str(b).startswith("Lv.") for b in lst["items"][0]["author"]["badge"]),
+              str(lst["items"][0]["author"]["badge"]))
         check("公开列表不含 reviewNote", "reviewNote" not in lst["items"][0])
 
         print("\n[5] 点赞 / 收藏幂等切换")
@@ -773,8 +776,9 @@ def main() -> int:
         check("匿名可查公开作者统计（有已发布文章）", us_bob["postCount"] >= 1, str(us_bob))
         us = client.get("/api/forum/users/2/stats").json()["data"]
         check("无已发布文章时计数为 0（不报错）", us["postCount"] == 0, str(us))
-        check("公开统计不泄漏私有字段",
-              set(us) == {"author", "postCount", "likeCount", "followerCount"}, str(set(us)))
+        check("公开统计不泄漏私有字段（createTime 为公开注册时间）",
+              set(us) == {"author", "postCount", "likeCount", "followerCount", "createTime"}, str(set(us)))
+        check("公开统计下发注册时间", bool(us_bob.get("createTime")), str(us_bob))
         check("公开统计粉丝恒 0", us["followerCount"] == 0)
         check("查不存在的用户 404", client.get("/api/forum/users/99999/stats").status_code == 404)
         v0 = client.get(f"/api/forum/articles/{aid2}").json()["data"]["viewCount"]
@@ -789,6 +793,67 @@ def main() -> int:
         ulist = client.get("/api/auth/admin/users", headers=H(admin)).json()["data"]["items"]
         check("用户列表含 muteUntil 字段", all("muteUntil" in u for u in ulist), str(ulist[0].keys()))
 
+        print("\n[20c] 用户个人主页公开聚合（FLPR-34）")
+        # 新建一篇 Bob 的已发布文章，Alice 在上面留言，作为个人主页取数样本
+        pub_id = client.post("/api/forum/articles", headers=H(bob), json={
+            "categoryId": cat_id, "title": "个人主页已发布测试文章",
+            "content": "这篇文章用于验证个人主页只聚合已公开内容。"}).json()["data"]["id"]
+        client.put(f"/api/forum/admin/articles/{pub_id}/review", headers=H(admin), json={"status": 1})
+        cmt_id = client.post(f"/api/forum/articles/{pub_id}/comments", headers=H(alice),
+                             json={"content": "个人主页评论 #1 的摘要文本"}).json()["data"]["id"]
+        uc = client.get("/api/forum/users/2/comments").json()["data"]
+        first = next((i for i in uc["items"] if i["commentId"] == cmt_id), None)
+        check("公开评论接口可读到新评论", first is not None, str(uc))
+        check("评论项只含约定的公开字段",
+              first is not None and set(first) == {"articleId", "articleTitle", "commentId", "content", "createTime"},
+              str(first))
+        check("评论项回传所在文章标题", first is not None and first["articleTitle"] == "个人主页已发布测试文章", str(first))
+        check("评论摘要保持纯文本原样", first is not None and first["content"] == "个人主页评论 #1 的摘要文本", str(first))
+
+        # 待审核文章下的评论不出现（用作者本人账号留言，否则会被可见性校验拦成 404）；
+        # 回收站/已下架同理（都非 status=1）
+        pending_id = client.post("/api/forum/articles", headers=H(bob), json={
+            "categoryId": cat_id, "title": "个人主页待审核测试文章",
+            "content": "这篇尚未通过审核，用于验证隐私边界。"}).json()["data"]["id"]
+        hidden_cmt_id = client.post(f"/api/forum/articles/{pending_id}/comments", headers=H(bob),
+                                    json={"content": "未公开文章下的评论不应出现在主页"}).json()["data"]["id"]
+        uc2 = client.get("/api/forum/users/3/comments").json()["data"]
+        check("未公开文章下的评论不出现", all(i["commentId"] != hidden_cmt_id for i in uc2["items"]), str(uc2))
+
+        # 作者删除的评论不出现
+        client.delete(f"/api/forum/comments/{cmt_id}", headers=H(alice))
+        uc3 = client.get("/api/forum/users/2/comments").json()["data"]
+        check("作者删除的评论不出现", all(i["commentId"] != cmt_id for i in uc3["items"]), str(uc3))
+
+        # 帖子 Tab 的取数口：authorId 只返回已发布文章
+        la = client.get("/api/forum/articles", params={"authorId": 3}).json()["data"]
+        check("authorId 只返回该作者的已发布文章",
+              la["total"] >= 1 and all(i["author"]["id"] == 3 and i["status"] == 1 for i in la["items"]), str(la))
+        check("authorId 排除待审核文章", all(i["id"] != pending_id for i in la["items"]), str(la))
+
+        # 不存在 / 已注销 / 被禁言用户：前两个 404，禁言只限写操作、主页照常可读
+        async def profile_users_setup():
+            async with async_session_maker() as s:
+                s.add(User(username="gone@test.com", nickname="已注销用户",
+                           password_hash=hash_password("Passw0rd!"), role="user", status=2,
+                           create_time=datetime.now(_TZ).strftime("%Y-%m-%dT%H:%M:%S")))
+                await s.execute(update(User).where(User.id == 2).values(mute_until="2099-01-01T00:00:00"))
+                await s.commit()
+                r = await s.execute(select(User.id).where(User.username == "gone@test.com"))
+                return r.scalar_one()
+
+        async def unmute_alice():
+            async with async_session_maker() as s:
+                await s.execute(update(User).where(User.id == 2).values(mute_until=""))
+                await s.commit()
+
+        gone_id = asyncio.run(profile_users_setup())
+        check("已注销用户 stats 404", client.get(f"/api/forum/users/{gone_id}/stats").status_code == 404)
+        check("已注销用户 comments 404", client.get(f"/api/forum/users/{gone_id}/comments").status_code == 404)
+        check("被禁言用户主页统计正常展示", client.get("/api/forum/users/2/stats").status_code == 200)
+        check("被禁言用户主页评论正常展示", client.get("/api/forum/users/2/comments").status_code == 200)
+        asyncio.run(unmute_alice())
+
         print("\n[21] 作者其他帖子")
         aid3 = client.post("/api/forum/articles", headers=H(alice), json={
             "categoryId": cat_id, "title": "bob 视角的第一篇",
@@ -802,6 +867,95 @@ def main() -> int:
         client.put(f"/api/forum/admin/articles/{aid4}/review", headers=H(admin), json={"status": 1})
         ap = client.get(f"/api/forum/articles/{aid3}/author-posts").json()["data"]
         check("返回其它 1 篇", len(ap) == 1 and ap[0]["id"] == aid4, str(ap))
+
+        print("\n[22] 等级 / 头衔 / 经验（FLPR-36）")
+        from app.database import ForumUserLevel, ForumExpLedger, ForumUserExp
+
+        async def q_levels():
+            async with async_session_maker() as s:
+                r = await s.execute(select(ForumUserLevel))
+                levels = r.scalars().all()
+                r2 = await s.execute(
+                    select(ForumExpLedger).where(
+                        ForumExpLedger.reason == "article_like",
+                        ForumExpLedger.ref_id == aid3,
+                    )
+                )
+                return levels, len(r2.scalars().all())
+
+        levels, _ = asyncio.run(q_levels())
+        check("等级阈值常量表已 seed", len(levels) == 7 and levels[0].required_exp == 0, str(len(levels)))
+
+        alice_uid = client.get("/api/auth/me", headers=H(alice)).json()["data"]["id"]
+        bob_uid = client.get("/api/auth/me", headers=H(bob)).json()["data"]["id"]
+        admin_uid = client.get("/api/auth/me", headers=H(admin)).json()["data"]["id"]
+        exp_of = lambda uid: client.get(
+            f"/api/forum/admin/users/{uid}/exp", headers=H(admin)
+        ).json()["data"]["exp"]
+
+        admin_badge = client.get(f"/api/forum/users/{admin_uid}/stats").json()["data"]["author"]["badge"]
+        check("管理员徽章不回退（仍含'管理员'）", "管理员" in admin_badge, str(admin_badge))
+
+        e0 = exp_of(alice_uid)
+        client.post(f"/api/forum/articles/{aid3}/like", headers=H(bob))
+        e1 = exp_of(alice_uid)
+        check("文章被赞作者 +2", e1 - e0 == 2, f"{e0}->{e1}")
+        client.post(f"/api/forum/articles/{aid3}/like", headers=H(bob))  # 取消
+        client.post(f"/api/forum/articles/{aid3}/like", headers=H(bob))  # 再点回
+        e2 = exp_of(alice_uid)
+        check("取消再点回不重复加经验", e2 == e1, f"{e1}->{e2}")
+        _, like_ledger_rows = asyncio.run(q_levels())
+        check("经验流水按行为去重（仅 1 行）", like_ledger_rows == 1, str(like_ledger_rows))
+
+        bob_cid = client.post(
+            f"/api/forum/articles/{aid3}/comments", headers=H(bob), json={"content": "评论经验测试"}
+        ).json()["data"]["id"]
+        b0 = exp_of(bob_uid)
+        client.post(f"/api/forum/comments/{bob_cid}/like", headers=H(alice))
+        b1 = exp_of(bob_uid)
+        check("评论被赞作者 +1", b1 - b0 == 1, f"{b0}->{b1}")
+
+        r = client.post(
+            f"/api/forum/admin/users/{bob_uid}/titles", headers=H(admin), json={"titleCode": "pioneer"}
+        )
+        check("手动授予头衔成功", r.status_code == 200, r.text)
+        check("前台即时反映头衔",
+              "开荒先锋" in client.get(f"/api/forum/users/{bob_uid}/stats").json()["data"]["author"]["badge"])
+        check("重复授予被拒",
+              client.post(f"/api/forum/admin/users/{bob_uid}/titles", headers=H(admin),
+                          json={"titleCode": "pioneer"}).status_code == 400)
+        check("撤销头衔成功",
+              client.delete(f"/api/forum/admin/users/{bob_uid}/titles/pioneer", headers=H(admin)).status_code == 200)
+        check("撤销后前台即时失效",
+              "开荒先锋" not in client.get(f"/api/forum/users/{bob_uid}/stats").json()["data"]["author"]["badge"])
+        history = client.get(f"/api/forum/admin/users/{bob_uid}/titles", headers=H(admin)).json()["data"]
+        revoked = [t for t in history if t["titleCode"] == "pioneer" and not t["active"]]
+        check("撤销有留痕（时间 + 操作人）",
+              len(revoked) == 1 and bool(revoked[0]["revokedAt"]) and revoked[0]["revokedBy"] == admin_uid,
+              str(revoked))
+
+        client.put(f"/api/auth/admin/users/{alice_uid}/status", headers=H(admin), json={"status": 0})
+        d0 = exp_of(alice_uid)
+        client.post(f"/api/forum/articles/{aid4}/like", headers=H(bob))
+        d1 = exp_of(alice_uid)
+        check("禁用用户不再累计经验", d1 == d0, f"{d0}->{d1}")
+        client.put(f"/api/auth/admin/users/{alice_uid}/status", headers=H(admin), json={"status": 1})
+
+        async def force_exp():
+            async with async_session_maker() as s:
+                await s.execute(
+                    update(ForumUserExp).where(ForumUserExp.user_id == alice_uid).values(exp=400, level=7)
+                )
+                await s.commit()
+
+        asyncio.run(force_exp())
+        check("经验达阈值后等级徽章更新",
+              "Lv.7" in client.get(f"/api/forum/users/{alice_uid}/stats").json()["data"]["author"]["badge"])
+
+        l0 = exp_of(bob_uid)
+        client.post("/api/auth/login", json={"username": "bob@test.com", "password": "bob12345"})
+        l1 = exp_of(bob_uid)
+        check("每日登录经验按日封顶", l1 == l0, f"{l0}->{l1}")
 
     print("\n" + "=" * 64)
     if FAILS:

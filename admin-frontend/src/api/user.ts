@@ -38,6 +38,8 @@ export type UserItem = {
   status: UserStatus;
   /** 禁言到期时间（北京时间 ISO 字符串）；空串 = 未禁言（论坛模块，PRD §4.8） */
   muteUntil: string;
+  /** 头像相对 URL（FLPR-31）；空串 = 未上传，前台回退内置默认头像 */
+  avatar: string;
   createTime: string;
 };
 
@@ -105,4 +107,9 @@ export const setUserMute = (id: number, muteUntil: string) => {
   return http.request<UserItem>("put", `/api/auth/admin/users/${id}/mute`, {
     data: { muteUntil }
   });
+};
+
+/** 管理员：重置用户头像为默认（清空 avatar 列并删除头像文件，FLPR-31） */
+export const resetUserAvatar = (id: number) => {
+  return http.request<UserItem>("post", `/api/auth/admin/users/${id}/avatar/reset`);
 };

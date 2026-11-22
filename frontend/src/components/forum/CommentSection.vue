@@ -20,7 +20,7 @@
       <!-- 发表评论输入区 -->
       <div class="cmt-input">
         <span class="fx-avatar fx-av-36" :class="{ 'fx-avatar-guest': !loggedIn }">
-          <img v-if="loggedIn && myAvatar" :src="myAvatar" alt="" />
+          <img v-if="loggedIn && myAvatar" :src="myAvatar" alt="" @error="onAvatarError" />
           <template v-else>{{ loggedIn ? (myName || "?").slice(0, 1) : "?" }}</template>
         </span>
         <div class="cmt-input-main">
@@ -65,15 +65,21 @@
 
       <div v-else class="cmt-list">
         <div v-for="c in comments" :key="c.id" :id="'comment-' + c.id" class="cmt">
-          <span class="fx-avatar fx-av-36" :class="{ 'fx-avatar-admin': c.author?.badge === '管理员' }">
-            <img v-if="c.author?.avatar" :src="c.author.avatar" :alt="c.author.name" />
+          <span class="fx-avatar fx-av-36" :class="{ 'fx-avatar-admin': c.author?.badge?.includes?.('管理员') }">
+            <img v-if="c.author?.avatar" :src="c.author.avatar" :alt="c.author.name" @error="onAvatarError" />
             <template v-else>{{ (c.author?.name || "?").slice(0, 1) }}</template>
           </span>
 
           <div class="cmt-body">
             <!-- 评论头 -->
             <div class="cmt-head">
-              <span class="nm">{{ c.author?.name }}</span>
+              <!-- 作者名直达个人主页（FLPR-34）；已注销用户 id=0 不给死链 -->
+              <router-link
+                v-if="c.author?.id"
+                :to="`/forum/user/${c.author.id}`"
+                class="nm"
+              >{{ c.author?.name }}</router-link>
+              <span v-else class="nm">{{ c.author?.name || "已注销用户" }}</span>
               <UserBadge :badge="c.author?.badge" />
               <span>{{ formatRelativeTime(c.createTime) }}</span>
             </div>
@@ -133,14 +139,19 @@
               <div v-for="r in c.replies" :key="r.id" :id="'comment-' + r.id" class="cmt cmt-reply">
                 <span
                   class="fx-avatar fx-av-28"
-                  :class="{ 'fx-avatar-admin': r.author?.badge === '管理员' }"
+                  :class="{ 'fx-avatar-admin': r.author?.badge?.includes?.('管理员') }"
                 >
-                  <img v-if="r.author?.avatar" :src="r.author.avatar" :alt="r.author.name" />
+                  <img v-if="r.author?.avatar" :src="r.author.avatar" :alt="r.author.name" @error="onAvatarError" />
                   <template v-else>{{ (r.author?.name || "?").slice(0, 1) }}</template>
                 </span>
                 <div class="cmt-body">
                   <div class="cmt-head">
-                    <span class="nm">{{ r.author?.name }}</span>
+                    <router-link
+                      v-if="r.author?.id"
+                      :to="`/forum/user/${r.author.id}`"
+                      class="nm"
+                    >{{ r.author?.name }}</router-link>
+                    <span v-else class="nm">{{ r.author?.name || "已注销用户" }}</span>
                     <UserBadge :badge="r.author?.badge" />
                     <span>{{ formatRelativeTime(r.createTime) }}</span>
                   </div>
@@ -253,7 +264,8 @@ export default {
       return authState.user?.nickname || authState.user?.username || "";
     },
     myAvatar() {
-      return null; // users 表暂无头像字段，统一回退内置默认头像
+      // FLPR-31：登录用户有真实头像时展示，空值回退首字默认头像
+      return authState.user?.avatar || null;
     },
     totalCount() {
       // 实时跟随本地增删（发表评论/删除后由父级或本组件更新 commentCount）
@@ -544,6 +556,12 @@ export default {
   font-weight: 600;
   color: var(--fx-text-2);
   font-size: 13px;
+}
+a.nm {
+  text-decoration: none;
+}
+a.nm:hover {
+  color: var(--fx-brand-d);
 }
 /* 评论正文：纯文本 + 保留换行（§8-D5），用 white-space 而不是 <br> 拼接 */
 .cmt-text {

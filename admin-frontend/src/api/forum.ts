@@ -44,7 +44,8 @@ export type ForumAuthor = {
   id: number;
   name: string;
   avatar: string | null;
-  badge: string | null;
+  /** FLPR-36：badge 由单值改为数组（管理员 → 等级 → 头衔） */
+  badge: string[];
 };
 
 export type ForumArticleItem = {
@@ -392,4 +393,51 @@ export const uploadImage = (file: File): Promise<string> => {
       headers: { "Content-Type": "multipart/form-data" }
     })
     .then(res => res.url);
+};
+
+// ── 等级 / 头衔管理（FLPR-36）────────────────────────────────────
+/** 用户经验进度；无记录时后端返回 exp=0 / level=1 */
+export type ForumUserExp = {
+  exp: number;
+  level: number;
+  levelName: string;
+  updateTime: string;
+};
+
+/** 头衔授予记录（撤销不删行，revokedAt/revokedBy 留痕） */
+export type ForumUserTitle = {
+  id: number;
+  titleCode: string;
+  titleText: string;
+  source: "system" | "manual";
+  grantedAt: string;
+  grantedBy: number;
+  revokedAt: string;
+  revokedBy: number;
+  active: boolean;
+};
+
+/** 管理员：用户经验与等级进度 */
+export const getUserExp = (userId: number) => {
+  return http.request<ForumUserExp>("get", `/api/forum/admin/users/${userId}/exp`);
+};
+
+/** 管理员：用户头衔列表（含撤销历史） */
+export const listUserTitles = (userId: number) => {
+  return http.request<ForumUserTitle[]>("get", `/api/forum/admin/users/${userId}/titles`);
+};
+
+/** 管理员：手动授予头衔（titleCode 取 FORUM_TITLE_OPTIONS 的 code） */
+export const grantUserTitle = (userId: number, titleCode: string) => {
+  return http.request<ForumUserTitle>("post", `/api/forum/admin/users/${userId}/titles`, {
+    data: { titleCode }
+  });
+};
+
+/** 管理员：撤销头衔（软撤销，留痕） */
+export const revokeUserTitle = (userId: number, titleCode: string) => {
+  return http.request<ForumUserTitle>(
+    "delete",
+    `/api/forum/admin/users/${userId}/titles/${titleCode}`
+  );
 };

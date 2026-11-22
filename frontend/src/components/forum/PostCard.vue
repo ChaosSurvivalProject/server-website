@@ -38,7 +38,7 @@
       <div class="post-foot">
         <div class="post-author">
           <span class="fx-avatar fx-av-28" :class="{ 'fx-avatar-admin': isAdmin }">
-            <img v-if="avatarUrl" :src="avatarUrl" :alt="post.author?.name" />
+            <img v-if="avatarUrl" :src="avatarUrl" :alt="post.author?.name" @error="onAvatarError" />
             <template v-else>{{ initial }}</template>
           </span>
           <span class="nm">{{ post.author?.name }}</span>
@@ -89,10 +89,10 @@ export default {
   },
   computed: {
     isAdmin() {
-      return this.post.author?.badge === "管理员";
+      return !!this.post.author?.badge?.includes?.("管理员");
     },
     avatarUrl() {
-      // users 表暂无头像字段，author.avatar 恒为 null → 回退内置默认头像
+      // FLPR-31：后端 _author_brief 下发真实头像 URL，空值回退内置默认头像
       return this.post.author?.avatar || this.defaultAvatar;
     },
     /** 首字（默认头像加载失败时的兜底） */

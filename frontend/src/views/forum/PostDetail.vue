@@ -50,7 +50,7 @@
                 <div class="art-meta-l">
                   <span
                     class="fx-avatar fx-av-32"
-                    :class="{ 'fx-avatar-admin': article.author?.badge === '管理员' }"
+                    :class="{ 'fx-avatar-admin': article.author?.badge?.includes?.('管理员') }"
                   >
                     <img
                       v-if="article.author?.avatar"
@@ -59,7 +59,13 @@
                     />
                     <template v-else>{{ (article.author?.name || "?").slice(0, 1) }}</template>
                   </span>
-                  <span class="nm">{{ article.author?.name }}</span>
+                  <!-- 作者名直达个人主页（FLPR-34）；已注销用户 id=0 不给死链 -->
+                  <router-link
+                    v-if="article.author?.id"
+                    :to="`/forum/user/${article.author.id}`"
+                    class="nm"
+                  >{{ article.author?.name }}</router-link>
+                  <span v-else class="nm">{{ article.author?.name || "已注销用户" }}</span>
                   <UserBadge :badge="article.author?.badge" />
                   <span class="dot">·</span>
                   <span>发布于 {{ publishText }}</span>
@@ -522,6 +528,10 @@ export default {
 .art-meta-l .nm {
   font-weight: 600;
   color: var(--fx-text-2);
+  text-decoration: none;
+}
+.art-meta-l a.nm:hover {
+  color: var(--fx-brand-d);
 }
 .art-meta-l .dot {
   color: var(--fx-text-3);

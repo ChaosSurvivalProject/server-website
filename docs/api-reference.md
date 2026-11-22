@@ -26,8 +26,9 @@
 | GET | `/api/auth/captcha` | 获取注册用滑块拼图验证码（返回 `{captchaId, backgroundImage, pieceImage, sliderY}`，5 分钟有效；横向答案不下发仅存服务端） |
 | POST | `/api/auth/captcha/verify` | 校验滑块位置（body: `{captchaId, x}`，误差 ≤5px 通过并标记该 captchaId；失败即作废，一次性防爆破） |
 | POST | `/api/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId}`，captchaId 须已通过滑块校验，注册时消费；邮箱作为账号，昵称默认取邮箱前缀，角色为普通用户） |
-| POST | `/api/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, username, nickname, role}`；禁用/已删除用户无法登录） |
-| GET | `/api/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{username, nickname, email, role}`；禁用/已删除用户的旧 token 一律失效） |
+| POST | `/api/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, id, username, nickname, role, avatar}`；禁用/已删除用户无法登录） |
+| GET | `/api/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{id, username, nickname, email, role, avatar}`；禁用/已删除用户的旧 token 一律失效） |
+| POST | `/api/auth/avatar` | 上传头像（**登录用户**；`FormData` 字段 `file`，须显式 `Content-Type: multipart/form-data` 否则 422；仅 jpg/png/webp ≤2MB，后端中心裁剪 256×256，文件名含用户 id，覆盖上传自动删除旧文件；返回 `{url}`，落盘 `uploads/avatar/YYYYMM/`，URL 为 `/api/announcement/uploads/avatar/...`；头像非发言，**不受禁言限制**） |
 
 - JWT 默认 24 小时有效，环境变量 `JWT_EXPIRE_HOURS` 可调；签名密钥取环境变量 `JWT_SECRET`，未设置时自动生成并持久化到数据目录。
 - 系统管理员 `xqly-admin` 在后端首次启动时自动初始化，随机强密码写入数据目录 `admin_initial_password.txt`（仅首次初始化时写入，请妥善保管并及时删除）。
@@ -41,11 +42,14 @@
 | PUT | `/api/auth/admin/users/{id}` | 编辑用户（body: `{nickname?, role?, email?, password?}`；**账号 username 不允许修改**；昵称/角色/邮箱可改，密码留空=不修改（忘记密码重置场景）；已删除用户禁止编辑） |
 | PUT | `/api/auth/admin/users/{id}/status` | 切换用户状态（body: `{status: 1\|0\|2}`；1=启用, 0=禁用, 2=删除（软删除，数据保留可恢复）） |
 | DELETE | `/api/auth/admin/users/{id}` | 软删除用户（status 置为已删除，无法登录，数据保留可恢复） |
+| POST | `/api/auth/admin/users/{id}/avatar/reset` | 重置头像为默认（清空 `avatar` 列并删除头像文件；前台回退默认头像，返回更新后的用户对象） |
 
 - 所有接口需 `Authorization: Bearer <JWT>` 且角色为 `admin`，无 token 返回 401，普通用户返回 403。
 - 用户 `status` 三态：`1=正常`、`0=禁用`（无法登录，可重新启用）、`2=已删除`（软删除，无法登录，数据保留可恢复）。
 - 用户表 `username`（账号）为登录标识，创建后不可修改；`nickname`（昵称）为展示名，可随时修改。
-- 存量数据库首次启动自动补 `users.status` / `users.nickname` 列（status 默认 1=正常，nickname 默认为空）。
+- 用户列表 / 详情（含 `/api/auth/admin/users` 的 `items`）下发 `avatar`（头像相对 URL，空串 = 未上传）。
+- 存量数据库首次启动自动补 `users.status` / `users.nickname` 列（status 默认 1=正常，nickname 默认为空）与 `users.avatar` 列（默认空串 = 未上传头像）。
+- 作者简卡（`_author_brief()`，文章 / 评论 / 消息各处下发）的 `avatar` 读 `users.avatar`：空串下发 `null`，前端回退内置默认图；站内信里已存的消息是**下发时点快照**，不回溯改历史消息。
 
 ## 阵营对战内测申请
 
@@ -209,13 +213,14 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | GET | `/api/forum/tags/hot` | 热门标签（`isHot` 优先 + `useCount` 倒序；参数 `limit`） |
 | GET | `/api/forum/stats` | 社区统计 `{articleCount, viewCount, tagCount}`（`status=1` 实时聚合） |
 | GET | `/api/forum/config` | 前台配置（Banner 三项 + `defaultSort` + `searchPlaceholder`；打赏预留键不下发） |
-| GET | `/api/forum/articles` | 文章列表（参数 `page`,`pageSize`,`category`,`sort`,`q`,`tag`；`category=home`=全部 / `recommend`=置顶∪加精按浏览量；`sort=latest\|views\|comments`；**置顶帖在任意排序档中都恒排最前**） |
+| GET | `/api/forum/articles` | 文章列表（参数 `page`,`pageSize`,`category`,`sort`,`q`,`tag`,`authorId`；`category=home`=全部 / `recommend`=置顶∪加精按浏览量；`sort=latest\|views\|comments`；`authorId`=按作者筛，**只含已发布**，个人主页「TA 的帖子」用；**置顶帖在任意排序档中都恒排最前**） |
 | GET | `/api/forum/articles/{id}` | 详情（未公开文章对非作者非管理员按 404 处理；**回收站帖对所有人 404，含作者本人**；**不计数浏览量**） |
 | GET | `/api/forum/articles/{id}/comments` | 评论列表（`page`,`pageSize`；**只对顶层评论分页**，每条内嵌 `replies`；已登录附每条 `liked`） |
 | GET | `/api/forum/comments/{id}` | 单条评论详情（匿名可读；`id` 可为顶层评论或回复；返回 `{comment, rootComment, replies, article}`，`replies` 为所属顶层评论下全部正常回复、正序不分页；评论已删除 / 文章不可见一律 404） |
 | GET | `/api/forum/articles/{id}/author-posts` | 作者其他已发布文章（最多 5 条） |
 | POST | `/api/forum/articles/{id}/view` | 浏览量 +1（匿名可调；原子自增，重复刷新重复计为已接受行为） |
-| GET | `/api/forum/users/{userId}/stats` | 某人的公开论坛三项数据（作者卡用；不下发任何私有字段） |
+| GET | `/api/forum/users/{userId}/stats` | 某人的公开论坛数据（作者卡 / 个人主页头部用；`{author, postCount, likeCount, followerCount, createTime}`，`followerCount` 恒 0，不下发任何私有字段；用户不存在或已注销返 404） |
+| GET | `/api/forum/users/{userId}/comments` | 某人的公开评论（个人主页「TA 的评论」用；参数 `page`,`pageSize`，按时间倒序；只含 `status=1` 文章下的 `status=1` 评论，顶层与回复都算；返回 `{articleId, articleTitle, commentId, content, createTime}`，`content` 为纯文本截断摘要；用户不存在或已注销返 404） |
 
 **登录用户接口**
 
@@ -256,6 +261,10 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | GET/PUT | `/api/forum/admin/config` | 社区配置读写（白名单键；打赏 `reward*` 为预留键，第一阶段无 UI） |
 | GET | `/api/forum/admin/covers` | 封面图库（只读列表；冗余清理归第三阶段） |
 | GET | `/api/forum/admin/user-stats/{userId}` | 用户论坛数据（发帖/获赞/粉丝 + 最近 5 篇） |
+| GET | `/api/forum/admin/users/{userId}/exp` | 用户经验与等级进度 `{exp, level, levelName, updateTime}`（无记录视为 0 / Lv.1） |
+| GET | `/api/forum/admin/users/{userId}/titles` | 用户头衔列表（**含撤销历史**，撤销不删行） |
+| POST | `/api/forum/admin/users/{userId}/titles` | 手动授予头衔（body `{titleCode}`，操作人与时间留痕；生效中重复授予 400） |
+| DELETE | `/api/forum/admin/users/{userId}/titles/{titleCode}` | 撤销头衔（写 `revokedAt`/`revokedBy` 留痕；前台实时失效） |
 | PUT | `/api/auth/admin/users/{id}/mute` | 禁言/解禁（body `{muteUntil}`，空串=解禁；与 `status` 三态**正交**） |
 
 - **状态机**（`forum_articles.status`）：`0 待审核 → 1 已发布 / 2 已驳回`；`1 → 3 已下架`（**仅管理员**）`→ 1 恢复`；`0/1/2 ──作者删除──▶ 4 回收站`；`4 ──恢复（作者或管理员）──▶ status_before_delete`；`4 ──彻底删除/后台硬删/超期清理──▶ 物理删除`（级联，不可恢复）。任意可编辑态（0/1/2/3 且 `remove_by='author'`）经**作者编辑保存 → 0**（`resubmit_count+1`）；**回收站帖必须先恢复才能编辑**。已驳回的文章必须由作者重提回 0 才能再审。
@@ -263,9 +272,36 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 - **`remove_by` 决定作者能否编辑重提**：`''` 未移除 / `'author'` 作者自删（已在回收站，须先恢复）/ `'admin'` 管理员下架（**不可重提**，返 400，否则等于绕过下架）。
 - **标签 `use_count` = 被 `status=1` 文章引用的数量**，只挂在状态转移这一个点上；浏览/点赞/收藏/评论计数一律原子 SQL 自增。
 - **`comment_count` = 顶层评论数 + 回复数**（回复也算评论）；评论纯文本存储，不接受 Markdown/HTML。
+- **用户个人主页（FLPR-34）**：`/forum/user/:id`（未登录可浏览）只聚合已公开内容——帖子走 `/api/forum/articles?authorId=`（后端恒 `status=1`，含置顶/精华标记），评论走 `/api/forum/users/{id}/comments`（仅已发布文章下的正常评论）；下架/驳回/回收站帖与已删评论一律不出现。禁用 / 禁言用户的已公开内容照常展示（两者只限登录与写操作），不存在 / 已注销（users.status=2）由两个公开接口统一 404，前端给明确空态。头像位等 FLPR-31、等级徽章位等 FLPR-36 落地后自然点亮，当前不填假数据。
 - **禁言语义**：能登录浏览，但**不能发帖/评论/上传**（点赞收藏不受影响）；命中返回 403 + `detail="账号已被禁言，至 <时间>"`。**删自己的帖子/评论属例外，禁言期间仍可用**。
 - **后台回收站已打通**（2026-11-18）：`GET /api/forum/admin/articles?status=4` 可筛出回收站帖（列表项带 `deletedAt` / `daysLeft` / `statusBeforeDelete`，**不含正文**），`POST /api/forum/admin/articles/{id}/restore` 按 `status_before_delete` 恢复；后台文章管理页对 `status=4` 行只留「恢复 / 删除」，隐藏通过 / 驳回 / 下架 / 置顶 / 加精 / 改属性。
 - 端到端回归脚本：`cd backend && python3 forum_smoke_test.py`（临时库 + `TestClient`，覆盖状态机/计数/回收站/权限/级联等断言）。
+
+### 等级 / 头衔 / 经验体系（FLPR-36，2026-11-22）
+
+**数据模型**（四张新表，不动 `users`；`backend/app/database.py`）：
+- `forum_user_levels`：等级阈值常量表，`level` / `name` / `required_exp`，由 `seed_forum_user_levels()` 启动时幂等写入；
+- `forum_user_exp`：每人一行 `exp`（只增不减）/ `level`（由阈值推导）/ `update_time`；
+- `forum_user_titles`：`user_id` / `title_code` / `source`（`system`|`manual`）/ `granted_at` / `granted_by` / `revoked_at` / `revoked_by`——**撤销不删行，手动头衔全程留痕**，`revoked_at=''` 即生效；
+- `forum_exp_ledger`：经验发放流水，`dedup_key` 唯一，是「取消再点赞不重复加经验」的权威（点赞关系表取消时物理删行，必须以独立流水去重）。
+
+**阈值表（首版常量，调整需另开工单；不清空用户已有 exp，按新阈值重算等级）**：
+
+| 等级 | 名称 | 所需累计经验 |
+|------|------|--------------|
+| Lv.1 | 见习旅人 | 0 |
+| Lv.2 | 旅人 | 10 |
+| Lv.3 | 探索者 | 30 |
+| Lv.4 | 冒险家 | 60 |
+| Lv.5 | 先驱者 | 100 |
+| Lv.6 | 荣耀行者 | 200 |
+| Lv.7 | 传奇 | 400 |
+
+**经验规则（只增不减、不降级）**：文章过审 +10（按文章去重，驳回后编辑重提再过审不重复加）、文章被赞 +2（给作者，自赞不计）、评论被赞 +1（给评论作者，自赞不计）、每日登录 +1（北京时间自然日封顶，重复登录不重复加）。禁用 / 已删除用户不再累计；历史 `forum_user_exp` 行不删，历史等级徽章仍正常展示。
+
+**头衔**（首版示例名上线前与运营定稿；`code` 稳定，展示名/色板可改）：`pioneer` 开荒先锋 / `veteran` 资深旅人 / `contributor` 社区贡献者 / `official` 官方认证 / `legend` 传奇行者。
+
+**契约变更**：`author.badge` 由单值字符串（`null`|`"管理员"`）改为**数组**（如 `["管理员","Lv.3","开荒先锋"]`，顺序 管理员 → 等级 → 头衔），已注销用户返回 `[]`。后台不缓存，author 下发即实时查询，撤销头衔前台即时失效。前端改动收敛在 `frontend/src/utils/forumBadges.js` 与 `frontend/src/components/forum/UserBadge.vue`（后台同名表 `admin-frontend/src/utils/forumBadges.ts`），其余组件经 `author.badge` 透传零改动。**不做**经验商城 / 排行榜 / 存量 retrofit（从上线起算，不补算历史行为）。
 
 ## 资源中心
 

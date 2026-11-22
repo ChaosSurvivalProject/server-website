@@ -1,13 +1,15 @@
-"""认证路由：/auth/captcha、/auth/captcha/verify、/auth/register、/auth/login、/auth/me。
+"""认证路由：/auth/captcha、/auth/captcha/verify、/auth/register、/auth/login、/auth/me、
+/auth/avatar。
 
 所有接口遵循项目统一响应包络 {code, message, data}（code=0 成功）；
 业务失败以 HTTPException(400/401, detail=...) 抛出，前端 axios 拦截器
 统一读取 detail 展示。
 """
 from datetime import datetime
+import logging
 
 from email_validator import EmailNotValidError, validate_email
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +20,11 @@ from ..database import (
     USER_STATUS_DISABLED,
     USER_STATUS_DELETED,
 )
+from ..uploads import delete_avatar, save_avatar
+# FLPR-36：每日登录经验发放。独立模块只依赖 database/crud，不冷 import forum.py 的 APIRouter。
+from ..forum_exp import grant_daily_login_exp
+
+logger = logging.getLogger("uvicorn.error")
 from .deps import get_current_user
 from .schemas import CaptchaVerifyRequest, LoginRequest, RegisterRequest
 from .security import (
@@ -147,6 +154,14 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="用户不存在",
         )
 
+    # FLPR-36：每日登录 +1 经验（北京时间自然日封顶；封存用户在 helper 内拦截）。
+    # 经验失败不阻断登录主流程——登录是核心功能，等级体系是附属增益。
+    try:
+        if await grant_daily_login_exp(db, user.id):
+            await db.commit()
+    except Exception as e:
+        logger.warning("写入每日登录经验失败: %s", e)
+
     token = create_access_token(user.username, user.role)
     return {
         "code": 0,
@@ -159,6 +174,8 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             "username": user.username,
             "nickname": user.nickname,
             "role": user.role,
+            # 头像随登录一并下发，前端登录后立即能点亮导航栏真实头像（FLPR-31）
+            "avatar": user.avatar or "",
         },
     }
 
@@ -180,5 +197,32 @@ async def me(user: User = Depends(get_current_user)):
             "nickname": user.nickname,
             "email": user.email,
             "role": user.role,
+            "avatar": user.avatar or "",
         },
     }
+
+
+# ── 上传头像 ─────────────────────────────────────────────────────
+@router.post("/avatar")
+async def upload_avatar(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """登录用户上传头像（FLPR-31）。
+
+    - 仅 jpg/png/webp、单张 ≤2MB、后端兜底中心裁剪 256×256（复用 uploads.py 口径）；
+    - 文件名含用户 id；覆盖上传时**删除旧文件**，不留孤儿；
+    - 上传属写操作需登录态，但与禁言无关（头像非发言，不走 _ensure_not_muted）；
+    - FormData 必须显式 `Content-Type: multipart/form-data`，否则 422（项目铁律）。
+    """
+    old_url = user.avatar or ""
+    new_url = await save_avatar(file, user.id)
+    user.avatar = new_url
+    await db.commit()
+    await db.refresh(user)
+    # 数据库提交成功后再清理旧文件；delete_avatar 内部吞掉 IO 异常，
+    # 且只删属于该用户的 avatar 文件，删不掉也不影响新头像生效
+    if old_url:
+        delete_avatar(old_url, user.id)
+    return {"code": 0, "message": "头像上传成功", "data": {"url": new_url}}

@@ -12,7 +12,7 @@
     <div class="fx-card-pad">
       <div class="author-top">
         <span class="fx-avatar fx-av-56" :class="{ 'fx-avatar-admin': isAdmin }">
-          <img v-if="avatarUrl" :src="avatarUrl" :alt="displayName" />
+          <img v-if="avatarUrl" :src="avatarUrl" :alt="displayName" @error="onAvatarError" />
           <template v-else>{{ initial }}</template>
         </span>
         <div class="nm">{{ displayName }}</div>
@@ -42,6 +42,15 @@
           <i class="fa-solid fa-coins"></i>打赏作者
         </button>
       </div>
+
+      <!-- 个人主页入口（FLPR-34）：作者不存在/已注销时 id 为 0，不给死链 -->
+      <router-link
+        v-if="author?.id"
+        :to="`/forum/user/${author.id}`"
+        class="fx-btn fx-btn-sm profile-link"
+      >
+        <i class="fa-solid fa-user"></i>查看主页
+      </router-link>
     </div>
   </section>
 </template>
@@ -65,7 +74,7 @@ export default {
   },
   computed: {
     isAdmin() {
-      return this.author?.badge === "管理员";
+      return !!this.author?.badge?.includes?.("管理员");
     },
     avatarUrl() {
       return this.author?.avatar || this.defaultAvatar;
@@ -128,6 +137,13 @@ export default {
   gap: 9px;
 }
 .author-acts .fx-btn {
+  padding: 7px 4px;
+  font-size: 12.5px;
+}
+.profile-link {
+  display: flex;
+  width: 100%;
+  margin-top: 9px;
   padding: 7px 4px;
   font-size: 12.5px;
 }

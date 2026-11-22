@@ -33,7 +33,7 @@
       <template v-else>
         <div class="user-top">
           <span class="fx-avatar fx-av-56" :class="{ 'fx-avatar-admin': isAdmin }">
-            <img v-if="avatarUrl" :src="avatarUrl" :alt="displayName" />
+            <img v-if="avatarUrl" :src="avatarUrl" :alt="displayName" @error="onAvatarError" />
             <template v-else>{{ initial }}</template>
           </span>
           <div class="user-nm">{{ displayName }}</div>

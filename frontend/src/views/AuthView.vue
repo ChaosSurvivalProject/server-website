@@ -258,7 +258,8 @@ export default {
             id: data.id,
             username: data.username,
             nickname: data.nickname,
-            role: data.role
+            role: data.role,
+            avatar: data.avatar || ""
           });
           // 登录成功后返回来源页（401 跳转时带上）或首页
           const redirect = this.$route.query.redirect || "/";
