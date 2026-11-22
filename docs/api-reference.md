@@ -213,13 +213,14 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | GET | `/api/forum/tags/hot` | 热门标签（`isHot` 优先 + `useCount` 倒序；参数 `limit`） |
 | GET | `/api/forum/stats` | 社区统计 `{articleCount, viewCount, tagCount}`（`status=1` 实时聚合） |
 | GET | `/api/forum/config` | 前台配置（Banner 三项 + `defaultSort` + `searchPlaceholder`；打赏预留键不下发） |
-| GET | `/api/forum/articles` | 文章列表（参数 `page`,`pageSize`,`category`,`sort`,`q`,`tag`；`category=home`=全部 / `recommend`=置顶∪加精按浏览量；`sort=latest\|views\|comments`；**置顶帖在任意排序档中都恒排最前**） |
+| GET | `/api/forum/articles` | 文章列表（参数 `page`,`pageSize`,`category`,`sort`,`q`,`tag`,`authorId`；`category=home`=全部 / `recommend`=置顶∪加精按浏览量；`sort=latest\|views\|comments`；`authorId`=按作者筛，**只含已发布**，个人主页「TA 的帖子」用；**置顶帖在任意排序档中都恒排最前**） |
 | GET | `/api/forum/articles/{id}` | 详情（未公开文章对非作者非管理员按 404 处理；**回收站帖对所有人 404，含作者本人**；**不计数浏览量**） |
 | GET | `/api/forum/articles/{id}/comments` | 评论列表（`page`,`pageSize`；**只对顶层评论分页**，每条内嵌 `replies`；已登录附每条 `liked`） |
 | GET | `/api/forum/comments/{id}` | 单条评论详情（匿名可读；`id` 可为顶层评论或回复；返回 `{comment, rootComment, replies, article}`，`replies` 为所属顶层评论下全部正常回复、正序不分页；评论已删除 / 文章不可见一律 404） |
 | GET | `/api/forum/articles/{id}/author-posts` | 作者其他已发布文章（最多 5 条） |
 | POST | `/api/forum/articles/{id}/view` | 浏览量 +1（匿名可调；原子自增，重复刷新重复计为已接受行为） |
-| GET | `/api/forum/users/{userId}/stats` | 某人的公开论坛三项数据（作者卡用；不下发任何私有字段） |
+| GET | `/api/forum/users/{userId}/stats` | 某人的公开论坛数据（作者卡 / 个人主页头部用；`{author, postCount, likeCount, followerCount, createTime}`，`followerCount` 恒 0，不下发任何私有字段；用户不存在或已注销返 404） |
+| GET | `/api/forum/users/{userId}/comments` | 某人的公开评论（个人主页「TA 的评论」用；参数 `page`,`pageSize`，按时间倒序；只含 `status=1` 文章下的 `status=1` 评论，顶层与回复都算；返回 `{articleId, articleTitle, commentId, content, createTime}`，`content` 为纯文本截断摘要；用户不存在或已注销返 404） |
 
 **登录用户接口**
 
@@ -267,6 +268,7 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 - **`remove_by` 决定作者能否编辑重提**：`''` 未移除 / `'author'` 作者自删（已在回收站，须先恢复）/ `'admin'` 管理员下架（**不可重提**，返 400，否则等于绕过下架）。
 - **标签 `use_count` = 被 `status=1` 文章引用的数量**，只挂在状态转移这一个点上；浏览/点赞/收藏/评论计数一律原子 SQL 自增。
 - **`comment_count` = 顶层评论数 + 回复数**（回复也算评论）；评论纯文本存储，不接受 Markdown/HTML。
+- **用户个人主页（FLPR-34）**：`/forum/user/:id`（未登录可浏览）只聚合已公开内容——帖子走 `/api/forum/articles?authorId=`（后端恒 `status=1`，含置顶/精华标记），评论走 `/api/forum/users/{id}/comments`（仅已发布文章下的正常评论）；下架/驳回/回收站帖与已删评论一律不出现。禁用 / 禁言用户的已公开内容照常展示（两者只限登录与写操作），不存在 / 已注销（users.status=2）由两个公开接口统一 404，前端给明确空态。头像位等 FLPR-31、等级徽章位等 FLPR-36 落地后自然点亮，当前不填假数据。
 - **禁言语义**：能登录浏览，但**不能发帖/评论/上传**（点赞收藏不受影响）；命中返回 403 + `detail="账号已被禁言，至 <时间>"`。**删自己的帖子/评论属例外，禁言期间仍可用**。
 - **后台回收站已打通**（2026-11-18）：`GET /api/forum/admin/articles?status=4` 可筛出回收站帖（列表项带 `deletedAt` / `daysLeft` / `statusBeforeDelete`，**不含正文**），`POST /api/forum/admin/articles/{id}/restore` 按 `status_before_delete` 恢复；后台文章管理页对 `status=4` 行只留「恢复 / 删除」，隐藏通过 / 驳回 / 下架 / 置顶 / 加精 / 改属性。
 - 端到端回归脚本：`cd backend && python3 forum_smoke_test.py`（临时库 + `TestClient`，覆盖状态机/计数/回收站/权限/级联等断言）。

@@ -73,7 +73,13 @@
           <div class="cmt-body">
             <!-- 评论头 -->
             <div class="cmt-head">
-              <span class="nm">{{ c.author?.name }}</span>
+              <!-- 作者名直达个人主页（FLPR-34）；已注销用户 id=0 不给死链 -->
+              <router-link
+                v-if="c.author?.id"
+                :to="`/forum/user/${c.author.id}`"
+                class="nm"
+              >{{ c.author?.name }}</router-link>
+              <span v-else class="nm">{{ c.author?.name || "已注销用户" }}</span>
               <UserBadge :badge="c.author?.badge" />
               <span>{{ formatRelativeTime(c.createTime) }}</span>
             </div>
@@ -140,7 +146,12 @@
                 </span>
                 <div class="cmt-body">
                   <div class="cmt-head">
-                    <span class="nm">{{ r.author?.name }}</span>
+                    <router-link
+                      v-if="r.author?.id"
+                      :to="`/forum/user/${r.author.id}`"
+                      class="nm"
+                    >{{ r.author?.name }}</router-link>
+                    <span v-else class="nm">{{ r.author?.name || "已注销用户" }}</span>
                     <UserBadge :badge="r.author?.badge" />
                     <span>{{ formatRelativeTime(r.createTime) }}</span>
                   </div>
@@ -545,6 +556,12 @@ export default {
   font-weight: 600;
   color: var(--fx-text-2);
   font-size: 13px;
+}
+a.nm {
+  text-decoration: none;
+}
+a.nm:hover {
+  color: var(--fx-brand-d);
 }
 /* 评论正文：纯文本 + 保留换行（§8-D5），用 white-space 而不是 <br> 拼接 */
 .cmt-text {

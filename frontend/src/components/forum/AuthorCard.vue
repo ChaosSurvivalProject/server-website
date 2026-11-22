@@ -42,6 +42,15 @@
           <i class="fa-solid fa-coins"></i>打赏作者
         </button>
       </div>
+
+      <!-- 个人主页入口（FLPR-34）：作者不存在/已注销时 id 为 0，不给死链 -->
+      <router-link
+        v-if="author?.id"
+        :to="`/forum/user/${author.id}`"
+        class="fx-btn fx-btn-sm profile-link"
+      >
+        <i class="fa-solid fa-user"></i>查看主页
+      </router-link>
     </div>
   </section>
 </template>
@@ -128,6 +137,13 @@ export default {
   gap: 9px;
 }
 .author-acts .fx-btn {
+  padding: 7px 4px;
+  font-size: 12.5px;
+}
+.profile-link {
+  display: flex;
+  width: 100%;
+  margin-top: 9px;
   padding: 7px 4px;
   font-size: 12.5px;
 }
