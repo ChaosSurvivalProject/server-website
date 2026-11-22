@@ -50,7 +50,7 @@
                 <div class="art-meta-l">
                   <span
                     class="fx-avatar fx-av-32"
-                    :class="{ 'fx-avatar-admin': article.author?.badge === '管理员' }"
+                    :class="{ 'fx-avatar-admin': article.author?.badge?.includes?.('管理员') }"
                   >
                     <img
                       v-if="article.author?.avatar"

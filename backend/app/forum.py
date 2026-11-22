@@ -48,6 +48,10 @@
   POST   /forum/admin/tags/{id}/merge      标签合并
   GET    /forum/admin/covers               封面图库（只读）
   GET    /forum/admin/user-stats/{userId}  用户论坛数据
+  GET    /forum/admin/users/{userId}/titles         用户头衔列表（含撤销留痕）
+  POST   /forum/admin/users/{userId}/titles         手动授予头衔（body {titleCode}）
+  DELETE /forum/admin/users/{userId}/titles/{code}  撤销头衔（写 revokedAt/revokedBy 留痕）
+  GET    /forum/admin/users/{userId}/exp            用户经验与等级进度
 
 所有接口遵循项目统一响应包络 {code, message, data}（code=0 成功）；
 业务失败以 HTTPException(400/401/403/404/410, detail=...) 抛出。
@@ -74,6 +78,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .auth.deps import get_current_user, get_optional_user, require_admin
 from .crud import _TZ
 from .database import (
+    FORUM_EXP_ARTICLE_LIKE,
+    FORUM_EXP_ARTICLE_PUBLISH,
+    FORUM_EXP_COMMENT_LIKE,
+    FORUM_TITLE_META,
     ForumArticle,
     ForumArticleFavorite,
     ForumArticleLike,
@@ -83,8 +91,16 @@ from .database import (
     ForumCommentLike,
     ForumConfig,
     ForumTag,
+    ForumUserTitle,
     User,
     get_db,
+)
+# 等级 / 经验 / 头衔 helper（FLPR-36）：写入点分散在 forum.py 与 auth/router.py，
+# 独立模块避免登录模块冷 import 完整 APIRouter（同 forum_core.py 的考量）。
+from .forum_exp import (
+    grant_exp,
+    user_badges,
+    user_exp_detail,
 )
 # 回收站轻量核心（纯 SQLAlchemy，**forum_purge.py CLI 从 forum_core 直连、不 import 本模块**——
 # 本模块顶部是完整 APIRouter + 全部 pydantic 模型，CLI 冷 import 实测 33s 起，见该模块头注释）。
@@ -379,19 +395,29 @@ class ConfigUpdateRequest(BaseModel):
     rewardCommission: Optional[str] = Field(None, max_length=8)
 
 
+class TitleGrantRequest(BaseModel):
+    """管理员手动授予头衔（FLPR-36）：只收 titleCode，操作人取当前登录管理员。"""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    titleCode: str = Field(..., alias="titleCode", min_length=1, max_length=32)
+
+
 # ── 响应构造（camelCase 契约，PRD §7.4） ─────────────────────────
-def _author_brief(user: Optional[User]) -> dict:
+async def _author_brief(db: AsyncSession, user: Optional[User]) -> dict:
     """作者简卡（FLPR-31：avatar 读 users.avatar，空串下发 None 由前端回退默认头像）。
 
-    徽章仍只区分管理员（等级/头衔属第二阶段，PRD §6.5.3）。
+    FLPR-36：`badge` 由单值字符串改为**数组**（如 ["管理员","Lv.3","开荒先锋"]），
+    顺序为 管理员 → 等级 → 头衔；未知用户返回空数组。字段语义变更已同步
+    docs/api-reference.md。组件改动收敛在 UserBadge.vue / forumBadges.js。
     """
     if user is None:
-        return {"id": 0, "name": "已注销用户", "avatar": None, "badge": None}
+        return {"id": 0, "name": "已注销用户", "avatar": None, "badge": []}
     return {
         "id": user.id,
         "name": user.nickname or user.username,
         "avatar": user.avatar or None,
-        "badge": "管理员" if user.role == "admin" else None,
+        "badge": await user_badges(db, user),
     }
 
 
@@ -490,7 +516,7 @@ async def _article_item(db: AsyncSession, article: ForumArticle, user: Optional[
         "statusText": ARTICLE_STATUS_TEXT.get(article.status, ""),
         "removeBy": article.remove_by,
         "resubmitCount": article.resubmit_count,
-        "author": _author_brief(author.get(article.author_id)),
+        "author": await _author_brief(db, author.get(article.author_id)),
         "viewCount": article.view_count,
         "likeCount": article.like_count,
         "commentCount": article.comment_count,
@@ -542,7 +568,7 @@ async def _article_items(
             "statusText": ARTICLE_STATUS_TEXT.get(a.status, ""),
             "removeBy": a.remove_by,
             "resubmitCount": a.resubmit_count,
-            "author": _author_brief(user_map.get(a.author_id)),
+            "author": await _author_brief(db, user_map.get(a.author_id)),
             "viewCount": a.view_count,
             "likeCount": a.like_count,
             "commentCount": a.comment_count,
@@ -965,7 +991,8 @@ async def get_article_detail(
     return _ok(item)
 
 
-def _comment_node(
+async def _comment_node(
+    db: AsyncSession,
     comment: ForumComment,
     author: Optional[User],
     liked_ids: set[int],
@@ -982,7 +1009,7 @@ def _comment_node(
         "likeCount": comment.like_count,
         "liked": comment.id in liked_ids,
         "status": comment.status,
-        "author": _author_brief(author),
+        "author": await _author_brief(db, author),
         "createTime": comment.create_time,
     }
     if replies is not None:
@@ -1019,20 +1046,21 @@ async def _comment_nodes(
 
     nodes = []
     for c in top:
-        child_nodes = [
-            _comment_node(
-                rc,
-                user_map.get(rc.author_id),
-                liked_ids,
-                reply_to_name=(
-                    user_map[rc.reply_to_user_id].nickname or user_map[rc.reply_to_user_id].username
-                    if rc.reply_to_user_id and rc.reply_to_user_id in user_map
-                    else None
-                ),
+        child_nodes = []
+        for rc in by_parent.get(c.id, []):
+            reply_to = user_map.get(rc.reply_to_user_id) if rc.reply_to_user_id else None
+            child_nodes.append(
+                await _comment_node(
+                    db,
+                    rc,
+                    user_map.get(rc.author_id),
+                    liked_ids,
+                    reply_to_name=(reply_to.nickname or reply_to.username) if reply_to else None,
+                )
             )
-            for rc in by_parent.get(c.id, [])
-        ]
-        nodes.append(_comment_node(c, user_map.get(c.author_id), liked_ids, replies=child_nodes))
+        nodes.append(
+            await _comment_node(db, c, user_map.get(c.author_id), liked_ids, replies=child_nodes)
+        )
     return nodes
 
 
@@ -1121,7 +1149,8 @@ async def _comment_node_map(
     out: dict[int, dict] = {}
     for c in comments:
         reply_to = user_map.get(c.reply_to_user_id) if c.reply_to_user_id else None
-        out[c.id] = _comment_node(
+        out[c.id] = await _comment_node(
+            db,
             c,
             user_map.get(c.author_id),
             liked_ids,
@@ -1192,7 +1221,7 @@ async def get_comment_detail(
                 "title": article.title,
                 "status": article.status,
                 "publishTime": article.publish_time,
-                "author": _author_brief(article_author),
+                "author": await _author_brief(db, article_author),
             },
         }
     )
@@ -1692,7 +1721,7 @@ async def _user_forum_stats(db: AsyncSession, user: User) -> dict:
     )
     post_count, like_count = r.one()
     return {
-        "author": _author_brief(user),
+        "author": await _author_brief(db, user),
         "postCount": post_count or 0,
         "likeCount": like_count or 0,
         # 关注体系属第二阶段（§0.3-B）：由接口返回 0，前端不写死
@@ -1734,6 +1763,18 @@ async def toggle_article_like(
             update(ForumArticle)
             .where(ForumArticle.id == article_id)
             .values(like_count=ForumArticle.like_count + delta)
+        )
+    # FLPR-36：文章被赞 +2 给作者。以 ledger 去重（取消再点回不重复加经验），
+    # 自赞不计；封存/已删除作者由 grant_exp 内部拦住。与计数同事务。
+    if delta == 1 and article.author_id and article.author_id != user.id:
+        await grant_exp(
+            db,
+            user_id=article.author_id,
+            amount=FORUM_EXP_ARTICLE_LIKE,
+            dedup_key=f"article_like:{article_id}:{article.create_time}:{user.id}",
+            reason="article_like",
+            ref_id=article_id,
+            actor_id=user.id,
         )
     await db.commit()
     new_count = (await _get_article(db, article_id)).like_count
@@ -1865,7 +1906,7 @@ async def create_comment(
     except Exception as e:
         logger.warning("发送回复通知失败: %s", e)
 
-    node = _comment_node(comment, user, set())
+    node = await _comment_node(db, comment, user, set())
     if data.reply_to_user_id:
         target = (
             await db.execute(select(User).where(User.id == data.reply_to_user_id))
@@ -1903,6 +1944,17 @@ async def toggle_comment_like(
             update(ForumComment)
             .where(ForumComment.id == comment_id)
             .values(like_count=ForumComment.like_count + delta)
+        )
+    # FLPR-36：评论被赞 +1 给评论作者（顶层/回复通用），ledger 去重、自赞不计。
+    if delta == 1 and comment.author_id and comment.author_id != user.id:
+        await grant_exp(
+            db,
+            user_id=comment.author_id,
+            amount=FORUM_EXP_COMMENT_LIKE,
+            dedup_key=f"comment_like:{comment_id}:{comment.create_time}:{user.id}",
+            reason="comment_like",
+            ref_id=comment_id,
+            actor_id=user.id,
         )
     await db.commit()
     new_count = (
@@ -2129,6 +2181,17 @@ async def admin_review(
 
     await _set_article_status(db, article, data.status)
     article.update_time = _now_iso()
+    # FLPR-36：文章过审 +10 给作者；按 article_id 去重——驳回后编辑重提再过审不重复加。
+    if data.status == STATUS_PUBLISHED and article.author_id:
+        await grant_exp(
+            db,
+            user_id=article.author_id,
+            amount=FORUM_EXP_ARTICLE_PUBLISH,
+            dedup_key=f"article_publish:{article.id}:{article.create_time}",
+            reason="article_publish",
+            ref_id=article.id,
+            actor_id=_admin.id,
+        )
     await db.commit()
 
     # 站内信：文章审核结果通知作者
@@ -2326,8 +2389,9 @@ async def admin_list_comments(
         db, {c.author_id for c in rows} | {c.reply_to_user_id or 0 for c in rows}
     )
 
-    def node(c: ForumComment, with_replies: bool) -> dict:
-        d = _comment_node(
+    async def node(c: ForumComment, with_replies: bool) -> dict:
+        d = await _comment_node(
+            db,
             c,
             user_map.get(c.author_id),
             set(),
@@ -2348,8 +2412,8 @@ async def admin_list_comments(
             replies_by_parent.setdefault(c.parent_id, []).append(c)
     items = []
     for c in tops:
-        d = node(c, True)
-        d["replies"] = [node(rc, False) for rc in replies_by_parent.get(c.id, [])]
+        d = await node(c, True)
+        d["replies"] = [await node(rc, False) for rc in replies_by_parent.get(c.id, [])]
         items.append(d)
     return _ok(items)
 
@@ -2826,6 +2890,117 @@ async def admin_user_stats(
         for a in recent
     ]
     return _ok(data)
+
+
+# ── 等级 / 头衔管理（FLPR-36）────────────────────────────────────
+def _title_payload(t: ForumUserTitle) -> dict:
+    meta = FORUM_TITLE_META.get(t.title_code, {})
+    return {
+        "id": t.id,
+        "titleCode": t.title_code,
+        "titleText": meta.get("text", t.title_code),
+        "source": t.source,
+        "grantedAt": t.granted_at,
+        "grantedBy": t.granted_by,
+        "revokedAt": t.revoked_at,
+        "revokedBy": t.revoked_by,
+        "active": t.revoked_at == "",
+    }
+
+
+async def _get_user_or_404(db: AsyncSession, user_id: int) -> User:
+    target = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    return target
+
+
+@router.get("/admin/users/{user_id}/exp")
+async def admin_user_exp(
+    user_id: int, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
+):
+    """用户经验与等级进度（无记录视为 0 经验 / Lv.1）。"""
+    await _get_user_or_404(db, user_id)
+    return _ok(await user_exp_detail(db, user_id))
+
+
+@router.get("/admin/users/{user_id}/titles")
+async def admin_list_user_titles(
+    user_id: int, db: AsyncSession = Depends(get_db), _admin: User = Depends(require_admin)
+):
+    """用户头衔列表（含已撤销历史，撤销有留痕）。生效项排最前。"""
+    await _get_user_or_404(db, user_id)
+    r = await db.execute(
+        select(ForumUserTitle)
+        .where(ForumUserTitle.user_id == user_id)
+        .order_by(
+            ForumUserTitle.revoked_at.asc(),
+            ForumUserTitle.granted_at.desc(),
+            ForumUserTitle.id.desc(),
+        )
+    )
+    return _ok([_title_payload(t) for t in r.scalars().all()])
+
+
+@router.post("/admin/users/{user_id}/titles")
+async def admin_grant_user_title(
+    user_id: int,
+    data: TitleGrantRequest,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """手动授予头衔：只存 code，操作人与时间留痕；同一头衔生效中不可重复授予。"""
+    await _get_user_or_404(db, user_id)
+    code = (data.titleCode or "").strip()
+    if code not in FORUM_TITLE_META:
+        raise HTTPException(status_code=400, detail="未知的头衔代码")
+    exists = await db.execute(
+        select(ForumUserTitle.id).where(
+            ForumUserTitle.user_id == user_id,
+            ForumUserTitle.title_code == code,
+            ForumUserTitle.revoked_at == "",
+        )
+    )
+    if exists.scalar_one_or_none() is not None:
+        raise HTTPException(status_code=400, detail="该用户已拥有此头衔")
+    row = ForumUserTitle(
+        user_id=user_id,
+        title_code=code,
+        source="manual",
+        granted_at=_now_iso(),
+        granted_by=_admin.id,
+        revoked_at="",
+        revoked_by=0,
+    )
+    db.add(row)
+    await db.commit()
+    await db.refresh(row)
+    return _ok(_title_payload(row), "授予成功")
+
+
+@router.delete("/admin/users/{user_id}/titles/{title_code}")
+async def admin_revoke_user_title(
+    user_id: int,
+    title_code: str,
+    db: AsyncSession = Depends(get_db),
+    _admin: User = Depends(require_admin),
+):
+    """撤销头衔：不删行，写 revokedAt / revokedBy 留痕；前台实时查询即时失效。"""
+    await _get_user_or_404(db, user_id)
+    r = await db.execute(
+        select(ForumUserTitle).where(
+            ForumUserTitle.user_id == user_id,
+            ForumUserTitle.title_code == title_code,
+            ForumUserTitle.revoked_at == "",
+        )
+    )
+    row = r.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="该用户当前没有此头衔")
+    row.revoked_at = _now_iso()
+    row.revoked_by = _admin.id
+    await db.commit()
+    return _ok(_title_payload(row), "撤销成功")
 
 
 # ══════════════════════════════════════════════════════════════════

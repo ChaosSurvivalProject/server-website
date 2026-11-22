@@ -261,6 +261,10 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | GET/PUT | `/api/forum/admin/config` | 社区配置读写（白名单键；打赏 `reward*` 为预留键，第一阶段无 UI） |
 | GET | `/api/forum/admin/covers` | 封面图库（只读列表；冗余清理归第三阶段） |
 | GET | `/api/forum/admin/user-stats/{userId}` | 用户论坛数据（发帖/获赞/粉丝 + 最近 5 篇） |
+| GET | `/api/forum/admin/users/{userId}/exp` | 用户经验与等级进度 `{exp, level, levelName, updateTime}`（无记录视为 0 / Lv.1） |
+| GET | `/api/forum/admin/users/{userId}/titles` | 用户头衔列表（**含撤销历史**，撤销不删行） |
+| POST | `/api/forum/admin/users/{userId}/titles` | 手动授予头衔（body `{titleCode}`，操作人与时间留痕；生效中重复授予 400） |
+| DELETE | `/api/forum/admin/users/{userId}/titles/{titleCode}` | 撤销头衔（写 `revokedAt`/`revokedBy` 留痕；前台实时失效） |
 | PUT | `/api/auth/admin/users/{id}/mute` | 禁言/解禁（body `{muteUntil}`，空串=解禁；与 `status` 三态**正交**） |
 
 - **状态机**（`forum_articles.status`）：`0 待审核 → 1 已发布 / 2 已驳回`；`1 → 3 已下架`（**仅管理员**）`→ 1 恢复`；`0/1/2 ──作者删除──▶ 4 回收站`；`4 ──恢复（作者或管理员）──▶ status_before_delete`；`4 ──彻底删除/后台硬删/超期清理──▶ 物理删除`（级联，不可恢复）。任意可编辑态（0/1/2/3 且 `remove_by='author'`）经**作者编辑保存 → 0**（`resubmit_count+1`）；**回收站帖必须先恢复才能编辑**。已驳回的文章必须由作者重提回 0 才能再审。
@@ -272,6 +276,32 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 - **禁言语义**：能登录浏览，但**不能发帖/评论/上传**（点赞收藏不受影响）；命中返回 403 + `detail="账号已被禁言，至 <时间>"`。**删自己的帖子/评论属例外，禁言期间仍可用**。
 - **后台回收站已打通**（2026-11-18）：`GET /api/forum/admin/articles?status=4` 可筛出回收站帖（列表项带 `deletedAt` / `daysLeft` / `statusBeforeDelete`，**不含正文**），`POST /api/forum/admin/articles/{id}/restore` 按 `status_before_delete` 恢复；后台文章管理页对 `status=4` 行只留「恢复 / 删除」，隐藏通过 / 驳回 / 下架 / 置顶 / 加精 / 改属性。
 - 端到端回归脚本：`cd backend && python3 forum_smoke_test.py`（临时库 + `TestClient`，覆盖状态机/计数/回收站/权限/级联等断言）。
+
+### 等级 / 头衔 / 经验体系（FLPR-36，2026-11-22）
+
+**数据模型**（四张新表，不动 `users`；`backend/app/database.py`）：
+- `forum_user_levels`：等级阈值常量表，`level` / `name` / `required_exp`，由 `seed_forum_user_levels()` 启动时幂等写入；
+- `forum_user_exp`：每人一行 `exp`（只增不减）/ `level`（由阈值推导）/ `update_time`；
+- `forum_user_titles`：`user_id` / `title_code` / `source`（`system`|`manual`）/ `granted_at` / `granted_by` / `revoked_at` / `revoked_by`——**撤销不删行，手动头衔全程留痕**，`revoked_at=''` 即生效；
+- `forum_exp_ledger`：经验发放流水，`dedup_key` 唯一，是「取消再点赞不重复加经验」的权威（点赞关系表取消时物理删行，必须以独立流水去重）。
+
+**阈值表（首版常量，调整需另开工单；不清空用户已有 exp，按新阈值重算等级）**：
+
+| 等级 | 名称 | 所需累计经验 |
+|------|------|--------------|
+| Lv.1 | 见习旅人 | 0 |
+| Lv.2 | 旅人 | 10 |
+| Lv.3 | 探索者 | 30 |
+| Lv.4 | 冒险家 | 60 |
+| Lv.5 | 先驱者 | 100 |
+| Lv.6 | 荣耀行者 | 200 |
+| Lv.7 | 传奇 | 400 |
+
+**经验规则（只增不减、不降级）**：文章过审 +10（按文章去重，驳回后编辑重提再过审不重复加）、文章被赞 +2（给作者，自赞不计）、评论被赞 +1（给评论作者，自赞不计）、每日登录 +1（北京时间自然日封顶，重复登录不重复加）。禁用 / 已删除用户不再累计；历史 `forum_user_exp` 行不删，历史等级徽章仍正常展示。
+
+**头衔**（首版示例名上线前与运营定稿；`code` 稳定，展示名/色板可改）：`pioneer` 开荒先锋 / `veteran` 资深旅人 / `contributor` 社区贡献者 / `official` 官方认证 / `legend` 传奇行者。
+
+**契约变更**：`author.badge` 由单值字符串（`null`|`"管理员"`）改为**数组**（如 `["管理员","Lv.3","开荒先锋"]`，顺序 管理员 → 等级 → 头衔），已注销用户返回 `[]`。后台不缓存，author 下发即实时查询，撤销头衔前台即时失效。前端改动收敛在 `frontend/src/utils/forumBadges.js` 与 `frontend/src/components/forum/UserBadge.vue`（后台同名表 `admin-frontend/src/utils/forumBadges.ts`），其余组件经 `author.badge` 透传零改动。**不做**经验商城 / 排行榜 / 存量 retrofit（从上线起算，不补算历史行为）。
 
 ## 资源中心
 

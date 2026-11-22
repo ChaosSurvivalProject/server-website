@@ -89,7 +89,7 @@ export default {
   },
   computed: {
     isAdmin() {
-      return this.post.author?.badge === "管理员";
+      return !!this.post.author?.badge?.includes?.("管理员");
     },
     avatarUrl() {
       // FLPR-31：后端 _author_brief 下发真实头像 URL，空值回退内置默认头像

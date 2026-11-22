@@ -74,6 +74,36 @@ USER_STATUS_DELETED = 2  # 已删除（软删除，无法登录，数据保留�
 ROLE_ADMIN = "admin"
 ROLE_USER = "user"
 
+# ── 论坛等级 / 头衔 / 经验常量（FLPR-36，首版常量化，不做后台配置 UI） ──
+# 阈值表写死常量 + 在 init_db() 幂等 seed 到 forum_user_levels；调整阈值需另开工单，
+# 只改这里并同步 docs/api-reference.md（不清空用户已有 exp，等级按新阈值重算）。
+FORUM_LEVEL_SEED: list[tuple[int, str, int]] = [
+    # (level, 名称, 所需累计经验)
+    (1, "见习旅人", 0),
+    (2, "旅人", 10),
+    (3, "探索者", 30),
+    (4, "冒险家", 60),
+    (5, "先驱者", 100),
+    (6, "荣耀行者", 200),
+    (7, "传奇", 400),
+]
+
+# 头衔展示元数据（title_code -> 展示名与色板）。首版示例名上线前与运营定稿：
+# code 是稳定标识，展示名/色板可改；论坛-author.badge 下发的是 text，前端按 text 查色板。
+FORUM_TITLE_META: dict[str, dict[str, str]] = {
+    "pioneer": {"text": "开荒先锋", "color": "#c2410c", "bg": "#fff2e8"},
+    "veteran": {"text": "资深旅人", "color": "#1d4ed8", "bg": "#eaf2ff"},
+    "contributor": {"text": "社区贡献者", "color": "#0f766e", "bg": "#e6f7f4"},
+    "official": {"text": "官方认证", "color": "#6d28d9", "bg": "#f3efff"},
+    "legend": {"text": "传奇行者", "color": "#b45309", "bg": "#fff7e6"},
+}
+
+# 经验规则（只增不减；发放点见 forum.py / auth/router.py）
+FORUM_EXP_ARTICLE_PUBLISH = 10  # 文章过审
+FORUM_EXP_ARTICLE_LIKE = 2      # 文章被赞
+FORUM_EXP_COMMENT_LIKE = 1      # 评论被赞
+FORUM_EXP_DAILY_LOGIN = 1       # 每日登录（按自然日封顶）
+
 
 class User(Base):
     """用户表：role 取值 'admin'（系统管理员）/ 'user'（注册普通用户）。
@@ -964,6 +994,75 @@ class ForumConfig(Base):
     value: Mapped[str] = mapped_column(String(255), nullable=False, default="")
 
 
+# ── 论坛等级 / 头衔 / 经验（FLPR-36，四张新表，不改动 users） ──────
+# 分层：levels=阈值常量表；user_exp=每人当前 exp/level；titles=头衔授予与撤销留痕；
+# exp_ledger=经验发放流水（dedup_key 唯一，是"取消再点回不重复加经验"的权威）。
+class ForumUserLevel(Base):
+    """等级阈值表（首版由 FORUM_LEVEL_SEED 幂等写入，不做后台配置 UI）。"""
+
+    __tablename__ = "forum_user_levels"
+
+    level: Mapped[int] = mapped_column(Integer, primary_key=True)  # 1..N
+    name: Mapped[str] = mapped_column(String(50), nullable=False)  # 等级名称
+    required_exp: Mapped[int] = mapped_column(Integer, nullable=False)  # 所需累计经验
+
+
+class ForumUserExp(Base):
+    """用户经验进度（与 users 表解耦；封存用户不删行，历史等级徽章仍可展示）。"""
+
+    __tablename__ = "forum_user_exp"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)  # = users.id
+    exp: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 累计经验，只增不减
+    level: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 由 exp + 阈值表推导
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class ForumUserTitle(Base):
+    """用户头衔授予记录（手动头衔留痕：撤销只写 revoked_at/revoked_by，不删行）。
+
+    revoked_at='' 表示当前生效；source='system' 为系统自动授予，'manual' 为管理员手动操作。
+    """
+
+    __tablename__ = "forum_user_titles"
+    __table_args__ = (
+        UniqueConstraint("user_id", "title_code", "revoked_at", name="uq_forum_user_title_row"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    title_code: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")  # system | manual
+    granted_at: Mapped[str] = mapped_column(String(30), nullable=False)
+    granted_by: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0=系统
+    revoked_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")  # ''=生效中
+    revoked_by: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0=系统
+
+
+class ForumExpLedger(Base):
+    """经验发放流水（去重权威）。
+
+    dedup_key 唯一：('article_publish', article_id, create_time) /
+    ('article_like', article_id, create_time, liker_id) /
+    ('comment_like', comment_id, create_time, liker_id) /
+    ('daily_login', date, user_id)（create_time 防 SQLite 复用 rowid 后误撞旧行）。
+    点赞关系表取消时物理删行，若以"关系表新增行"为触发点，取消再点回会重复加经验；
+    因此以本表 INSERT OR IGNORE 的 rowcount=1 为唯一发放触发点，彻底避免重复计。
+    """
+
+    __tablename__ = "forum_exp_ledger"
+    __table_args__ = (UniqueConstraint("dedup_key", name="uq_forum_exp_ledger_dedup"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)  # 经验获得者
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason: Mapped[str] = mapped_column(String(24), nullable=False, index=True)
+    ref_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    actor_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 触发者（登录=0）
+    dedup_key: Mapped[str] = mapped_column(String(80), nullable=False)
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
 # ── 资源中心模块（docs/资源中心/资源中心一阶段MVP需求.md） ──────────
 # 五张表：dict_items（类型/平台/游戏版本/侧别/渠道/标签字典）+ resources +
 # resource_versions + version_assets + download_events。
@@ -1143,6 +1242,16 @@ class DownloadEvent(Base):
 fts_available = True
 
 
+async def seed_forum_user_levels(conn) -> None:
+    """等级阈值常量表 seed（FLPR-36，幂等；阈值改常量后重启即覆盖，不动用户 exp）。"""
+    for level, name, required_exp in FORUM_LEVEL_SEED:
+        await conn.exec_driver_sql(
+            "INSERT INTO forum_user_levels (level, name, required_exp) VALUES (?, ?, ?) "
+            "ON CONFLICT(level) DO UPDATE SET name=excluded.name, required_exp=excluded.required_exp",
+            (level, name, required_exp),
+        )
+
+
 async def init_db():
     """Create all tables on startup."""
     global fts_available
@@ -1165,6 +1274,10 @@ async def init_db():
         except Exception as e:  # 编译期未带 FTS5 的 SQLite：不阻断启动，降级仅向量
             fts_available = False
             logger.error("SQLite 不支持 FTS5，知识库全文检索不可用（仅向量检索）: %s", e)
+    # 论坛等级阈值常量表 seed（FLPR-36，幂等）。必须独立事务：PRAGMA journal_mode=WAL
+    # 不能在事务内执行，上面的建表事务提交后再写。
+    async with engine.begin() as conn:
+        await seed_forum_user_levels(conn)
     # 存量库补列（新库 create_all 已含新列，迁移幂等直接跳过）
     migrate_user_extra_columns()
     migrate_user_avatar_column()

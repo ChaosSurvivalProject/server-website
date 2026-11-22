@@ -65,7 +65,7 @@
 
       <div v-else class="cmt-list">
         <div v-for="c in comments" :key="c.id" :id="'comment-' + c.id" class="cmt">
-          <span class="fx-avatar fx-av-36" :class="{ 'fx-avatar-admin': c.author?.badge === '管理员' }">
+          <span class="fx-avatar fx-av-36" :class="{ 'fx-avatar-admin': c.author?.badge?.includes?.('管理员') }">
             <img v-if="c.author?.avatar" :src="c.author.avatar" :alt="c.author.name" @error="onAvatarError" />
             <template v-else>{{ (c.author?.name || "?").slice(0, 1) }}</template>
           </span>
@@ -139,7 +139,7 @@
               <div v-for="r in c.replies" :key="r.id" :id="'comment-' + r.id" class="cmt cmt-reply">
                 <span
                   class="fx-avatar fx-av-28"
-                  :class="{ 'fx-avatar-admin': r.author?.badge === '管理员' }"
+                  :class="{ 'fx-avatar-admin': r.author?.badge?.includes?.('管理员') }"
                 >
                   <img v-if="r.author?.avatar" :src="r.author.avatar" :alt="r.author.name" @error="onAvatarError" />
                   <template v-else>{{ (r.author?.name || "?").slice(0, 1) }}</template>
