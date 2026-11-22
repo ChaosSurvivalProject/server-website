@@ -19,6 +19,10 @@ cd admin-frontend && pnpm install && pnpm dev                      # 后台管�
 
 完整规约见 [docs/agents/api-conventions.md](docs/agents/api-conventions.md)。硬性禁区：接口统一挂 `/api` 前缀；响应包络 `{code, message, data}`（`code=0` 成功，前端组件不得再判 `code`；`POST /api/kb/chat` SSE 是全项目唯一包络例外）；DB snake_case / 对外 JSON camelCase（新增字段必须同步补 Pydantic alias）；**新增或修改后端接口必须同步契约参照 `frontend/src/api/api.js` 与 `admin-frontend/src/api/`**；时间统一存北京时间 naive ISO `YYYY-MM-DDTHH:MM:SS`；布尔语义用 int（`isPublished` 0=草稿/1=已发布）；上传 `FormData` 必须显式加 `Content-Type: multipart/form-data`（否则 422）。
 
+## 主题适配规约（全局）
+
+完整规约见 [docs/agents/theme.md](docs/agents/theme.md)。硬性禁区：**任何新增或修改的 UI（前台 / 后台 / Wiki、页面 / 组件 / 弹窗 / 编辑器 / 徽章）都必须同时适配浅色与深色两套主题**——禁止写死单一主题色值、禁止只给一套色板、禁止切主题后要刷新才生效。前台主题源是 `frontend/src/utils/theme.js` 的 `themeState.resolved`（响应式，`<html data-theme>`），后台是 pure-admin 切 `<html class="dark">`（无响应式 store，必要时用 `MutationObserver`）；颜色优先走令牌（`--brand-*` / `--fx-*` / `--el-*`），JS 内联色板必须给 `color/bg` + `colorDark/bgDark` 双套并随主题即时切换。
+
 ## 知识库 / 智能客服规约
 
 完整规约见 [docs/agents/kb.md](docs/agents/kb.md)。硬性禁区：wiki 是知识库单一数据源（先改 wiki，再跑 `backend/kb_sync.py`）；索引热更新是设计点（**服务端不需重启**，别改成"重启生效"）；限流状态在进程内（多 worker 必须换共享存储）；RAG 内部实现已自 2026-11-12 改用 LangChain 组件（覆盖原"不引 LangChain"决策，**不要引入 `langchain-community`**，依赖以 `backend/requirements.txt` 为准）；流式渲染必须复用 `frontend/src/utils/markdown.js` 管线。
@@ -29,7 +33,7 @@ cd admin-frontend && pnpm install && pnpm dev                      # 后台管�
 
 ## 社区（论坛）模块规约
 
-完整规约见 [docs/agents/forum.md](docs/agents/forum.md)。硬性禁区：`forum_articles.status` 只能经 `_set_article_status()` 改（标签 `use_count` 只挂这一个转移点）；连接池必须是 `NullPool`（**不要改回 `StaticPool`**）；计数一律原子 SQL、关系切换统一走 `_toggle_relation()`（禁止 check-then-act 与 read-modify-write）；评论正文纯文本渲染、绝不走 Markdown 管线；新增组件一律独立 `.vue` SFC（字符串 `template` 本项目不渲染）；「跳登录页」`goLogin()` 与「是否已登录」不得同名混用；作者删帖进回收站（30 天保留期唯一权威 `deleted_at`）。
+完整规约见 [docs/agents/forum.md](docs/agents/forum.md)。硬性禁区：`forum_articles.status` 只能经 `_set_article_status()` 改（标签 `use_count` 只挂这一个转移点）；连接池必须是 `NullPool`（**不要改回 `StaticPool`**）；计数一律原子 SQL、关系切换统一走 `_toggle_relation()`（禁止 check-then-act 与 read-modify-write）；评论正文纯文本渲染、绝不走 Markdown 管线；新增组件一律独立 `.vue` SFC（字符串 `template` 本项目不渲染）；「跳登录页」`goLogin()` 与「是否已登录」不得同名混用；作者删帖进回收站（30 天保留期唯一权威 `deleted_at`）。（主题适配按全局「主题适配规约」执行；论坛徽章双色板的具体落地点见 [docs/agents/theme.md](docs/agents/theme.md)。）
 
 ## 站内信模块规约
 

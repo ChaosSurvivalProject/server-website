@@ -235,6 +235,8 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | DELETE | `/api/forum/comments/{id}` | 作者删自己的评论/回复（**物理删除不留痕**；删顶层连带其下全部回复） |
 | GET | `/api/forum/my/articles` | 我的文章（各状态 + `reviewNote`/`removeBy`/`resubmitCount`；`status=4` 时额外下发 `deletedAt`/`daysLeft`/`statusBeforeDelete`，回收站页面据此取数） |
 | GET | `/api/forum/my/stats` | 侧边栏用户卡 `{postCount, likeCount, followerCount}`（`followerCount` 恒 0） |
+| GET | `/api/forum/my/titles` | 我的头衔管理页 `{exp:{exp,level,levelName,updateTime}, titles:[...]}`；只下发本人数据，`titles` 含撤销历史（生效在前），每条 `{id,titleCode,titleText,source,grantedAt,grantedBy,revokedAt,revokedBy,active,displayed}` |
+| PUT | `/api/forum/my/titles/{titleCode}/display` | 自助佩戴 / 隐藏头衔（body `{displayed: 0\|1}`，**只改 displayed、不碰授予留痕**）；仅限本人**生效中**头衔，已撤销或非本人 404，非法值 422 |
 | POST | `/api/forum/articles/{id}/like` | 文章点赞切换（幂等）→ `{liked, likeCount}` |
 | POST | `/api/forum/articles/{id}/favorite` | 文章收藏切换（幂等）→ `{favorited, favoriteCount}` |
 | POST | `/api/forum/articles/{id}/comments` | 发表评论 / 发表回复（body `{content, parentId?, replyToUserId?}`；`parentId` **只指向顶层评论**，指向回复返 400） |
@@ -282,7 +284,7 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 **数据模型**（四张新表，不动 `users`；`backend/app/database.py`）：
 - `forum_user_levels`：等级阈值常量表，`level` / `name` / `required_exp`，由 `seed_forum_user_levels()` 启动时幂等写入；
 - `forum_user_exp`：每人一行 `exp`（只增不减）/ `level`（由阈值推导）/ `update_time`；
-- `forum_user_titles`：`user_id` / `title_code` / `source`（`system`|`manual`）/ `granted_at` / `granted_by` / `revoked_at` / `revoked_by`——**撤销不删行，手动头衔全程留痕**，`revoked_at=''` 即生效；
+- `forum_user_titles`：`user_id` / `title_code` / `source`（`system`|`manual`）/ `granted_at` / `granted_by` / `revoked_at` / `revoked_by` / **`displayed`**（`0` 隐藏 / `1` 展示，用户自助佩戴开关，与撤销状态无关；存量列默认 1）——**撤销不删行，手动头衔全程留痕**，`revoked_at=''` 即生效；
 - `forum_exp_ledger`：经验发放流水，`dedup_key` 唯一，是「取消再点赞不重复加经验」的权威（点赞关系表取消时物理删行，必须以独立流水去重）。
 
 **阈值表（首版常量，调整需另开工单；不清空用户已有 exp，按新阈值重算等级）**：
