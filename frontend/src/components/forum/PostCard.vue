@@ -89,7 +89,7 @@ export default {
   },
   computed: {
     isAdmin() {
-      return this.post.author?.badge === "管理员";
+      return !!this.post.author?.badge?.includes?.("管理员");
     },
     avatarUrl() {
       // users 表暂无头像字段，author.avatar 恒为 null → 回退内置默认头像

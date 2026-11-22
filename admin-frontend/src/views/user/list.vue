@@ -12,8 +12,9 @@ import {
   setUserMute
 } from "@/api/user";
 import type { UserItem, UserPageResult, UserStatus } from "@/api/user";
-import { getUserStats } from "@/api/forum";
-import type { ForumUserStats } from "@/api/forum";
+import { getUserStats, getUserExp, listUserTitles, grantUserTitle, revokeUserTitle } from "@/api/forum";
+import type { ForumUserStats, ForumUserExp, ForumUserTitle } from "@/api/forum";
+import { FORUM_TITLE_OPTIONS } from "@/utils/forumBadges";
 import { useUserStoreHook } from "@/store/modules/user";
 
 const me = useUserStoreHook();
@@ -436,6 +437,76 @@ const openForumStats = async (row: UserItem) => {
   }
 };
 
+// ── 论坛：等级 / 头衔管理（FLPR-36） ────────────────────────────
+const titleVisible = ref(false);
+const titleLoading = ref(false);
+const titleSubmitting = ref(false);
+const titleRow = ref<UserItem | null>(null);
+const titleExp = ref<ForumUserExp | null>(null);
+const titleRecords = ref<ForumUserTitle[]>([]);
+const grantCode = ref("pioneer");
+
+const reloadTitles = async (userId: number) => {
+  titleRecords.value = await listUserTitles(userId);
+};
+
+const openTitles = async (row: UserItem) => {
+  titleRow.value = row;
+  titleExp.value = null;
+  titleRecords.value = [];
+  grantCode.value = FORUM_TITLE_OPTIONS[0]?.code || "";
+  titleVisible.value = true;
+  titleLoading.value = true;
+  try {
+    const [exp, records] = await Promise.all([getUserExp(row.id), listUserTitles(row.id)]);
+    titleExp.value = exp;
+    titleRecords.value = records;
+  } catch (e: any) {
+    ElMessage.error(e.message || "获取头衔信息失败");
+  } finally {
+    titleLoading.value = false;
+  }
+};
+
+const confirmGrantTitle = async () => {
+  const row = titleRow.value;
+  if (!row || !grantCode.value || titleSubmitting.value) return;
+  titleSubmitting.value = true;
+  try {
+    await grantUserTitle(row.id, grantCode.value);
+    ElMessage.success("授予成功，前台即时生效");
+    await reloadTitles(row.id);
+  } catch (e: any) {
+    ElMessage.error(e.message || "授予失败");
+  } finally {
+    titleSubmitting.value = false;
+  }
+};
+
+const confirmRevokeTitle = (record: ForumUserTitle) => {
+  const row = titleRow.value;
+  if (!row) return;
+  const opt = FORUM_TITLE_OPTIONS.find(o => o.code === record.titleCode);
+  ElMessageBox.confirm(
+    `确定撤销「${row.nickname || row.username}」的「${opt?.text || record.titleText}」头衔吗？撤销记录会保留。`,
+    "撤销头衔",
+    { confirmButtonText: "确定撤销", cancelButtonText: "取消", type: "warning" }
+  ).then(
+    async () => {
+      try {
+        await revokeUserTitle(row.id, record.titleCode);
+        ElMessage.success("已撤销，前台即时失效");
+        await reloadTitles(row.id);
+      } catch (e: any) {
+        ElMessage.error(e.message || "撤销失败");
+      }
+    },
+    () => {}
+  );
+};
+
+const activeTitles = () => titleRecords.value.filter(t => t.active);
+
 const formatDate = (iso: string) => {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -544,7 +615,7 @@ onMounted(() => {
       <el-table-column label="创建时间" width="150">
         <template #default="{ row }">{{ formatDate(row.createTime) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="300" fixed="right">
+      <el-table-column label="操作" width="360" fixed="right">
         <template #default="{ row }">
           <el-button size="small" type="primary" link @click="openEdit(row)">
             编辑
@@ -556,6 +627,14 @@ onMounted(() => {
             @click="openForumStats(row)"
           >
             论坛数据
+          </el-button>
+          <el-button
+            size="small"
+            link
+            type="primary"
+            @click="openTitles(row)"
+          >
+            头衔
           </el-button>
           <!-- 禁言与 status 正交：禁用用户也可能有禁言记录，故两个分支都要给入口 -->
           <el-button
@@ -809,6 +888,84 @@ onMounted(() => {
         <el-button @click="forumVisible = false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <!-- 等级 / 头衔管理弹窗（FLPR-36） -->
+    <el-dialog
+      v-model="titleVisible"
+      :title="`头衔管理 - ${titleRow?.nickname || titleRow?.username || ''}`"
+      width="640px"
+      destroy-on-close
+    >
+      <div v-loading="titleLoading">
+        <div v-if="titleExp" class="exp-bar">
+          <div class="fs">
+            <div class="fs-v">Lv.{{ titleExp.level }}</div>
+            <div class="fs-l">{{ titleExp.levelName }}</div>
+          </div>
+          <div class="fs">
+            <div class="fs-v">{{ titleExp.exp }}</div>
+            <div class="fs-l">累计经验（只增不减）</div>
+          </div>
+          <div class="fs">
+            <div class="fs-v">{{ titleExp.updateTime ? formatDate(titleExp.updateTime) : '-' }}</div>
+            <div class="fs-l">最近获得</div>
+          </div>
+        </div>
+
+        <div class="title-section">
+          <div class="recent-title">授予头衔</div>
+          <div class="grant-row">
+            <el-select v-model="grantCode" placeholder="选择头衔" style="width: 200px">
+              <el-option
+                v-for="opt in FORUM_TITLE_OPTIONS"
+                :key="opt.code"
+                :label="opt.text"
+                :value="opt.code"
+              />
+            </el-select>
+            <el-button
+              type="primary"
+              :loading="titleSubmitting"
+              :disabled="!grantCode"
+              @click="confirmGrantTitle"
+              >授予</el-button
+            >
+            <span class="sub-text">授予后前台作者卡即时生效；撤销会留痕</span>
+          </div>
+        </div>
+
+        <div class="title-section">
+          <div class="recent-title">当前生效（{{ activeTitles().length }}）</div>
+          <div v-if="!activeTitles().length" class="sub-text">暂无生效头衔</div>
+          <div v-for="t in activeTitles()" :key="t.id" class="title-row">
+            <el-tag type="primary" size="small">{{ t.titleText }}</el-tag>
+            <span class="sub-text">{{ t.source === 'manual' ? '管理员授予' : '系统授予' }} · {{ formatDate(t.grantedAt) }}</span>
+            <el-button size="small" link type="danger" @click="confirmRevokeTitle(t)">撤销</el-button>
+          </div>
+        </div>
+
+        <div class="title-section">
+          <div class="recent-title">授予 / 撤销记录（留痕）</div>
+          <el-table :data="titleRecords" size="small" v-if="titleRecords.length">
+            <el-table-column prop="titleText" label="头衔" width="120" />
+            <el-table-column prop="source" label="来源" width="80" />
+            <el-table-column label="授予时间 / 操作人" min-width="170">
+              <template #default="{ row }">{{ formatDate(row.grantedAt) }} / #{{ row.grantedBy }}</template>
+            </el-table-column>
+            <el-table-column label="撤销时间 / 操作人" min-width="170">
+              <template #default="{ row }">
+                <span v-if="row.revokedAt">{{ formatDate(row.revokedAt) }} / #{{ row.revokedBy }}</span>
+                <span v-else class="sub-text">生效中</span>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div v-else class="sub-text">暂无记录</div>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="titleVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -892,5 +1049,60 @@ onMounted(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.exp-bar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.exp-bar .fs {
+  flex: 1;
+  min-width: 110px;
+  padding: 12px 14px;
+  text-align: center;
+  background: var(--el-fill-color-light);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 4px;
+}
+
+.exp-bar .fs-v {
+  font-size: 20px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.exp-bar .fs-l {
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--el-text-color-secondary);
+}
+
+.title-section {
+  margin-top: 16px;
+}
+
+.grant-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.title-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.title-row:last-child {
+  border-bottom: none;
+}
+
+.title-row .el-button {
+  margin-left: auto;
 }
 </style>

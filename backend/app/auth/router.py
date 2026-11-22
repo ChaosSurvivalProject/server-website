@@ -5,6 +5,7 @@
 统一读取 detail 展示。
 """
 from datetime import datetime
+import logging
 
 from email_validator import EmailNotValidError, validate_email
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,6 +19,10 @@ from ..database import (
     USER_STATUS_DISABLED,
     USER_STATUS_DELETED,
 )
+# FLPR-36：每日登录经验发放。独立模块只依赖 database/crud，不冷 import forum.py 的 APIRouter。
+from ..forum_exp import grant_daily_login_exp
+
+logger = logging.getLogger("uvicorn.error")
 from .deps import get_current_user
 from .schemas import CaptchaVerifyRequest, LoginRequest, RegisterRequest
 from .security import (
@@ -146,6 +151,14 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="用户不存在",
         )
+
+    # FLPR-36：每日登录 +1 经验（北京时间自然日封顶；封存用户在 helper 内拦截）。
+    # 经验失败不阻断登录主流程——登录是核心功能，等级体系是附属增益。
+    try:
+        if await grant_daily_login_exp(db, user.id):
+            await db.commit()
+    except Exception as e:
+        logger.warning("写入每日登录经验失败: %s", e)
 
     token = create_access_token(user.username, user.role)
     return {

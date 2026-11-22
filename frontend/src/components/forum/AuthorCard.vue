@@ -65,7 +65,7 @@ export default {
   },
   computed: {
     isAdmin() {
-      return this.author?.badge === "管理员";
+      return !!this.author?.badge?.includes?.("管理员");
     },
     avatarUrl() {
       return this.author?.avatar || this.defaultAvatar;

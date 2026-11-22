@@ -49,7 +49,7 @@
             <div class="art-meta">
               <span
                 class="fx-avatar fx-av-28"
-                :class="{ 'fx-avatar-admin': article.author?.badge === '管理员' }"
+                :class="{ 'fx-avatar-admin': article.author?.badge?.includes?.('管理员') }"
               >
                 <template v-if="article.author?.name">{{ article.author.name.slice(0, 1) }}</template>
                 <template v-else>?</template>
@@ -82,7 +82,7 @@
             <div class="cmt">
               <span
                 class="fx-avatar fx-av-36"
-                :class="{ 'fx-avatar-admin': comment.author?.badge === '管理员' }"
+                :class="{ 'fx-avatar-admin': comment.author?.badge?.includes?.('管理员') }"
               >
                 <img v-if="comment.author?.avatar" :src="comment.author.avatar" :alt="comment.author.name" />
                 <template v-else>{{ (comment.author?.name || "?").slice(0, 1) }}</template>
@@ -162,7 +162,7 @@
               >
                 <span
                   class="fx-avatar fx-av-28"
-                  :class="{ 'fx-avatar-admin': r.author?.badge === '管理员' }"
+                  :class="{ 'fx-avatar-admin': r.author?.badge?.includes?.('管理员') }"
                 >
                   <img v-if="r.author?.avatar" :src="r.author.avatar" :alt="r.author.name" />
                   <template v-else>{{ (r.author?.name || "?").slice(0, 1) }}</template>

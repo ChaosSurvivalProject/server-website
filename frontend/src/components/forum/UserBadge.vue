@@ -1,11 +1,19 @@
 <template>
   <!--
-    用户徽章（PRD 附录 B：只接受 badge prop，等级/头衔体系属第二阶段）。
-    badge 由后端 author.badge 下发（目前只有 "管理员" 或 null），
+    用户徽章（PRD 附录 B；FLPR-36 扩展为等级 / 头衔）。
+    badge 由后端 author.badge 下发为数组（管理员 → 等级 → 头衔），
     样式查 forumBadges.js 的 FORUM_BADGES 常量表，不在组件里硬编码颜色。
+    改动收敛在本组件与常量表，其余组件经 author.badge 透传零改动。
   -->
-  <span v-if="style" class="fx-badge" :style="{ color: style.color, background: style.bg }">
-    {{ style.text }}
+  <span class="fx-badge-list">
+    <span
+      v-for="(item, index) in styles"
+      :key="`${item.text}-${index}`"
+      class="fx-badge"
+      :style="{ color: item.color, background: item.bg }"
+    >
+      {{ item.text }}
+    </span>
   </span>
 </template>
 
@@ -15,11 +23,11 @@ import { getBadgeStyle } from "../../utils/forumBadges.js";
 export default {
   name: "UserBadge",
   props: {
-    /** 徽章名（后端下发的 author.badge）；null/空 表示不显示 */
-    badge: { type: String, default: null },
+    /** 后端下发的 author.badge：数组；兼容历史单值字符串 */
+    badge: { type: [Array, String], default: null },
   },
   computed: {
-    style() {
+    styles() {
       return getBadgeStyle(this.badge);
     },
   },
@@ -27,6 +35,14 @@ export default {
 </script>
 
 <style scoped>
+.fx-badge-list {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  vertical-align: middle;
+}
+
 .fx-badge {
   display: inline-flex;
   align-items: center;
