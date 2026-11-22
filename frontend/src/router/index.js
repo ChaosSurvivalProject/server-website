@@ -40,6 +40,13 @@ const routes = [
     props: true
   },
   {
+    path: '/forum/user/:id',
+    name: 'ForumUserProfile',
+    // 用户公开主页（点作者名看 TA 是谁；未登录可浏览，只聚合已公开内容）
+    component: () => import('../views/forum/UserProfile.vue'),
+    props: true
+  },
+  {
     path: '/forum/comment/:id',
     name: 'ForumComment',
     // 单条评论详情（站内信回复/评论点赞直达；顶层评论 id 与回复 id 通用）

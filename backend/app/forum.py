@@ -11,11 +11,13 @@
   GET    /forum/tags/hot                   热门标签（is_hot 优先 + use_count 倒序）
   GET    /forum/stats                      社区统计 {articleCount, viewCount, tagCount}
   GET    /forum/config                     前台配置（Banner 三项 + defaultSort + searchPlaceholder）
-  GET    /forum/articles                   文章列表（category/sort/q/tag/page）
+  GET    /forum/articles                   文章列表（category/sort/q/tag/page；authorId=按作者筛，个人主页用）
   GET    /forum/articles/{id}              详情（未公开文章对非作者/管理员按 404 处理）
   GET    /forum/articles/{id}/comments     评论列表（只对顶层评论分页，每条内嵌 replies）
   GET    /forum/comments/{id}               单条评论详情（顶层/回复均可；含顶层上下文 + 全部回复 + 文章摘要，匿名可读）
   GET    /forum/articles/{id}/author-posts 作者其他已发布文章（最多 5 条）
+  GET    /forum/users/{id}/stats           指定用户的公开论坛数据（发帖/获赞/粉丝 + 注册时间，匿名可读）
+  GET    /forum/users/{id}/comments        指定用户的公开评论（仅已发布文章下的正常评论，匿名可读，分页）
   POST   /forum/articles/{id}/view         浏览量 +1（原子自增，重复刷新重复计，已接受）
 
   ── 登录用户 ──
@@ -122,6 +124,10 @@ RESTORE_TARGETS = (STATUS_PENDING, STATUS_PUBLISHED, STATUS_REJECTED)
 # 评论状态
 COMMENT_NORMAL = 1
 COMMENT_DELETED = 2
+
+# users.status：1=正常 0=禁用 2=已删除（软删）。公开主页只区分"存在/已注销"，
+# 禁用账号的已发布内容仍可见（与禁言一样，status 只管登录、不管已公开内容的展示）。
+USER_STATUS_DELETED = 2
 
 # remove_by：谁把文章移出公开（决定作者能否编辑重提）
 REMOVE_BY_AUTHOR = "author"
@@ -251,6 +257,15 @@ def _build_summary(content: str) -> str:
     text = _MD_EMPHASIS_RE.sub("", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text[:SUMMARY_LEN]
+
+
+def _plain_excerpt(text: str, limit: int = SUMMARY_LEN) -> str:
+    """个人主页「TA 的评论」用的正文摘要：纯文本压空白后截断。
+
+    评论正文在库里就是纯文本（PRD §8-D5），**绝不走 _build_summary 的 Markdown
+    剔除正则**——那里是给 Markdown 文章用的，评论里出现 `#` / `*` 等字符应原样保留。
+    """
+    return re.sub(r"\s+", " ", (text or "").strip())[:limit]
 
 
 def _first_image(content: str) -> str:
@@ -830,6 +845,9 @@ async def list_articles(
     sort: str = Query(default=SORT_LATEST, description="latest | views | comments"),
     q: Optional[str] = Query(default=None, description="标题 / 摘要关键词"),
     tag: Optional[str] = Query(default=None, description="标签名精确匹配"),
+    authorId: Optional[int] = Query(
+        default=None, ge=1, description="按作者 id 过滤（公开个人主页「TA 的帖子」用）"
+    ),
     db: AsyncSession = Depends(get_db),
     user: Optional[User] = Depends(get_optional_user),
 ):
@@ -841,6 +859,11 @@ async def list_articles(
     count_stmt = select(func.count()).select_from(ForumArticle).where(
         ForumArticle.status == STATUS_PUBLISHED
     )
+    # 作者筛选只作用在已发布文章上：下架/驳回/回收站帖天然不出现在公开主页，
+    # 也不会因为按 id 枚举而泄露未公开文章的存在性。
+    if authorId is not None:
+        stmt = stmt.where(ForumArticle.author_id == authorId)
+        count_stmt = count_stmt.where(ForumArticle.author_id == authorId)
 
     code = (category or CODE_HOME).strip() or CODE_HOME
     if code == CODE_RECOMMEND:
@@ -1239,16 +1262,89 @@ async def add_view(
 async def user_forum_stats(
     user_id: int, db: AsyncSession = Depends(get_db)
 ):
-    """指定用户的公开论坛数据（详情页作者卡用，匿名可调）。
+    """指定用户的公开论坛数据（详情页作者卡 / 个人主页用，匿名可调）。
 
     与 GET /api/forum/my/stats 同结构（同为"某人的发帖/获赞/粉丝"），
     区别只是前者取当前登录用户、这个按 id 取任意用户——**不下发任何私有字段**
-    （无邮箱、无禁言时间、无状态，PRD §10.6）。
+    （无邮箱、无禁言时间、无状态，PRD §10.6）。额外下发注册时间 createTime
+    供个人主页头部展示（同样是公开信息）。
+
+    用户不存在或已注销（status=2）按 404 处理：个人主页据此给出
+    「该用户不存在或已注销」空态，而不是拿一个空壳用户渲染白板。
+    禁言用户 status 仍为 1，主页正常展示（禁言只限写操作）。
     """
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=404, detail="用户不存在")
+    if user is None or user.status == USER_STATUS_DELETED:
+        raise HTTPException(status_code=404, detail="用户不存在或已注销")
     return _ok(await _user_forum_stats(db, user))
+
+
+@router.get("/users/{user_id}/comments")
+async def user_forum_comments(
+    user_id: int,
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=10, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """指定用户的公开评论（个人主页「TA 的评论」，匿名可调，分页）。
+
+    隐私边界与 users/{id}/stats 同口径，只做**只读聚合**：
+    - 用户不存在 / 已注销（status=2）→ 404，前端给明确空态；
+    - 只取 `status=1` 文章下的 `status=1` 评论——下架 / 驳回 / 回收站帖与
+      后台软删、作者物理删的评论一律不出现（评论为纯文本，不走 Markdown 管线）；
+    - 顶层评论与回复都算（口径与 comment_count 一致），按时间倒序分页；
+    - 响应只含 articleId / articleTitle / commentId / content 摘要 / createTime，
+      不下发评论作者隐私字段、不下发文章内容（点击再进对应文章）。
+    """
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if user is None or user.status == USER_STATUS_DELETED:
+        raise HTTPException(status_code=404, detail="用户不存在或已注销")
+
+    page_size = max(pageSize, 1)
+    offset = (page - 1) * page_size
+    visible = (
+        and_(
+            ForumComment.author_id == user_id,
+            ForumComment.status == COMMENT_NORMAL,
+            ForumArticle.status == STATUS_PUBLISHED,
+        )
+    )
+    total = (
+        await db.execute(
+            select(func.count())
+            .select_from(ForumComment)
+            .join(ForumArticle, ForumArticle.id == ForumComment.article_id)
+            .where(visible)
+        )
+    ).scalar_one()
+
+    rows = (
+        await db.execute(
+            select(
+                ForumComment.id,
+                ForumComment.content,
+                ForumComment.create_time,
+                ForumArticle.id,
+                ForumArticle.title,
+            )
+            .join(ForumArticle, ForumArticle.id == ForumComment.article_id)
+            .where(visible)
+            .order_by(ForumComment.create_time.desc(), ForumComment.id.desc())
+            .offset(offset)
+            .limit(page_size)
+        )
+    ).all()
+    items = [
+        {
+            "articleId": article_id,
+            "articleTitle": title,
+            "commentId": comment_id,
+            "content": _plain_excerpt(content),
+            "createTime": create_time,
+        }
+        for comment_id, content, create_time, article_id, title in rows
+    ]
+    return _ok(_page_payload(items, page, page_size, total))
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -1599,6 +1695,8 @@ async def _user_forum_stats(db: AsyncSession, user: User) -> dict:
         "likeCount": like_count or 0,
         # 关注体系属第二阶段（§0.3-B）：由接口返回 0，前端不写死
         "followerCount": 0,
+        # 注册时间（公开信息）：个人主页头部展示；users.create_time 是北京时间 naive ISO。
+        "createTime": user.create_time,
     }
 
 

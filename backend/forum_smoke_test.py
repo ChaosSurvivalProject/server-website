@@ -773,8 +773,9 @@ def main() -> int:
         check("匿名可查公开作者统计（有已发布文章）", us_bob["postCount"] >= 1, str(us_bob))
         us = client.get("/api/forum/users/2/stats").json()["data"]
         check("无已发布文章时计数为 0（不报错）", us["postCount"] == 0, str(us))
-        check("公开统计不泄漏私有字段",
-              set(us) == {"author", "postCount", "likeCount", "followerCount"}, str(set(us)))
+        check("公开统计不泄漏私有字段（createTime 为公开注册时间）",
+              set(us) == {"author", "postCount", "likeCount", "followerCount", "createTime"}, str(set(us)))
+        check("公开统计下发注册时间", bool(us_bob.get("createTime")), str(us_bob))
         check("公开统计粉丝恒 0", us["followerCount"] == 0)
         check("查不存在的用户 404", client.get("/api/forum/users/99999/stats").status_code == 404)
         v0 = client.get(f"/api/forum/articles/{aid2}").json()["data"]["viewCount"]
@@ -788,6 +789,67 @@ def main() -> int:
         check("登录响应也下发 id", lg.get("id") == me["id"], str(lg.get("id")))
         ulist = client.get("/api/auth/admin/users", headers=H(admin)).json()["data"]["items"]
         check("用户列表含 muteUntil 字段", all("muteUntil" in u for u in ulist), str(ulist[0].keys()))
+
+        print("\n[20c] 用户个人主页公开聚合（FLPR-34）")
+        # 新建一篇 Bob 的已发布文章，Alice 在上面留言，作为个人主页取数样本
+        pub_id = client.post("/api/forum/articles", headers=H(bob), json={
+            "categoryId": cat_id, "title": "个人主页已发布测试文章",
+            "content": "这篇文章用于验证个人主页只聚合已公开内容。"}).json()["data"]["id"]
+        client.put(f"/api/forum/admin/articles/{pub_id}/review", headers=H(admin), json={"status": 1})
+        cmt_id = client.post(f"/api/forum/articles/{pub_id}/comments", headers=H(alice),
+                             json={"content": "个人主页评论 #1 的摘要文本"}).json()["data"]["id"]
+        uc = client.get("/api/forum/users/2/comments").json()["data"]
+        first = next((i for i in uc["items"] if i["commentId"] == cmt_id), None)
+        check("公开评论接口可读到新评论", first is not None, str(uc))
+        check("评论项只含约定的公开字段",
+              first is not None and set(first) == {"articleId", "articleTitle", "commentId", "content", "createTime"},
+              str(first))
+        check("评论项回传所在文章标题", first is not None and first["articleTitle"] == "个人主页已发布测试文章", str(first))
+        check("评论摘要保持纯文本原样", first is not None and first["content"] == "个人主页评论 #1 的摘要文本", str(first))
+
+        # 待审核文章下的评论不出现（用作者本人账号留言，否则会被可见性校验拦成 404）；
+        # 回收站/已下架同理（都非 status=1）
+        pending_id = client.post("/api/forum/articles", headers=H(bob), json={
+            "categoryId": cat_id, "title": "个人主页待审核测试文章",
+            "content": "这篇尚未通过审核，用于验证隐私边界。"}).json()["data"]["id"]
+        hidden_cmt_id = client.post(f"/api/forum/articles/{pending_id}/comments", headers=H(bob),
+                                    json={"content": "未公开文章下的评论不应出现在主页"}).json()["data"]["id"]
+        uc2 = client.get("/api/forum/users/3/comments").json()["data"]
+        check("未公开文章下的评论不出现", all(i["commentId"] != hidden_cmt_id for i in uc2["items"]), str(uc2))
+
+        # 作者删除的评论不出现
+        client.delete(f"/api/forum/comments/{cmt_id}", headers=H(alice))
+        uc3 = client.get("/api/forum/users/2/comments").json()["data"]
+        check("作者删除的评论不出现", all(i["commentId"] != cmt_id for i in uc3["items"]), str(uc3))
+
+        # 帖子 Tab 的取数口：authorId 只返回已发布文章
+        la = client.get("/api/forum/articles", params={"authorId": 3}).json()["data"]
+        check("authorId 只返回该作者的已发布文章",
+              la["total"] >= 1 and all(i["author"]["id"] == 3 and i["status"] == 1 for i in la["items"]), str(la))
+        check("authorId 排除待审核文章", all(i["id"] != pending_id for i in la["items"]), str(la))
+
+        # 不存在 / 已注销 / 被禁言用户：前两个 404，禁言只限写操作、主页照常可读
+        async def profile_users_setup():
+            async with async_session_maker() as s:
+                s.add(User(username="gone@test.com", nickname="已注销用户",
+                           password_hash=hash_password("Passw0rd!"), role="user", status=2,
+                           create_time=datetime.now(_TZ).strftime("%Y-%m-%dT%H:%M:%S")))
+                await s.execute(update(User).where(User.id == 2).values(mute_until="2099-01-01T00:00:00"))
+                await s.commit()
+                r = await s.execute(select(User.id).where(User.username == "gone@test.com"))
+                return r.scalar_one()
+
+        async def unmute_alice():
+            async with async_session_maker() as s:
+                await s.execute(update(User).where(User.id == 2).values(mute_until=""))
+                await s.commit()
+
+        gone_id = asyncio.run(profile_users_setup())
+        check("已注销用户 stats 404", client.get(f"/api/forum/users/{gone_id}/stats").status_code == 404)
+        check("已注销用户 comments 404", client.get(f"/api/forum/users/{gone_id}/comments").status_code == 404)
+        check("被禁言用户主页统计正常展示", client.get("/api/forum/users/2/stats").status_code == 200)
+        check("被禁言用户主页评论正常展示", client.get("/api/forum/users/2/comments").status_code == 200)
+        asyncio.run(unmute_alice())
 
         print("\n[21] 作者其他帖子")
         aid3 = client.post("/api/forum/articles", headers=H(alice), json={

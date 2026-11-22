@@ -233,9 +233,10 @@ export const forumAPI = {
 
   /**
    * 公开文章列表（只含已发布；置顶帖在任意排序档中都恒排最前）
-   * @param {{page?: number, pageSize?: number, category?: string, sort?: string, q?: string, tag?: string}} params
+   * @param {{page?: number, pageSize?: number, category?: string, sort?: string, q?: string, tag?: string, authorId?: number}} params
    *   category: 缺省或 'home' = 全部；'recommend' = 置顶∪加精聚合
    *   sort: latest | views | comments
+   *   authorId: 按作者筛选（个人主页「TA 的帖子」；只含已发布帖子）
    * @returns {Promise} - data: {items, page, pageSize, totalPages, total, hasNext, hasPrev}
    */
   getArticles: (params = {}) => axiosInstance.get('/api/forum/articles', { params }),
@@ -344,11 +345,24 @@ export const forumAPI = {
   getMyStats: () => axiosInstance.get('/api/forum/my/stats'),
 
   /**
-   * 指定用户的公开论坛三项数据（详情页作者卡用；匿名可调，不下发任何私有字段）
-   * 与 getMyStats 同一后端实现，口径保证一致。
+   * 指定用户的公开论坛数据（作者卡 / 个人主页头部用；匿名可调，不下发任何私有字段）。
+   * 与 getMyStats 同一后端实现，口径保证一致；返回多一项 createTime（注册时间）。
+   * 用户不存在或已注销时后端 404，silent 交给页面展示「该用户不存在或已注销」空态。
    * @param {number} userId
    */
-  getUserStats: (userId) => axiosInstance.get(`/api/forum/users/${userId}/stats`),
+  getUserStats: (userId) =>
+    axiosInstance.get(`/api/forum/users/${userId}/stats`, { silent: true }),
+
+  /**
+   * 指定用户的公开评论（个人主页「TA 的评论」，匿名可调，按时间倒序分页）。
+   * 只含已发布文章下的正常评论（顶层 + 回复）；每条为
+   * {articleId, articleTitle, commentId, content, createTime}，content 是纯文本摘要。
+   * @param {number} userId
+   * @param {{page?: number, pageSize?: number}} [params]
+   * @returns {Promise} - data: {items, page, pageSize, totalPages, total, hasNext, hasPrev}
+   */
+  getUserComments: (userId, params = {}) =>
+    axiosInstance.get(`/api/forum/users/${userId}/comments`, { params, silent: true }),
 
   /**
    * 文章点赞切换（幂等）

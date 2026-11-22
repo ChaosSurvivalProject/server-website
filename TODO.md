@@ -43,7 +43,7 @@
 - [ ] **头像上传功能**（P2，FLPR-31）：延后到个人中心模块统一实现
 - [ ] **消息实时推送**（P2，FLPR-32）：WebSocket / SSE 可选方案待评估
 - [ ] **消息搜索与筛选**（P3，FLPR-33）：支持按关键词、时间范围搜索
-- [ ] **用户个人主页**（FLPR-34）
+- [ ] **用户个人主页**（FLPR-34）：已实现（`/forum/user/:id` + `GET /api/forum/users/{id}/comments` + `GET /api/forum/articles?authorId=`），待验收后归档
 - [ ] **打赏上线**（支付渠道 + 记录 + 后台配置 UI）（FLPR-35）：`forum_config.rewardEnabled/rewardPresets/rewardCommission` 三个键已预留但无 UI
 - [ ] **等级 / 头衔系统**（等级名称、徽章样式、升级规则、手动分配头衔）（FLPR-36）：徽章常量表 `frontend/src/utils/forumBadges.js` 只扩表即可，组件结构不动
 - [ ] **评论审核队列 + 敏感词库 + 官方置顶评论**（第一阶段评论为**先发后审**，仅后台抽屉可删单条）（FLPR-37）
