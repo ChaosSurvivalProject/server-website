@@ -9,7 +9,9 @@
  * 后台 admin-frontend/src/views/forum/ 下的同名表保持一致。
  */
 export const FORUM_BADGES = {
-  admin: { text: "管理员", color: "#6d28d9", bg: "#f3efff" }
+  // key 必须与后端 _author_brief() 下发的 author.badge 完全一致（目前只有 "管理员"），
+  // 不能用 role 的英文值 'admin' 做键，否则 getBadgeStyle 永远取不到样式。
+  "管理员": { text: "管理员", color: "#6d28d9", bg: "#f3efff" }
 };
 
 /**
