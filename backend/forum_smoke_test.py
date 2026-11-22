@@ -934,6 +934,25 @@ def main() -> int:
               len(revoked) == 1 and bool(revoked[0]["revokedAt"]) and revoked[0]["revokedBy"] == admin_uid,
               str(revoked))
 
+        # ── 用户自助佩戴 / 隐藏（FLPR-36 续）──────────────────────────
+        check("未登录访问我的头衔被拒", client.get("/api/forum/my/titles").status_code in (401, 403))
+        mine = client.get("/api/forum/my/titles", headers=H(bob)).json()["data"]
+        check("我的头衔列表含等级进度", mine["exp"]["level"] >= 1 and "levelName" in mine["exp"], str(mine["exp"]))
+        # 上面的 pioneer 已撤销，撤销记录不可再佩戴；重新授予一个生效头衔供测试
+        client.post(f"/api/forum/admin/users/{bob_uid}/titles", headers=H(admin), json={"titleCode": "pioneer"})
+        r = client.put("/api/forum/my/titles/pioneer/display", headers=H(bob), json={"displayed": 0})
+        check("用户隐藏自己的头衔成功", r.status_code == 200 and r.json()["data"]["displayed"] == 0, r.text)
+        check("隐藏后 badge 即时失效",
+              "开荒先锋" not in client.get(f"/api/forum/users/{bob_uid}/stats").json()["data"]["author"]["badge"])
+        r = client.put("/api/forum/my/titles/pioneer/display", headers=H(bob), json={"displayed": 1})
+        check("用户重新佩戴头衔成功", r.status_code == 200 and r.json()["data"]["displayed"] == 1, r.text)
+        check("佩戴后 badge 即时生效",
+              "开荒先锋" in client.get(f"/api/forum/users/{bob_uid}/stats").json()["data"]["author"]["badge"])
+        check("佩戴开关不接受非法值",
+              client.put("/api/forum/my/titles/pioneer/display", headers=H(bob), json={"displayed": 2}).status_code == 422)
+        check("不能操作他人头衔",
+              client.put("/api/forum/my/titles/pioneer/display", headers=H(alice), json={"displayed": 0}).status_code == 404)
+
         client.put(f"/api/auth/admin/users/{alice_uid}/status", headers=H(admin), json={"status": 0})
         d0 = exp_of(alice_uid)
         client.post(f"/api/forum/articles/{aid4}/like", headers=H(bob))

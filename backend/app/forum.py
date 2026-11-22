@@ -403,6 +403,14 @@ class TitleGrantRequest(BaseModel):
     titleCode: str = Field(..., alias="titleCode", min_length=1, max_length=32)
 
 
+class TitleDisplayRequest(BaseModel):
+    """用户自助佩戴头衔：只收 displayed（1 展示 / 0 隐藏），目标头衔从 URL 取。"""
+
+    model_config = ConfigDict(populate_by_name=True, extra="forbid")
+
+    displayed: int = Field(..., ge=0, le=1)
+
+
 # ── 响应构造（camelCase 契约，PRD §7.4） ─────────────────────────
 async def _author_brief(db: AsyncSession, user: Optional[User]) -> dict:
     """作者简卡（FLPR-31：avatar 读 users.avatar，空串下发 None 由前端回退默认头像）。
@@ -1741,6 +1749,57 @@ async def my_stats(
     return _ok(await _user_forum_stats(db, user))
 
 
+@router.get("/my/titles")
+async def my_titles(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """我的头衔管理页数据：等级进度 + 全部授予记录（生效在前、含撤销历史）。
+
+    只下发当前登录用户自己的数据；displayed 是用户自助佩戴开关，不影响授予 /
+    撤销状态（管理员侧口径不变），撤销过的记录只读、不可再佩戴。
+    """
+    exp = await user_exp_detail(db, user.id)
+    r = await db.execute(
+        select(ForumUserTitle)
+        .where(ForumUserTitle.user_id == user.id)
+        .order_by(
+            ForumUserTitle.revoked_at.asc(),
+            ForumUserTitle.granted_at.desc(),
+            ForumUserTitle.id.desc(),
+        )
+    )
+    return _ok({"exp": exp, "titles": [_title_payload(t) for t in r.scalars().all()]})
+
+
+@router.put("/my/titles/{title_code}/display")
+async def set_my_title_display(
+    title_code: str,
+    data: TitleDisplayRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """自助佩戴 / 隐藏一个自己拥有的头衔（只作用于 displayed，不碰授予留痕）。
+
+    只允许操作生效中的头衔（revoked_at=''）——撤销属于管理员治理动作，用户不能
+    靠重新佩戴绕过；已撤销记录返 400。title_code 必须是自己名下的，否则 404。
+    """
+    r = await db.execute(
+        select(ForumUserTitle).where(
+            ForumUserTitle.user_id == user.id,
+            ForumUserTitle.title_code == title_code,
+            ForumUserTitle.revoked_at == "",
+        )
+    )
+    row = r.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="该头衔不存在或已失效")
+    row.displayed = data.displayed
+    await db.commit()
+    await db.refresh(row)
+    return _ok(_title_payload(row), "已更新展示状态")
+
+
 @router.post("/articles/{article_id}/like")
 async def toggle_article_like(
     article_id: int,
@@ -2905,6 +2964,7 @@ def _title_payload(t: ForumUserTitle) -> dict:
         "revokedAt": t.revoked_at,
         "revokedBy": t.revoked_by,
         "active": t.revoked_at == "",
+        "displayed": t.displayed,
     }
 
 

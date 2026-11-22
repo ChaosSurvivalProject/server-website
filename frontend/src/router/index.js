@@ -73,6 +73,12 @@ const routes = [
     component: () => import('../views/forum/MyPosts.vue')
   },
   {
+    path: '/forum/titles',
+    name: 'ForumMyTitles',
+    // 头衔管理（我的等级进度 + 头衔自助佩戴/隐藏）
+    component: () => import('../views/forum/MyTitles.vue')
+  },
+  {
     path: '/forum/recycle',
     name: 'ForumRecycle',
     // 回收站（作者视角：status=4 列表 + 恢复 / 彻底删除）

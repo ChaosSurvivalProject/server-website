@@ -44,7 +44,12 @@ def level_for_exp(exp: int) -> tuple[int, str]:
 
 
 async def user_badges(db: AsyncSession, user: User) -> list[str]:
-    """作者徽章数组：管理员 → 等级 → 生效中的手动头衔（顺序即展示顺序）。"""
+    """作者徽章数组：管理员 → 等级 → 生效且展示中的头衔（顺序即展示顺序）。
+
+    displayed=0 是用户自助隐藏：头衔仍"拥有"（撤销历史、授予留痕都在），
+    只是不进 badge 数组，前台作者卡 / 个人信息栏 / 帖子卡片一律不渲染。
+    管理员与等级不受佩戴开关影响，恒展示。
+    """
     badges: list[str] = []
     if user.role == "admin":
         badges.append("管理员")
@@ -56,14 +61,15 @@ async def user_badges(db: AsyncSession, user: User) -> list[str]:
     badges.append(f"Lv.{level}")
 
     r = await db.execute(
-        select(ForumUserTitle.title_code)
+        select(ForumUserTitle.title_code, ForumUserTitle.displayed)
         .where(
             ForumUserTitle.user_id == user.id,
             ForumUserTitle.revoked_at == "",
+            ForumUserTitle.displayed == 1,
         )
         .order_by(ForumUserTitle.granted_at.asc(), ForumUserTitle.id.asc())
     )
-    for code in r.scalars().all():
+    for code, _displayed in r.all():
         meta = FORUM_TITLE_META.get(code)
         if meta:
             badges.append(meta["text"])

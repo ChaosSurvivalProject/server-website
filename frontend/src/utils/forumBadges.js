@@ -10,25 +10,110 @@
  * - 等级阈值常量在 backend/app/database.py::FORUM_LEVEL_SEED（Lv.1~Lv.7）；
  * - 头衔 code/展示名在 backend/app/database.py::FORUM_TITLE_META，后台授予时只存 code。
  * - admin-frontend/src/utils/forumBadges.ts 是同名表，两处必须同步。
+ *
+ * 主题适配（2026-11-22）：色板必须给浅色 / 深色各一套——
+ * color/bg 供浅色主题，colorDark/bgDark 供深色主题；getBadgeStyle() 读
+ * themeState.resolved 自动选套，新增徽章时两套都要填，否则深色下会退回浅色
+ * 亮底徽章（深底卡片上出现刺眼白块）。
  */
+import { themeState } from "./theme.js";
+
 export const FORUM_BADGES = {
   // key 必须与后端 _author_brief() 下发的 author.badge 完全一致（FLPR-31 修正：
   // 不能用 role 的英文值 'admin' 做键，否则 getBadgeStyle 永远取不到样式）。
-  "管理员": { text: "管理员", color: "#6d28d9", bg: "#f3efff" },
+  "管理员": {
+    text: "管理员",
+    color: "#6d28d9",
+    bg: "#f3efff",
+    colorDark: "#c4b5fd",
+    bgDark: "rgba(109, 40, 217, 0.22)"
+  },
   // 等级徽章（阈值见后端 FORUM_LEVEL_SEED）
-  "Lv.1": { text: "Lv.1", color: "#64748b", bg: "#eef2f7" },
-  "Lv.2": { text: "Lv.2", color: "#15803d", bg: "#eafaf0" },
-  "Lv.3": { text: "Lv.3", color: "#1d4ed8", bg: "#eaf2ff" },
-  "Lv.4": { text: "Lv.4", color: "#0f766e", bg: "#e6f7f4" },
-  "Lv.5": { text: "Lv.5", color: "#c2410c", bg: "#fff2e8" },
-  "Lv.6": { text: "Lv.6", color: "#6d28d9", bg: "#f3efff" },
-  "Lv.7": { text: "Lv.7", color: "#b45309", bg: "#fff7e6" },
+  "Lv.1": {
+    text: "Lv.1",
+    color: "#64748b",
+    bg: "#eef2f7",
+    colorDark: "#cbd5e1",
+    bgDark: "rgba(100, 116, 139, 0.24)"
+  },
+  "Lv.2": {
+    text: "Lv.2",
+    color: "#15803d",
+    bg: "#eafaf0",
+    colorDark: "#86efac",
+    bgDark: "rgba(21, 128, 61, 0.22)"
+  },
+  "Lv.3": {
+    text: "Lv.3",
+    color: "#1d4ed8",
+    bg: "#eaf2ff",
+    colorDark: "#93c5fd",
+    bgDark: "rgba(29, 78, 216, 0.22)"
+  },
+  "Lv.4": {
+    text: "Lv.4",
+    color: "#0f766e",
+    bg: "#e6f7f4",
+    colorDark: "#5eead4",
+    bgDark: "rgba(15, 118, 110, 0.22)"
+  },
+  "Lv.5": {
+    text: "Lv.5",
+    color: "#c2410c",
+    bg: "#fff2e8",
+    colorDark: "#fdba74",
+    bgDark: "rgba(194, 65, 12, 0.22)"
+  },
+  "Lv.6": {
+    text: "Lv.6",
+    color: "#6d28d9",
+    bg: "#f3efff",
+    colorDark: "#c4b5fd",
+    bgDark: "rgba(109, 40, 217, 0.22)"
+  },
+  "Lv.7": {
+    text: "Lv.7",
+    color: "#b45309",
+    bg: "#fff7e6",
+    colorDark: "#fcd34d",
+    bgDark: "rgba(180, 83, 9, 0.22)"
+  },
   // 特殊头衔色板（首版示例名上线前与运营定稿；key = 后端下发的展示名）
-  "开荒先锋": { text: "开荒先锋", color: "#c2410c", bg: "#fff2e8" },
-  "资深旅人": { text: "资深旅人", color: "#1d4ed8", bg: "#eaf2ff" },
-  "社区贡献者": { text: "社区贡献者", color: "#0f766e", bg: "#e6f7f4" },
-  "官方认证": { text: "官方认证", color: "#6d28d9", bg: "#f3efff" },
-  "传奇行者": { text: "传奇行者", color: "#b45309", bg: "#fff7e6" }
+  "开荒先锋": {
+    text: "开荒先锋",
+    color: "#c2410c",
+    bg: "#fff2e8",
+    colorDark: "#fdba74",
+    bgDark: "rgba(194, 65, 12, 0.22)"
+  },
+  "资深旅人": {
+    text: "资深旅人",
+    color: "#1d4ed8",
+    bg: "#eaf2ff",
+    colorDark: "#93c5fd",
+    bgDark: "rgba(29, 78, 216, 0.22)"
+  },
+  "社区贡献者": {
+    text: "社区贡献者",
+    color: "#0f766e",
+    bg: "#e6f7f4",
+    colorDark: "#5eead4",
+    bgDark: "rgba(15, 118, 110, 0.22)"
+  },
+  "官方认证": {
+    text: "官方认证",
+    color: "#6d28d9",
+    bg: "#f3efff",
+    colorDark: "#c4b5fd",
+    bgDark: "rgba(109, 40, 217, 0.22)"
+  },
+  "传奇行者": {
+    text: "传奇行者",
+    color: "#b45309",
+    bg: "#fff7e6",
+    colorDark: "#fcd34d",
+    bgDark: "rgba(180, 83, 9, 0.22)"
+  }
 };
 
 /**
@@ -44,13 +129,25 @@ export const FORUM_TITLE_OPTIONS = [
 ];
 
 /**
- * 取徽章样式（兼容数组与历史单值）。
+ * 取徽章样式（兼容数组与历史单值；随站点主题自动切换浅/深色板）。
+ *
  * @param {string|string[]|null|undefined} badge - 后端 author.badge
  * @returns {Array<{text: string, color: string, bg: string}>} 无徽章返回空数组
+ *
+ * 读 themeState.resolved 是刻意为之：它是响应式属性，UserBadge.vue 的 computed
+ * 会追踪到它，用户切换浅色/深色/跟随系统时徽章即时重算，无需刷新页面。
  */
 export function getBadgeStyle(badge) {
   const names = Array.isArray(badge) ? badge : badge ? [badge] : [];
-  return names.map((name) => FORUM_BADGES[name]).filter(Boolean);
+  const dark = themeState.resolved === "dark";
+  return names
+    .map((name) => FORUM_BADGES[name])
+    .filter(Boolean)
+    .map((b) =>
+      dark
+        ? { text: b.text, color: b.colorDark, bg: b.bgDark }
+        : { text: b.text, color: b.color, bg: b.bg }
+    );
 }
 
 /**

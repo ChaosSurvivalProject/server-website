@@ -60,7 +60,6 @@
             :logged-in="loggedIn"
             :user="currentUser"
             :stats="myStats"
-            @placeholder="showForumToast"
           />
           <SidebarStats :stats="stats" />
           <SidebarHotTags :tags="hotTags" :active-tag="tag" @select="onTagSelect" />
@@ -73,7 +72,7 @@
 <script>
 import { forumAPI } from "../../api/api.js";
 import { authState } from "../../utils/auth.js";
-import { showForumToast, goLogin } from "../../utils/forumToast.js";
+import { goLogin } from "../../utils/forumToast.js";
 import CommunityBanner from "../../components/forum/CommunityBanner.vue";
 import CategoryTabs from "../../components/forum/CategoryTabs.vue";
 import PostCard from "../../components/forum/PostCard.vue";
@@ -179,7 +178,6 @@ export default {
     this.fetchMyStats();
   },
   methods: {
-    showForumToast,
     goLogin,
 
     /** 只改 query、保留其余参数；默认替换（不堆历史记录） */

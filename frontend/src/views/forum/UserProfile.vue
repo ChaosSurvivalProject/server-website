@@ -46,7 +46,6 @@
               <div class="name-line">
                 <h1 class="page-title">{{ displayName }}</h1>
                 <UserBadge :badge="author?.badge" />
-                <!-- 等级 / 头衔徽章位：FLPR-36 落地后接 forumBadges.js，不填假数据 -->
               </div>
               <div class="profile-sub">
                 <i class="fa-regular fa-calendar"></i>
@@ -182,7 +181,10 @@ export default {
       return this.displayName.slice(0, 1) || "?";
     },
     isAdmin() {
-      return this.author?.badge === "管理员";
+      // FLPR-36 起 author.badge 是数组（管理员 → 等级 → 头衔）；兼容历史单值字符串，
+      // 否则管理员头像的金色描边永远不点亮。
+      const badge = this.author?.badge;
+      return Array.isArray(badge) ? badge.includes("管理员") : badge === "管理员";
     },
     registerText() {
       // 后端存北京时间 naive ISO，格式化统一走 forumFormat.js，不 new Date(iso)

@@ -363,6 +363,20 @@ export const forumAPI = {
   getMyStats: () => axiosInstance.get('/api/forum/my/stats'),
 
   /**
+   * 我的头衔管理页：等级进度 + 全部授予记录（含撤销历史，生效在前）。
+   * @returns {Promise} - data: {exp:{exp,level,levelName,updateTime}, titles:[...]}
+   */
+  getMyTitles: () => axiosInstance.get('/api/forum/my/titles'),
+
+  /**
+   * 自助佩戴 / 隐藏自己拥有的头衔（只改 displayed，不碰授予留痕）。
+   * @param {string} titleCode
+   * @param {number} displayed - 1 展示 / 0 隐藏
+   */
+  setTitleDisplay: (titleCode, displayed) =>
+    axiosInstance.put(`/api/forum/my/titles/${titleCode}/display`, { displayed }),
+
+  /**
    * 指定用户的公开论坛数据（作者卡 / 个人主页头部用；匿名可调，不下发任何私有字段）。
    * 与 getMyStats 同一后端实现，口径保证一致；返回多一项 createTime（注册时间）。
    * 用户不存在或已注销时后端 404，silent 交给页面展示「该用户不存在或已注销」空态。

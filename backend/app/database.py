@@ -1037,6 +1037,40 @@ class ForumUserTitle(Base):
     granted_by: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0=系统
     revoked_at: Mapped[str] = mapped_column(String(30), nullable=False, default="")  # ''=生效中
     revoked_by: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 0=系统
+    displayed: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1
+    )  # 1=前台展示该头衔徽章，0=用户自助隐藏（与撤销与否无关）
+
+
+_forum_title_displayed_migrated = False
+
+
+def migrate_forum_title_displayed_column() -> None:
+    """forum_user_titles 补 displayed 列（用户自助佩戴/展示头衔，2026-11-22）。
+
+    默认 1：存量已授予头衔保持现有展示行为，绝不能因新功能上线而被隐藏。
+    幂等：新库 create_all 已含该列，直接跳过；迁移失败不阻断启动。
+    """
+    global _forum_title_displayed_migrated
+    if _forum_title_displayed_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [row[1] for row in con.execute("PRAGMA table_info('forum_user_titles')")]
+            if "displayed" not in col_names:
+                con.execute(
+                    "ALTER TABLE forum_user_titles ADD COLUMN displayed INTEGER NOT NULL DEFAULT 1"
+                )
+                con.commit()
+                logger.info("已为 forum_user_titles 表补充 displayed 列（默认展示）")
+        finally:
+            con.close()
+    except Exception as e:
+        logger.warning("forum_user_titles.displayed 迁移检查失败: %s", e)
+    _forum_title_displayed_migrated = True
 
 
 class ForumExpLedger(Base):
@@ -1283,6 +1317,7 @@ async def init_db():
     migrate_user_avatar_column()
     migrate_user_mute_column()
     migrate_forum_article_recycle_columns()
+    migrate_forum_title_displayed_column()
     # 资源中心：预置字典种子（幂等，按 type+key 判存，不覆盖后台改过的值）
     await seed_resource_dict_items()
     # 资源中心：resources.custom_links 存量库补列（幂等）
