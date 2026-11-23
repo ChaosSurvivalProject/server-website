@@ -42,9 +42,13 @@
             <template v-else>{{ initial }}</template>
           </span>
           <span class="nm">{{ post.author?.name }}</span>
-          <UserBadge :badge="post.author?.badge" />
-          <span class="sep">·</span>
-          <span>{{ timeText }}</span>
+          <span v-if="hasBadge" class="post-badges">
+            <UserBadge :badge="post.author?.badge" />
+          </span>
+          <span class="post-meta">
+            <span class="sep">·</span>
+            <span class="post-time">{{ timeText }}</span>
+          </span>
         </div>
 
         <div class="post-stats">
@@ -109,6 +113,11 @@ export default {
         !!this.post.category ||
         this.showStatus
       );
+    },
+    /** 是否有头衔徽章：无徽章时不渲染，避免移动端留下空白行 */
+    hasBadge() {
+      const badge = this.post.author?.badge;
+      return Array.isArray(badge) ? badge.length > 0 : !!badge;
     },
     timeText() {
       // 已发布用 publishTime，按需求显示完整 `YYYY-MM-DD HH:MM:SS`
@@ -213,6 +222,11 @@ export default {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.post-author .post-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 .post-author .sep {
   color: var(--fx-text-3);
 }
@@ -260,6 +274,38 @@ export default {
   }
   .post-author .nm {
     max-width: 90px;
+  }
+  /* 移动端：用户名 / 头衔 / 发布时间不再挤在同一行（FLPR-59）。
+     用 order 把徽章排到「用户名 + 时间」之后，并占满一整行，
+     这样头衔单独一行、位于用户名和三个数据 icon 之间，不再被挤压截断。 */
+  .post-foot {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .post-author {
+    flex-wrap: wrap;
+    row-gap: 4px;
+    gap: 6px;
+    max-width: 100%;
+  }
+  .post-author .fx-avatar {
+    width: 24px;
+    height: 24px;
+  }
+  .post-author .nm {
+    order: 0;
+  }
+  .post-author .post-meta {
+    order: 1;
+    white-space: nowrap;
+  }
+  .post-author .post-time {
+    font-size: 12px;
+  }
+  .post-author .post-badges {
+    order: 2;
+    flex: 0 0 100%;
   }
 }
 </style>
