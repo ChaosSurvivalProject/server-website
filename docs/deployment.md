@@ -1,6 +1,6 @@
 # 部署（Docker 与生产 Nginx）
 
-> 本文是 2026-11-07 文档重构时从 [README.md](../README.md) 原样下沉的专题文档（内容未改动，仅调整标题层级与文内交叉引用）；入口与快速开始见 [README.md](../README.md)。文中 `代码样式` 的路径均相对仓库根目录。
+> 本文是 2026-11-07 文档重构时从 [README.md](../README.md) 下沉的专题文档（原为原样下沉，2026-11-23 按镜像化部署现状更新了「生产部署」一节）；入口与快速开始见 [README.md](../README.md)。文中 `代码样式` 的路径均相对仓库根目录。
 
 > 生产拓扑与运维规约（1panel、统一前端容器、镜像内 cron、for-deploy 留档）见 [docs/agents/deployment.md](./agents/deployment.md)。
 
@@ -21,9 +21,16 @@ docker compose up -d --build
 
 ## 生产部署
 
-前后端同域部署，由 Nginx 统一入口：
+生产与本地/测试共用同一套 `docker-compose.yml` 和两个镜像，区别只在镜像来源与端口绑定：
 
-- `frontend` 构建产物（`npm run build` → `dist/`）作为静态站点托管
-- `/api` 反向代理到本机 FastAPI（5000 端口，后端所有接口统一挂 /api 前缀）；其中 `/api/kb/` 的反代需为 SSE 追加：`proxy_http_version 1.1`、`proxy_set_header Connection ''`、`proxy_buffering off`、`gzip off`、`proxy_read_timeout 300s`（与后端响应头 `X-Accel-Buffering: no` 两个都要，否则流式被缓冲成一次性返回）
-- `wiki` 构建产物挂在 `/wiki/` 路径下（VitePress `base: '/wiki'`）
-- `admin-frontend` 构建产物挂在 `/admin/` 路径下（pure-admin-thin，`base: '/admin/'`）
+- 镜像由 GitHub Actions（`.github/workflows/release-images.yml`）在 Release 时构建并推送 GHCR：`ghcr.io/chaossurvivalproject/server-website-backend` / `-web`。服务器**只拉取运行，不 build、不跑 Vite**（香港 2C2G 跑前端构建会 OOM）：
+
+  ```bash
+  docker compose pull && docker compose up -d --no-build
+  ```
+
+- 生产 `web` 只绑 `127.0.0.1:8090`（`WEB_BIND_IP` 默认回环），由 1panel/OpenResty 按域名反代对外；测试环境在根目录 `.env`（模板见 `.env.example`）设 `WEB_BIND_IP=0.0.0.0` 便于局域网访问，用 `docker compose up -d --build` 本机构建。
+- 统一入口是 `xqly-website-web` 容器（`web/Dockerfile` 多阶段构建三个前端 + `web/nginx.conf` 路由）：`/` 主站 SPA、`/admin/` 后台、`/wiki/` 文档、`/api` 反代 `xqly-website-backend:5000`；`/health`、`/announcement/uploads/`、`/download/` 为兼容 location。
+- `/api/kb/` 的反代需保留 SSE 四件套：`proxy_http_version 1.1`、`proxy_set_header Connection ''`、`proxy_buffering off`、`gzip off`、`proxy_read_timeout 300s`（与后端响应头 `X-Accel-Buffering: no` 两个都要，否则流式被缓冲成一次性返回）。
+- 生产 1panel 站点的 conf 快照在 `for-deploy/`：`xqly.xt91tv.shop.conf`（面板生成）+ `xqly-app.conf`（手工 location），与线上字节一致。`web/nginx.conf` 与 `xqly-app.conf` 是同一套规则的两个载体，改其一必须同步另一份（详见 [docs/agents/deployment.md](./agents/deployment.md) 与 `for-deploy/README.md`）。
+- 定时任务已进后端镜像（`backend/crontab` 四条，`backend/docker-entrypoint.sh` 拉起），不再挂宿主机 crontab；日志进 `docker logs xqly-website-backend`。
