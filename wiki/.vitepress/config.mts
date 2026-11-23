@@ -9,7 +9,21 @@ export default defineConfig({
   // 首屏同步写入，避免 wiki 与主站主题色不一致。
   head: [
     ['script', {}, `(function(){try{var v=localStorage.getItem('XQ_theme_vars_v2');if(!v)return;var s=JSON.parse(v);var r=document.documentElement;for(var k in s){if(Object.prototype.hasOwnProperty.call(s,k))r.style.setProperty(k,s[k]);}}catch(e){}})();`],
-    ['style', {}, `:root{--vp-c-brand-1:var(--brand-lt,#4caf50);--vp-c-brand-2:var(--brand-lt-hover,#43a047);--vp-c-brand-3:var(--brand-lt-active,#388e3c);--vp-c-brand-soft:var(--brand-lt-tint,#e8f5e9);}html.dark{--vp-c-brand-1:var(--brand-dk,#66bb6a);--vp-c-brand-2:var(--brand-dk-hover,#7bc87f);--vp-c-brand-3:var(--brand-dk-active,#55a55a);--vp-c-brand-soft:var(--brand-dk-tint,rgba(102,187,106,.16));}`]
+    ['style', {}, `:root{--vp-c-brand-1:var(--brand-lt,#4caf50);--vp-c-brand-2:var(--brand-lt-hover,#43a047);--vp-c-brand-3:var(--brand-lt-active,#388e3c);--vp-c-brand-soft:var(--brand-lt-tint,#e8f5e9);}html.dark{--vp-c-brand-1:var(--brand-dk,#66bb6a);--vp-c-brand-2:var(--brand-dk-hover,#7bc87f);--vp-c-brand-3:var(--brand-dk-active,#55a55a);--vp-c-brand-soft:var(--brand-dk-tint,rgba(102,187,106,.16));}`],
+    // 分享卡片：QQ / 微信抓取不执行 JS，OG 标签必须出现在服务器返回的原始 HTML 里。
+    // VitePress 会把 head 原样写进每个静态页；og:image 复用主站根的封面图。
+    ['meta', { property: 'og:type', content: 'website' }],
+    ['meta', { property: 'og:site_name', content: '星穹旅驿Wiki' }],
+    ['meta', { property: 'og:title', content: '星穹旅驿Wiki | 我的世界阵营生存服文档' }],
+    ['meta', { property: 'og:description', content: '星穹旅驿 Wiki：进服指南、Java / 基岩双端教程、黎明誓约与暮夜同盟阵营玩法、服务器规则与架构文档。' }],
+    ['meta', { property: 'og:url', content: 'https://xqly.xt91tv.shop/wiki/' }],
+    ['meta', { property: 'og:image', content: 'https://xqly.xt91tv.shop/og-cover.png' }],
+    ['meta', { property: 'og:image:width', content: '1200' }],
+    ['meta', { property: 'og:image:height', content: '630' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ['meta', { name: 'twitter:title', content: '星穹旅驿Wiki | 我的世界阵营生存服文档' }],
+    ['meta', { name: 'twitter:description', content: '星穹旅驿 Wiki：进服指南、Java / 基岩双端教程、黎明誓约与暮夜同盟阵营玩法、服务器规则与架构文档。' }],
+    ['meta', { name: 'twitter:image', content: 'https://xqly.xt91tv.shop/og-cover.png' }]
   ],
   themeConfig: {
     logo: '/favicon.ico',
