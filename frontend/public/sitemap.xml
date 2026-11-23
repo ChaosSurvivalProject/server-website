@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  星穹旅驿官网 sitemap.xml
+  只列公开、规范、返回 200 的静态 URL；域名与站长平台验证的站点完全一致（不带 www）。
+  不包含 /admin/、/api/、登录注册页，也不含 /staff/:code、/forum/post/:id 等
+  用户相关动态路由（由 P2/P3 按实际数据生成后再追加）。
+  lastmod 取对应页面源文件最后一次提交日期，不写统一的“当前时间”。
+-->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://xqly.xt91tv.shop/</loc>
+    <lastmod>2026-11-21</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/team</loc>
+    <lastmod>2026-11-20</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/forum</loc>
+    <lastmod>2026-11-22</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/resources</loc>
+    <lastmod>2026-11-21</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/</loc>
+    <lastmod>2026-10-03</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/visitor-guidelines/</loc>
+    <lastmod>2026-09-15</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/join-server/for-java-client/</loc>
+    <lastmod>2026-09-15</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/join-server/for-bedrock-client/</loc>
+    <lastmod>2026-09-15</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/factions/</loc>
+    <lastmod>2026-10-03</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/faq/</loc>
+    <lastmod>2026-09-15</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/develop/architecture/</loc>
+    <lastmod>2026-09-15</lastmod>
+  </url>
+</urlset>
