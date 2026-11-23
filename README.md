@@ -1,5 +1,10 @@
 # 星穹旅驿 · 服务器网站
 
+<p align="center">
+  <img src="assets/images/banner.png" alt="server-website 宣传图" width="820">
+</p>
+
+
 星穹旅驿 Minecraft 服务器的官方网站。单仓库（monorepo）包含四个**相互独立**的子项目（无根级 workspace，命令须在对应子目录内执行）：
 
 | 模块 | 说明 | 技术栈 |
@@ -8,6 +13,13 @@
 | `backend/` | 官网后端（公告、认证、论坛、资源中心、员工名片、服务器监控、知识库智能客服） | FastAPI + SQLAlchemy (async) + SQLite (aiosqlite) + Pydantic v2 |
 | `wiki/` | 服务器文档站（同时是知识库的单一数据源） | VitePress |
 | `admin-frontend/` | 后台管理前端（内容运营 / 社区管理 / 员工管理 / 资源中心 / 智能客服 / 系统管理） | Vue 3 + TypeScript + Element Plus + Pinia（[pure-admin-thin](https://github.com/pure-admin/pure-admin-thin)） |
+
+## 效果预览
+
+<p align="center">
+  <img src="assets/images/demo.png" alt="server-website 演示图" width="720">
+</p>
+
 
 ## 功能特性
 
