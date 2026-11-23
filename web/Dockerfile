@@ -11,8 +11,8 @@
 #
 # 与生产拓扑的对应关系：生产是 1panel OpenResty（host 网络）按
 # for-deploy/xqly-app.conf 分发到站点目录 + 127.0.0.1:5000；本镜像把同一套
-# 路由规则搬进容器（web/nginx.conf），用于自包含部署 / 本地整栈联调。
-# 注意：生产构建产物仍按 for-deploy/README.md 在本机构建后投放，不跑本镜像。
+# 路由规则搬进容器（web/nginx.conf），统一对外。
+# 生产与测试都使用本镜像：CI 构建并推 GHCR，服务器只 pull 运行，不跑 Vite。
 # ============================================================================
 FROM node:20-alpine AS build-frontend
 
