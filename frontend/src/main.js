@@ -13,6 +13,9 @@ import { initTheme } from './utils/theme.js'
 initTheme()
 // 头像加载失败统一回退内置默认图（FLPR-31），各组件只需在 img 上挂 @error="onAvatarError"
 import { onAvatarError } from './utils/avatar.js'
+// 分享卡片 meta：QQ/微信主抓取读 index.html 静态 OG 标签，这里按路由补齐浏览器与
+// 执行 JS 的预览器标题；静态 OG 标签本身见 frontend/index.html
+import { setupShareMeta } from './utils/shareMeta.js'
 
 // 创建Vue应用实例
 const app = createApp(App)
@@ -22,6 +25,7 @@ app.mixin({ methods: { onAvatarError } })
 
 // 集成vue-router
 app.use(router)
+setupShareMeta(router)
 
 // 挂载应用到DOM
 app.mount('#app')
