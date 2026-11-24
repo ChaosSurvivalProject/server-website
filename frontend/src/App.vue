@@ -64,6 +64,7 @@ import fastRunLogo from "./assets/images/download/logo-white.png";
 import { authAPI, siteConfigAPI } from "./api/api.js";
 import { getToken, setAuth } from "./utils/auth.js";
 import { applySiteBranding } from "./utils/siteBranding.js";
+import { useSeoHead } from "./utils/seoHead.js";
 import McConfig from "./config/mc-config.js";
 
 // 页脚内置默认值：与后端 site_config.DEFAULTS / Home.vue HOME_DEFAULT_CONFIG 同一口径，
@@ -79,12 +80,12 @@ const FOOTER_DEFAULT_CONFIG = {
     { title: "服务器信息", text: "服务器公告", url: "/announcements" },
     { title: "社区", text: "进入社区", url: "/forum" },
     { title: "社区", text: "发布文章", url: "/forum/new" },
-    { title: "活动信息", text: "阵营内测", url: "/faction-beta" },
+    { title: "活动信息", text: "当前赛季", url: "/wiki/for-new/quick-start/" },
     { title: "联系我们", text: "联系服主", url: "mailto:3896301937@qq.com" },
     { title: "联系我们", text: "加入我们", url: "https://jq.qq.com/?_wv=1027194278" },
   ],
   copyright: [
-    "2025-2026 星穹旅驿 Minecraft服务器",
+    "2025-2026 星穹旅驿 Minecraft 服务器",
     "| 本服务器与Mojang及Microsoft无关",
     "联系我们: 3896301937@qq.com",
     "加入QQ群: 942235691",
@@ -129,6 +130,8 @@ export default {
     },
   },
   setup() {
+    // 按路由注入 head（title / description / canonical / OG），预渲染时随 HTML 落盘
+    useSeoHead()
     // Options API 下模板绑定的静态资源/配置必须经 setup 显式返回
     return { fastRunLogo, chatWidgetEnabled: McConfig.chatWidget.enabled };
   },

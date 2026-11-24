@@ -17,11 +17,15 @@ cd admin-frontend && pnpm install && pnpm dev                      # 后台管�
 
 ## API 契约规约
 
-完整规约见 [docs/agents/api-conventions.md](docs/agents/api-conventions.md)。硬性禁区：接口统一挂 `/api` 前缀；响应包络 `{code, message, data}`（`code=0` 成功，前端组件不得再判 `code`；`POST /api/kb/chat` SSE 是全项目唯一包络例外）；DB snake_case / 对外 JSON camelCase（新增字段必须同步补 Pydantic alias）；**新增或修改后端接口必须同步契约参照 `frontend/src/api/api.js` 与 `admin-frontend/src/api/`**；时间统一存北京时间 naive ISO `YYYY-MM-DDTHH:MM:SS`；布尔语义用 int（`isPublished` 0=草稿/1=已发布）；上传 `FormData` 必须显式加 `Content-Type: multipart/form-data`（否则 422）。
+完整规约见 [docs/agents/api-conventions.md](docs/agents/api-conventions.md)。硬性禁区：接口统一挂 `/api` 前缀；响应包络 `{code, message, data}`（`code=0` 成功，前端组件不得再判 `code`；`POST /api/kb/chat` 与 `GET /api/messages/stream` 两个 SSE 是全项目仅有的包络例外）；DB snake_case / 对外 JSON camelCase（新增字段必须同步补 Pydantic alias）；**新增或修改后端接口必须同步契约参照 `frontend/src/api/api.js` 与 `admin-frontend/src/api/`**；时间统一存北京时间 naive ISO `YYYY-MM-DDTHH:MM:SS`；布尔语义用 int（`isPublished` 0=草稿/1=已发布）；上传 `FormData` 必须显式加 `Content-Type: multipart/form-data`（否则 422）。
 
 ## 主题适配规约（全局）
 
 完整规约见 [docs/agents/theme.md](docs/agents/theme.md)。硬性禁区：**任何新增或修改的 UI（前台 / 后台 / Wiki、页面 / 组件 / 弹窗 / 编辑器 / 徽章）都必须同时适配浅色与深色两套主题**——禁止写死单一主题色值、禁止只给一套色板、禁止切主题后要刷新才生效。前台主题源是 `frontend/src/utils/theme.js` 的 `themeState.resolved`（响应式，`<html data-theme>`），后台是 pure-admin 切 `<html class="dark">`（无响应式 store，必要时用 `MutationObserver`）；颜色优先走令牌（`--brand-*` / `--fx-*` / `--el-*`），JS 内联色板必须给 `color/bg` + `colorDark/bgDark` 双套并随主题即时切换。
+
+## 移动端适配规约（全局）
+
+**任何新增或修改的页面 / 组件 / 弹窗 / 布局都必须考虑移动端适配**——禁止只验桌面端就提交：窄屏下不得出现横向滚动，用户名 / 头衔 / 时间 / 标签等信息不得被挤压截断，多列布局按需降为单列，点击目标保持可点。前台论坛断点为 ≤900px（`frontend/src/assets/styles/forum.css`），主站 / 后台常用 ≤768px、≤480px。本约束与「主题适配规约」同级，覆盖全站所有端。
 
 ## 知识库 / 智能客服规约
 

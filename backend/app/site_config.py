@@ -53,8 +53,8 @@ FIELD_DEFS: dict[str, dict[str, Any]] = {
     "banner.linkText": {"type": "text", "label": "横幅链接文字", "max": 20},
     "banner.linkUrl": {"type": "text", "label": "横幅链接地址", "max": 255},
     # Hero 区
-    "hero.badgeIcon": {"type": "text", "label": "徽章年份", "max": 20},
-    "hero.badgeText": {"type": "text", "label": "徽章团队名", "max": 30},
+    "hero.badgeIcon": {"type": "text", "label": "徽章标识", "max": 20},
+    "hero.badgeText": {"type": "text", "label": "徽章文案", "max": 30},
     "hero.title": {"type": "text", "label": "主标题", "max": 60, "mark": True},
     "hero.subtitle": {"type": "text", "label": "副标题", "max": 80, "mark": True},
     "hero.features": {"type": "textarea", "label": "特性标签（每行一个）", "max": 400},
@@ -96,32 +96,34 @@ FIELD_DEFS: dict[str, dict[str, Any]] = {
 
 # 默认值：与改造前首页硬编码逐字一致（升级后未配置 = 页面行为不变）
 DEFAULTS: dict[str, str] = {
-    "site.title": "星穹旅驿 | 生存服务器",
+    "site.title": "星穹旅驿 | 我的世界 Java/基岩互通 1.21.11 生存服",
     "site.name": "星穹旅驿",
     "site.logo": "",  # 空 = 前端回退打包内默认 logo 图
     "banner.enabled": "1",
-    "banner.text": "🔔 全新阵营对战玩法内测开启，名额有限 · 申请时间 2026-09-21 ~ 2026-10-07",
-    "banner.linkText": "申请内测",
-    "banner.linkUrl": "/faction-beta",
-    "hero.badgeIcon": "@2025-2026",
-    "hero.badgeText": "星穹旅驿团队",
+    "banner.text": "🔔 S1「长夜与残阳」赛季进行中 · 黎明誓约 / 暮夜同盟 常规招募开放",
+    "banner.linkText": "查看进服指南",
+    "banner.linkUrl": "/wiki/for-new/quick-start/",
+    "hero.badgeIcon": "1.21.11",
+    "hero.badgeText": "Java / 基岩双端互通",
     "hero.title": "欢迎来到 [[星穹旅驿]]",
     "hero.subtitle": "在这里，体验[[阵营对抗]]乱世生存",
     "hero.features": "阵营对抗\n多端互通\n友好社区\n超多插件玩法",
     "hero.description": (
-        "星穹旅驿是一个以阵营对抗为核心的乱世生存服务器。大崩裂之后，星穹界长夜与残阳交替："
+        "星穹旅驿是一个以阵营对抗为核心的《我的世界》乱世生存服务器。大崩裂之后，星穹界长夜与残阳交替："
         "[[黎明誓约]]立志重建秩序、点燃曙光灯塔，{{暮夜同盟}}则拥抱长夜、信奉强者为尊。"
         "选择你的立场，在这场不会终结的拉锯战中，把世界改成你想要的样子。"
         "基于 Geyser + Velocity + Paper 1.21.11 核心技术，实现 Java/基岩多端互通。"
     ),
-    "hero.stat1Number": "114514",
-    "hero.stat1Label": "注册玩家",
-    "hero.stat2Number": "24/7",
-    "hero.stat2Label": "稳定运行",
-    "hero.stat3Number": "30+",
-    "hero.stat3Label": "插件玩法",
-    "hero.stat4Number": "6",
-    "hero.stat4Label": "管理团队人数",
+    # FLPR-64：首屏不再使用 114514 / 24/7 / 30+ / 6 累计或静态自述；
+    # 前两项由前端监控接口实时填充，后两项为版本与阵营的可验证事实。
+    "hero.stat1Number": "",
+    "hero.stat1Label": "实时在线人数",
+    "hero.stat2Number": "",
+    "hero.stat2Label": "服务器延迟",
+    "hero.stat3Number": "1.21.11",
+    "hero.stat3Label": "当前推荐版本",
+    "hero.stat4Number": "2",
+    "hero.stat4Label": "对抗阵营",
     "video.title": "星穹旅驿服务器宣传视频",
     "video.url": "https://www.bilibili.com/video/BV1aN6CBgEL3",
     "video.cover": "",
@@ -145,12 +147,12 @@ DEFAULTS: dict[str, str] = {
         "服务器信息|服务器公告|/announcements\n"
         "社区|进入社区|/forum\n"
         "社区|发布文章|/forum/new\n"
-        "活动信息|阵营内测|/faction-beta\n"
+        "活动信息|当前赛季|/wiki/for-new/quick-start/\n"
         "联系我们|联系服主|mailto:3896301937@qq.com\n"
         "联系我们|加入我们|https://jq.qq.com/?_wv=1027194278"
     ),
     "footer.copyright": (
-        "2025-2026 星穹旅驿 Minecraft服务器\n"
+        "2025-2026 星穹旅驿 Minecraft 服务器\n"
         "| 本服务器与Mojang及Microsoft无关\n"
         "联系我们: 3896301937@qq.com\n"
         "加入QQ群: 942235691"

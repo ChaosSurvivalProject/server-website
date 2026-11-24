@@ -38,25 +38,25 @@
 
 根 compose 的 `xqly-website-web` 服务由 `web/Dockerfile`（多阶段：三个前端各自 node 构建产物）+ `web/nginx.conf`（路由规则）组成，产物收进**一个 nginx 容器** `xqly-website-web`：`/` 主站、`/admin/` 后台、`/wiki/` 文档、`/api` 与 `/health`、`/announcement/uploads/` 反代 `xqly-website-backend:5000`，宿主机只绑 `127.0.0.1:8090`（8080 已被本机其他服务占用）。要点：
 
-- **`web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是同一套路由规则的两份载体**，改其一必须同步另一份（SSE 四件套、SPA fallback、legacy location 三处不能分叉）。
+- **`web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是同一套路由规则的两份载体**，改其一必须同步另一份（SSE 四件套、SPA fallback、legacy location 三处不能分叉）；location 集合的 `diff` 校验命令与允许的 topology 差异见 `for-deploy/README.md`。
 - **生产使用 web 容器**：生产 web 只绑 `127.0.0.1:8090`，由 1panel/OpenResty 按域名反代；镜像由 CI 构建，绝不在服务器跑 Vite（2C2G 会 OOM）。
-- **2026-10-31 容器名从 `announcement-backend` 改为 `xqly-website-backend`**，2026-11-01 起定时任务已改为**镜像内 cron**（`backend/crontab` + `backend/docker-entrypoint.sh`），不再依赖宿主机 `docker exec` + 容器名，因此该改名不会再让定时任务失效。生产服务器部署本仓库时要在 `/opt/xqly-website` 下 `docker compose pull && docker compose up -d --no-build`（**不要带 `--build`**；旧命令 `cd backend && docker compose up` 已失效）；宿主机上遗留的三条旧 crontab 条目需按 `for-deploy/README.md`「改定时任务」清空。数据卷路径已同步改为 `./backend/data` 与 `./backend/.env`——与旧 compose（在 `backend/` 下解析 `./data` / `./.env`）指向的**绝对路径相同**，生产直接 up 不会丢库。
+- **2026-10-31 容器名从 `announcement-backend` 改为 `xqly-website-backend`**，2026-11-01 起定时任务已改为**镜像内 cron**（`backend/crontab` + `backend/docker-entrypoint.sh`），不再依赖宿主机 `docker exec` + 容器名，因此该改名不会再让定时任务失效。生产服务器部署本仓库时要在 `/opt/xqly-website` 下 `docker compose pull && docker compose up -d --no-build`（**不要带 `--build`**；旧命令 `cd backend && docker compose up` 已失效）；宿主机上遗留的旧 crontab 条目（如有）需清空，避免与镜像内 cron 重复执行；一次性迁移步骤已随过时文档删除，现行验证见 `for-deploy/README.md`「改定时任务」。数据卷路径已同步改为 `./backend/data` 与 `./backend/.env`——与旧 compose（在 `backend/` 下解析 `./data` / `./.env`）指向的**绝对路径相同**，生产直接 up 不会丢库。
 - 生产 `.env` 的 `KB_WIKI_DIR` 应写 `/app/wiki`；compose 已显式注入 `KB_WIKI_DIR=/app/wiki` 环境变量兜底（环境变量优先于 `.env` 文件值）。
 
 ### 生产定时任务（镜像内 cron）
 
-**2026-11-01 起三条任务已进后端镜像**，宿主机 root crontab 退役（原因：宿主机条目随容器改名静默失效——2026-10-31 容器名 `announcement-backend` → `xqly-website-backend` 即踩过，任务静默不跑且无报错）：
+**2026-11-01 起四条任务已进后端镜像**，宿主机 root crontab 退役（原因：宿主机条目随容器改名静默失效——2026-10-31 容器名 `announcement-backend` → `xqly-website-backend` 即踩过，任务静默不跑且无报错）：
 
 - 任务定义 `backend/crontab` → 构建期落到镜像 `/etc/cron.d/xqly-jobs`；入口脚本 `backend/docker-entrypoint.sh` 先起 `cron` 再 `exec python backend/run.py`；日志进容器 stdout（`docker logs xqly-website-backend`）。
-- 三条任务与时刻不变：`0 3` kb_sync `--incremental`（wiki 按 MD5 增量入库，自增 `index_version`，后端免重启）、`0 4` staff_expire（`valid_to` 权威 + 查询时懒更新兜底）、`0 5` forum_purge（`deleted_at` 权威 + 恢复接口自校验 + 列表自过滤）。**三条都是 0 变更空跑安全，漏跑不影响正确性**（只影响时效），该口径未变。
+- 四条任务与时刻：`0 3` kb_sync `--incremental`（wiki 按 MD5 增量入库，自增 `index_version`，后端免重启）、`30 3` github_sync（GitHub Release 批量同步，只增不改幂等）、`0 4` staff_expire（`valid_to` 权威 + 查询时懒更新兜底）、`0 5` forum_purge（`deleted_at` 权威 + 恢复接口自校验 + 列表自过滤）。**四条都是 0 变更空跑安全，漏跑不影响正确性**（只影响时效），该口径未变。
 - **两个必守口径**（改 `backend/crontab` 前必读）：① `/etc/cron.d` 的行是 6 段 `分 时 日 月 周 用户名 命令`，漏用户名会被当成 `user=cd` 而静默不执行；② **cron 不继承容器 environment，也不看 `TZ` 环境变量**——业务路径（`ANNOUNCEMENT_DB` / `ANNOUNCEMENT_UPLOAD_DIR` / `KB_WIKI_DIR`）必须写进 crontab 且与 `docker-compose.yml` 的 `environment` 同步（否则任务读写 `/app/backend/data`（镜像内路径）而非挂载卷，表现为「跑完什么也没变」）；调度时区看镜像的 `/etc/localtime`（Dockerfile 已设 `Asia/Shanghai`）。
 - `CRON_ENABLED=0` 可关闭镜像内定时任务（本地只跑 API / 联调时用）。
-- **迁移注意**：新镜像上线后，生产上旧的宿主机 crontab 三条 `docker exec` 条目必须清空，否则与镜像内 cron 重复执行（三条都幂等，重复跑不会写坏数据但会白跑）。迁移与验证命令见 `for-deploy/README.md`「改定时任务」。
-- `for-deploy/crontab` 降级为历史快照（**已废弃**），不再是与线上字节一致的现行留档。
+- **迁移已完成**：生产宿主机旧的 crontab 条目（含三条 `docker exec`）应已清空，否则与镜像内 cron 重复执行（四条都幂等，重复跑不会写坏数据但会白跑）；新装 / 换机时执行 `crontab -l` 确认无残留即可。验证命令见 `for-deploy/README.md`「改定时任务」。
+- 宿主机 `for-deploy/crontab` 已直接删除（过时配置不留历史副本），定时任务以 `backend/crontab` 为唯一权威。
 
 ## for-deploy 留档目录
 
-- `for-deploy/` 存放生产实际生效、但不属于任何子项目构建产物的配置留档（当前三个：`xqly.xt91tv.shop.conf` = 1panel 站点配置快照、`xqly-app.conf` = 应用 location 快照、`crontab` = root crontab 快照；均为**与生产字节一致**的快照，可 `md5sum` 比对，改完后须回拷留档；同步方法与改前注意事项见该目录 `README.md`）。
+- `for-deploy/` 存放生产实际生效、但不属于任何子项目构建产物的配置留档（当前两个：`xqly.xt91tv.shop.conf` = 1panel 站点配置快照、`xqly-app.conf` = 应用 location 快照；均为**与生产字节一致**的快照，可 `md5sum` 比对，改完后须回拷留档；同步方法与改前注意事项见该目录 `README.md`）。
 - **该目录随仓库提交到公开仓库，禁止放任何敏感信息**：SSL 证书/私钥、API Key、密码/token/JWT secret、生产数据库数据等一律不进；普通配置里如无必要也不要写外部 IP/端口。敏感文件（证书、`backend/.env`、生产库）只存在于服务器对应路径，不落仓库。
 
 ## 已知遗留 / 注意事项

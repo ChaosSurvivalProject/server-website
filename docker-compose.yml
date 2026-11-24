@@ -16,8 +16,9 @@
 #   web 容器生产只绑 127.0.0.1:8090（WEB_BIND_IP 默认值），由 1panel/OpenResty
 #   按域名反代对外；禁止在生产直接绑 0.0.0.0。
 #   build 段保留给本地/测试构建（image 与 build 共存：build 产物按 image 名打 tag）。
-#   生产定时任务仍按 for-deploy/crontab 在宿主机 docker exec 执行，依赖
-#   container_name: xqly-website-backend，勿改名。
+#   生产定时任务已进后端镜像（backend/crontab → /etc/cron.d/xqly-jobs，由
+#   backend/docker-entrypoint.sh 拉起），不再依赖宿主机 crontab + docker exec；
+#   container_name: xqly-website-backend 仍勿改名（web 内网反代与镜像内 cron 口径依赖）。
 # ============================================================================
 services:
   xqly-website-backend:
@@ -40,6 +41,8 @@ services:
       # （config.py 启动期口径），可纠正本地 backend/.env 里 KB_WIKI_DIR=../wiki
       # 这种按宿主机路径写的值；生产 .env 若已写 /app/wiki，此覆盖也无害。
       - KB_WIKI_DIR=/app/wiki
+      # 本地只跑 API / 联调时可在根 .env 设 CRON_ENABLED=0 关闭镜像内定时任务
+      - CRON_ENABLED=${CRON_ENABLED:-1}
     volumes:
       # SQLite 与上传图片（gitignore，不入镜像，见根 .dockerignore 的 backend/data）
       - ./backend/data:/app/data
@@ -50,9 +53,8 @@ services:
       # 知识库单一数据源：仓库 wiki/ 源码（kb_sync.py 按 MD5 增量入库，只读挂载）
       - ./wiki:/app/wiki:ro
     ports:
-      # 默认只绑回环，便于宿主机直接调试接口、以及与生产 crontab 的
-      # docker exec 习惯一致（容器名/路径都不变）。生产若不需要宿主机端口，
-      # 删掉本段即可——web 服务经 compose 内网反代，不依赖此映射。
+      # 默认只绑回环，便于宿主机直接调试接口；容器名与路径保持不变。
+      # 生产若不需要宿主机端口，删掉本段即可——web 服务经 compose 内网反代，不依赖此映射。
       # ⚠️ 勿改绑 0.0.0.0：Docker 的 iptables 规则会绕过 ufw，把 API 直接暴露公网。
       - "127.0.0.1:5000:5000"
     healthcheck:

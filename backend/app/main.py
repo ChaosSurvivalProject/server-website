@@ -3,10 +3,10 @@
 所有业务接口统一挂载在 /api 前缀下（nginx 按前缀反代；下表省略 /api）。
 Endpoints:
   GET  /health                       健康检查
-  /api/messages/*                    站内信（前台 + 管理员）
+  /api/messages/*                    站内信（前台 + 管理员；/messages/stream 为 SSE 包络例外）
   /api/auth/*                        认证（验证码 / 注册 / 登录 / 当前用户 / 管理员用户管理）
   /api/faction-beta/*                阵营对战玩法内测资格申请
-  /api/kb/*                          智能客服（/api/kb/chat SSE 唯一不走包络）
+  /api/kb/*                          智能客服（/api/kb/chat SSE 包络例外之一）
   /api/staff/*                       工作人员名片（公开 + 管理员）
   /api/forum/*                       社区论坛（公开 + 登录用户 + 管理员）
   /api/resources/*                   资源中心（公开只读 + 管理员 CRUD/统计）

@@ -314,7 +314,7 @@
 | 项 | 值 |
 | --- | --- |
 | 脚本 | `backend/forum_purge.py`（`--dry-run` 只统计不写库，输出格式对齐 `staff_expire.py`） |
-| crontab | `0 5 * * * /usr/bin/docker exec xqly-website-backend python backend/forum_purge.py >> /var/log/forum_purge.log 2>&1`（⚠️ 改 crontab 走 `crontab` 命令 + 先备份，见 `for-deploy/README.md`） |
+| crontab | 调度 `0 5 * * *` 不变（0 变更空跑安全）；**现状已迁入后端镜像**：`backend/crontab` → `/etc/cron.d/xqly-jobs`，日志进 `docker logs xqly-website-backend`，现行口径见 [docs/agents/deployment.md](../agents/deployment.md)。本表为 PRD 定稿时的历史口径（旧宿主机 `docker exec` 条目 + `for-deploy/crontab` 快照均已删除） |
 | 启动兜底 | `main.py` 的 `on_startup` 里 try/except 包一层执行一次（失败只告警，不阻断启动，与 `staff_module.expire_due` 同款） |
 | 共存逻辑 | `purge_due()` 与"作者彻底删除"共用同一个级联删除函数，**语义唯一** |
 
@@ -405,7 +405,7 @@
 | 2 | 轻量核心模块（`RECYCLE_DAYS` / `purge_due` / `cascade_delete_article`） | `backend/app/forum_core.py`（新增） |
 | 3 | 接口实现（删除/恢复/彻底删除/评论删除 + 可见性与权限守卫） | `backend/app/forum.py` |
 | 4 | 清理 CLI + 启动兜底 | `backend/forum_purge.py`（新增）、`backend/app/main.py`（startup 一行） |
-| 5 | crontab 条目（含留档） | 服务器 root crontab + `for-deploy/crontab` 快照 + `for-deploy/README.md` |
+| 5 | 定时任务定义 | `backend/crontab`（镜像内 cron，现行权威；PRD 定稿时为服务器 root crontab + `for-deploy/crontab` 快照，现已直接删除） |
 | 6 | 冒烟测试新增断言 | `backend/forum_smoke_test.py` |
 | 7 | 主站前端：**回收站独立页面** + 我的文章入口/文案修正 | `frontend/src/views/forum/RecycleBin.vue`（**新增页面**）、`MyPosts.vue`、`router/index.js`（登记 `/forum/recycle`） |
 | 8 | 主站前端：详情页删除入口、评论区删除入口、文案表 | `frontend/src/views/forum/PostDetail.vue`、`components/forum/CommentSection.vue`、`utils/forumBadges.js`、`api/api.js` |

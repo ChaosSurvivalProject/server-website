@@ -34,6 +34,10 @@
 
 环境要求：Node.js 20.19+（Vite 7 要求）、Python 3.10+。
 
+开发/测试统一走一键脚本：Linux/macOS `./dev.sh`（`start` / `stop` / `restart` / `status` / `logs`），Windows `dev.bat`；四个服务端口为 backend 5000 / frontend 5173 / wiki 5174 / admin 3005。本地整栈（含统一前端 nginx）用 `cp .env.example .env && docker compose up -d --build`，访问 `http://127.0.0.1:8090/`；详见 [docs/development.md](docs/development.md) 与 [docs/deployment.md](docs/deployment.md)。
+
+下面保留各子项目的手动命令，仅供单独调试某个子项目时使用：
+
 ```bash
 # 后端 (FastAPI, :5000)
 cd backend
@@ -55,7 +59,7 @@ npm run dev               # http://localhost:5173，开发模式 API 直连本�
 | 文档 | 内容 |
 |------|------|
 | [docs/architecture.md](docs/architecture.md) | 项目结构：完整目录树与各文件职责 |
-| [docs/development.md](docs/development.md) | 开发指南：四子项目安装 / 运行 / 构建、种子数据、主站环境变量 |
+| [docs/development.md](docs/development.md) | 开发指南：一键脚本 / 四子项目安装运行构建、种子数据、主站环境变量 |
 | [docs/api-reference.md](docs/api-reference.md) | 后端 API 参考：全部接口表、SSE 帧协议、知识库同步脚本 |
 | [docs/database.md](docs/database.md) | 数据库：SQLite 连接（NullPool）、双格式正文、论坛表结构 |
 | [docs/frontend.md](docs/frontend.md) | 主站前端：页面路由、Markdown 渲染管线、关键组件与 API 层 |

@@ -10,7 +10,7 @@ import { reactive } from "vue";
 import defaultLogo from "../assets/images/logo.png";
 
 // 默认网站标题（浏览器标签页）：与 frontend/index.html 的 <title> 保持一致
-const DEFAULT_TITLE = "星穹旅驿 | 生存服务器";
+const DEFAULT_TITLE = "星穹旅驿 | 我的世界 Java/基岩互通 1.21.11 生存服";
 const DEFAULT_NAME = "星穹旅驿";
 
 export const siteBranding = reactive({
@@ -34,6 +34,6 @@ export function applySiteBranding(site) {
   if (typeof site.logo === "string" && site.logo.trim()) {
     siteBranding.logo = site.logo.trim();
   }
-  // 同步浏览器标签页标题
-  document.title = siteBranding.title;
+  // 浏览器标签标题由 FLPR-63 的 useSeoHead() 统一注入（含 canonical / OG），
+  // 这里只更新站点标识状态，不再直接写 document.title，避免两处抢写导致路由标题被覆盖。
 }

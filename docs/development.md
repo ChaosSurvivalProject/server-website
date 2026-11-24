@@ -4,6 +4,28 @@
 
 环境要求：Node.js 20.19+（Vite 7 要求）、Python 3.10+。
 
+## 一键启动（开发/测试统一入口）
+
+不用逐个子项目手动拉起，仓库根目录已提供一键脚本：
+
+| 命令 | 作用 |
+| --- | --- |
+| `./dev.sh` / `./dev.sh start` | 后台启动四个服务（已运行或端口被占用的自动跳过，缺依赖自动补装） |
+| `./dev.sh stop` / `restart` / `status` | 停止 / 重启 / 查看状态 |
+| `./dev.sh logs [backend\|frontend\|wiki\|admin]` | 跟看日志，缺省各打最后 20 行 |
+| `dev.bat` | Windows 版，每个服务开一个独立窗口，关窗即停 |
+
+端口：backend `5000`、frontend `5173`、wiki `5174`、admin `3005`（取自 `admin-frontend/.env.development` 的 `VITE_PORT`，缺省 8848）；日志与 PID 写 `logs/`（已 gitignore）。下面各小节的手动命令仅在需要单独调试某个子项目时使用。
+
+本地整栈（含统一前端 nginx）用根目录 compose：
+
+```bash
+cp .env.example .env        # 测试环境需要局域网访问时把 WEB_BIND_IP 改为 0.0.0.0
+docker compose up -d --build
+```
+
+访问 `http://127.0.0.1:8090/` 即整站。根 `.env` 只放非敏感变量（`IMAGE_PREFIX` / `IMAGE_TAG` / `WEB_BIND_IP` / `CRON_ENABLED`），说明见 `.env.example`。生产**不 build**，只 `docker compose pull && docker compose up -d --no-build`，见 [deployment.md](./deployment.md)。
+
 ## 后端
 
 ```bash

@@ -4,7 +4,7 @@
 
 本目录存放生产服务器上实际生效、但不属于任何子项目构建产物的配置文件快照，作为仓库内的留档参照。
 
-> **2026-11 起镜像化部署**：生产镜像由 GitHub Actions（`.github/workflows/release-images.yml`）在 Release 时构建并托管在 GHCR：`ghcr.io/chaossurvivalproject/server-website-backend` / `-web`。服务器只执行 `docker compose pull && docker compose up -d --no-build`，**不在服务器 build、不跑 Vite**（香港 2C2G 跑前端构建会 OOM）。下文「前端产物从哪来」的静态投放方案降级为历史 / 备用说明；当前以 GHCR 镜像为准。
+> **2026-11 起镜像化部署**：生产镜像由 GitHub Actions（`.github/workflows/release-images.yml`）在 Release 时构建并托管在 GHCR：`ghcr.io/chaossurvivalproject/server-website-backend` / `-web`。服务器只执行 `docker compose pull && docker compose up -d --no-build`，**不在服务器 build、不跑 Vite**（香港 2C2G 跑前端构建会 OOM）；下文「生产/自包含部署（根 docker-compose.yml 的 web 服务）」说明镜像如何统一对外。
 
 ## 生产拓扑（2026-10-03 起：1panel + Docker）
 
@@ -26,7 +26,6 @@
 | --- | --- | --- |
 | `xqly.xt91tv.shop.conf` | `/opt/1panel/www/conf.d/xqly.xt91tv.shop.conf` | 1panel 生成的站点 server 块。**除末尾那行 `include .../proxy/*.conf;` 外全部由面板生成**，不要把它当成手工配置来维护 |
 | `xqly-app.conf` | `/opt/1panel/www/sites/xqly.xt91tv.shop/proxy/xqly-app.conf` | 手工维护的应用 location：静态资源缓存 + `/api/kb/` SSE 四件套 + `/api` 反代 + legacy 兼容路径 + `/admin`、`/wiki` 跳转 + `/wiki/` cleanUrls + **SPA fallback** |
-| `crontab` | root 用户 crontab（`crontab -l`） | **已废弃（2026-11-01 起）**：三条业务任务（`kb_sync.py --incremental` 03:00 / `staff_expire.py` 04:00 / `forum_purge.py` 05:00）已改为**后端镜像内定时任务**（`backend/crontab` → 镜像 `/etc/cron.d/xqly-jobs`，由 `backend/docker-entrypoint.sh` 拉起 cron）。本文件仅作为迁移前的历史快照，生产部署新版镜像后应**清空**这些条目（见下方「改定时任务」）。原因：宿主机条目随容器改名静默失效（2026-10-31 已踩） |
 
 ## 与生产保持同步
 
@@ -52,18 +51,6 @@ ssh root@<生产机> 'docker exec 1Panel-openresty-TV94 nginx -t && docker exec 
 > #   include /www/sites/xqly.xt91tv.shop/proxy/*.conf;
 > ```
 
-## 前端产物从哪来
-
-服务器上**没有也不会**跑 Vite（生产为香港 2C2G/30G，Vite 构建峰值会 OOM）；前端与后端都改由 GitHub Actions 构建 GHCR 镜像，服务器只 pull 运行。以下静态投放表为历史 / 备用方案：
-
-| 子项目 | 构建命令（本机） | 投放位置 |
-| --- | --- | --- |
-| `frontend` | `npm run build` | `/opt/1panel/www/sites/xqly.xt91tv.shop/index/` |
-| `admin-frontend` | `pnpm install && pnpm build`（Windows 下必须走 `pnpm`，`build` 脚本用了 `NODE_OPTIONS=…` 的 Unix 写法，靠 pnpm 的 `shell-emulator` 才能跑） | 同上 `index/admin/` |
-| `wiki` | `npm run build` | 同上 `index/wiki/` |
-
-站点根目录里 `404.html` 是 1panel 建的，`admin/`、`wiki/` 是子目录——三者与 SPA 的 `index.html` 共存，靠 `xqly-app.conf` 里的 location 分流。
-
 ## 生产/自包含部署（根 docker-compose.yml 的 web 服务）
 
 仓库根目录 `docker-compose.yml` 定义了 `xqly-website-web` 服务（`web/Dockerfile` + `web/nginx.conf`）：三个前端在镜像内多阶段构建、收进**一个 nginx 容器**（`xqly-website-web`），按与 `xqly-app.conf` 相同的规则分发 `/` 主站、`/admin/`、`/wiki/`，并反代 `/api` 到 `xqly-website-backend:5000`。生产由 1panel/OpenResty 反代 `127.0.0.1:8090`；测试环境绑 `0.0.0.0:8090` 便于局域网访问。镜像统一由 CI 构建后 `pull` 运行。
@@ -71,7 +58,16 @@ ssh root@<生产机> 'docker exec 1Panel-openresty-TV94 nginx -t && docker exec 
 两点注意：
 
 - **生产前端也走 `web` 镜像（GHCR，CI 构建）**，服务器不跑 Vite；生产 `web` 只绑 `127.0.0.1:8090`，由 1panel/OpenResty 反代。测试环境才把 web 绑 `0.0.0.0:8090` 便于局域网访问。
-- `web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是**同一套路由规则的两份载体**，改其一须同步另一份（SSE 四件套、SPA fallback、legacy location 三处尤其不能分叉）。
+- `web/nginx.conf` 与 `for-deploy/xqly-app.conf` 是**同一套路由规则的两份载体**，改其一须同步另一份（SSE 四件套、SPA fallback、legacy location 三处尤其不能分叉）。`for-deploy/xqly-app.conf` 是与线上字节一致的快照，**不得直接改本地副本**：先在服务器改并 `nginx -t && nginx -s reload`，再回拷留档；本镜像的 `web/nginx.conf` 同步改完后发 Release 重建 web 镜像。
+
+两套 location 集合的一致性校验（应无输出）：
+
+```bash
+diff <(grep -E '^[[:space:]]*location[[:space:]]' web/nginx.conf | sed -E 's/^[[:space:]]+//; s/[[:space:]]+\{$//' | sort) \
+     <(grep -E '^[[:space:]]*location[[:space:]]' for-deploy/xqly-app.conf | sed -E 's/^[[:space:]]+//; s/[[:space:]]+\{$//' | sort)
+```
+
+已知且允许的 topology 差异（不要误判为分叉）：web 容器内有 `upstream backend`（服务名 `xqly-website-backend:5000`）、`gzip` 块、`/api/` 的 `client_max_body_size 20m`；生产 OpenResty 走 `127.0.0.1:5000`，gzip 由 1panel 全局配置。SSE 四件套、SPA fallback、legacy location 与 location 集合本身必须一致。
 
 ## 注意（改 conf 前必读）
 
@@ -102,25 +98,16 @@ ssh root@<生产机> 'docker exec 1Panel-openresty-TV94 nginx -t && docker exec 
    - 业务路径（`ANNOUNCEMENT_DB` / `ANNOUNCEMENT_UPLOAD_DIR` / `KB_WIKI_DIR`）必须写进 crontab 文件，**并与 `docker-compose.yml` 的 `environment` 同步**，否则任务读写 `/app/backend/data`（镜像内路径，非挂载卷），表现为「跑完什么也没变」；
    - 调度时区看镜像的 `/etc/localtime`（Dockerfile 已设 `Asia/Shanghai`），所以 `0 3` 就是北京时间 03:00。
 
-### 从宿主机 crontab 迁移（一次性）
+### 验证定时任务
 
-生产部署带新 entrypoint 的镜像后，宿主机那三条 `docker exec` 条目必须**删掉**，否则与镜像内 cron **重复执行**（三条任务都是幂等空跑安全的，重复跑不会写坏数据，但会白跑并产生重复日志）：
-
-```bash
-ssh root@<生产机> 'crontab -l > /root/crontab.bak-$(date +%Y%m%d)'   # ① 先备份
-ssh root@<生产机> 'crontab -r'                                       # ② 清空（或只删三条 docker exec 行）
-ssh root@<生产机> 'crontab -l'                                       # ③ 确认已空
-```
-
-然后确认镜像内 cron 已生效：
+确认镜像内 cron 已拉起：
 
 ```bash
 docker logs xqly-website-backend | grep '[entrypoint] cron started'
-docker exec xqly-website-backend crontab -l            # 应报 /etc/cron.d 无关，仅验证容器内可执行
 docker exec xqly-website-backend ls -l /etc/cron.d/xqly-jobs   # 属主 root、权限 0644
 ```
 
-按 cron 的实际调用方式实跑一次任务本身（验证路径与 env 口径正确）：
+实跑任务本身检查脚本与路径是否可用：
 
 ```bash
 docker exec xqly-website-backend python backend/kb_sync.py --check
@@ -132,6 +119,6 @@ docker exec xqly-website-backend python backend/forum_purge.py --dry-run
 
 注意：
 
-- **三条任务都是 0 变更空跑安全**：`kb_sync` 无变更时不动 `index_version`、`staff_expire` 无到期行时不写库、`forum_purge` 无超期帖时不写库，漏跑不会写坏数据。真正的影响是**时效**——`kb_sync` 漏挂则 wiki 新页面不进知识库（客服静默答不上来，不报错）；`staff_expire` 漏挂只影响后台台账状态刷新时效（判定权威是 `valid_to`，公开核验接口查询时会懒更新兜底，**不影响核验正确性**）；`forum_purge` 漏挂只让超 30 天的回收站帖多留几天（判定权威是 `deleted_at`，恢复接口自校验 + 列表自过滤，超期帖用户看不到也恢复不了）。
+- **四条任务都是 0 变更空跑安全**：`kb_sync` 无变更时不动 `index_version`、`github_sync` 按 Tag 判存只增不改、`staff_expire` 无到期行时不写库、`forum_purge` 无超期帖时不写库，漏跑不会写坏数据。真正的影响是**时效**——`kb_sync` 漏挂则 wiki 新页面不进知识库（客服静默答不上来，不报错）；`staff_expire` 漏挂只影响后台台账状态刷新时效（判定权威是 `valid_to`，公开核验接口查询时会懒更新兜底，**不影响核验正确性**）；`forum_purge` 漏挂只让超 30 天的回收站帖多留几天（判定权威是 `deleted_at`，恢复接口自校验 + 列表自过滤，超期帖用户看不到也恢复不了）。
 - **上线清单必须逐条实跑核对**：`kb_sync` 的 crontab 曾在旧站上线清单里被默认"已完成"，实际自 2026-09-21 上线起一直未挂，直到 2026-09-26 实跑 `crontab -l` 才发现。crontab、nginx location、构建产物这类**代码侧无法自证**的上线项，一律上服务器实跑一遍再在 `TODO.md` 打勾。
 - 日志统一进容器 stdout（`docker logs xqly-website-backend`），不再落宿主机 `/var/log/*.log`；如需留存历史，用 docker 的 log driver 或 `docker logs --since`，暂不需轮转。
