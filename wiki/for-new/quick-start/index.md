@@ -1,5 +1,5 @@
 ---
-description: 星穹旅驿进服总览：Java 版与基岩版并列加入步骤，服务器地址 serverone.codeyun.com:12000，支持 1.21.1 ~ 1.21.11，含黎明誓约与暮夜同盟阵营说明。
+description: 星穹旅驿进服总览（我的世界 1.21 阵营服 / Java 基岩互通服务器）：Java 与基岩版并列加入步骤，服务器地址 serverone.codeyun.com:12000，支持 1.21.1 ~ 1.21.11，含黎明誓约与暮夜同盟阵营说明。
 ---
 # 进服指南：Java 与基岩双端并列步骤
 
@@ -68,3 +68,4 @@ description: 星穹旅驿进服总览：Java 版与基岩版并列加入步骤�
 - [服务状态说明](/about/service-status/)
 - [活动与公告归档](/about/announcements/)
 - [返回星穹旅驿官网](https://xqly.xt91tv.shop/)
+

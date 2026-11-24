@@ -1,9 +1,59 @@
 import { defineConfig } from 'vitepress'
 
+// FLPR-64：加入方式页 FAQPage。问答文本与 wiki/for-new/quick-start/index.md 正文一致。
+// 通过 transformHead 注入而不是在 Markdown 里写 <script>——VitePress 会把 MD 中的
+// script 当 SFC 脚本编译，直接写会构建失败。
+const FAQ_JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    {
+      '@type': 'Question',
+      name: '星穹旅驿支持哪些客户端版本？',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: '星穹旅驿是我的世界 1.21 阵营服，支持 Minecraft Java 版与基岩版多端互通，Java 客户端版本 1.21.1 ~ 1.21.11（推荐 1.21.11），基岩版使用 1.21.x 最新正式版，服务端基于 Geyser + Velocity + Paper 1.21.11。'
+      }
+    },
+    {
+      '@type': 'Question',
+      name: '星穹旅驿服务器地址是什么？基岩版怎么填？',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: 'Java 版在多人游戏中添加服务器地址 serverone.codeyun.com:12000；基岩版在同服互通时把服务器地址填 serverone.codeyun.com、端口单独填 12000。连接成功后在登录服选择黎明誓约或暮夜同盟。'
+      }
+    },
+    {
+      '@type': 'Question',
+      name: 'Java 版玩家怎么加入星穹旅驿？',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: '下载并安装 PCL2 等 Java 版启动器，选择 1.21.1 ~ 1.21.11 版本安装；进入多人游戏添加服务器 serverone.codeyun.com:12000；首次进入按提示用 /register 密码 重复密码 注册，老玩家用 /login 密码 登录，然后在登录服选择黎明誓约或暮夜同盟。'
+      }
+    },
+    {
+      '@type': 'Question',
+      name: '基岩版 / 手机玩家怎么进服？',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: '安装 Minecraft Bedrock 基岩版最新正式版并登录微软账号，进入游戏服务器页添加服务器，地址填 serverone.codeyun.com、端口填 12000；连接后用 /register 或 /login 完成注册登录即可与 Java 玩家同服游玩。'
+      }
+    },
+    {
+      '@type': 'Question',
+      name: '进服后怎么选择黎明誓约或暮夜同盟？',
+      acceptedAnswer: {
+        '@type': 'Answer',
+        text: '连接服务器并完成注册或登录后，在登录服的选阵营界面选择黎明誓约或暮夜同盟。两大阵营镜像对立：黎明誓约以光为界、守土求生，暮夜同盟长夜将至、强者为尊。'
+      }
+    }
+  ]
+}
+
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "星穹旅驿Wiki",
-  description: "星穹旅驿Wiki",
+  title: "星穹旅驿 Wiki · 我的世界阵营生存服",
+  description: "星穹旅驿 Wiki：我的世界 1.21 阵营服 / Java 基岩互通服务器文档，含进服指南、黎明誓约与暮夜同盟阵营玩法、1.21.11 生存服版本支持与服务器规则。",
   base: '/wiki',
   // 主题色与官网主站共用同一份 localStorage 派生变量（XQ_theme_vars_v2，v2 使旧缓存失效），
   // 首屏同步写入，避免 wiki 与主站主题色不一致。
@@ -14,7 +64,23 @@ export default defineConfig({
     // VitePress 会把 head 原样写进每个静态页；og:image 复用主站根的封面图。
     // 按路由变化的 og:title / og:description / og:url 与 canonical 由 transformHead 注入。
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:site_name', content: '星穹旅驿Wiki' }],
+    ['meta', { property: 'og:site_name', content: '星穹旅驿 我的世界阵营生存服' }],
+    ['meta', { name: 'description', content: '星穹旅驿 Wiki：我的世界 1.21 阵营服 / Java 基岩互通服务器文档，含进服指南、黎明誓约与暮夜同盟阵营玩法、1.21.11 生存服版本支持。' }],
+    // FLPR-64：全站 WebSite + SearchAction，入口 /forum?q= 是官网真实搜索结果页。
+    ['script', { type: 'application/ld+json' }, JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: '星穹旅驿 我的世界阵营生存服',
+      alternateName: '星穹旅驿Wiki',
+      url: 'https://xqly.xt91tv.shop/',
+      inLanguage: 'zh-CN',
+      description: '我的世界 1.21 阵营服：Java / 基岩互通的 MC 双端互通服，黎明誓约与暮夜同盟阵营对抗，1.21.11 生存服。',
+      potentialAction: {
+        '@type': 'SearchAction',
+        target: { '@type': 'EntryPoint', urlTemplate: 'https://xqly.xt91tv.shop/forum?q={search_term_string}' },
+        'query-input': 'required name=search_term_string'
+      }
+    })],
     ['meta', { property: 'og:image', content: 'https://xqly.xt91tv.shop/og-cover.png' }],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
@@ -26,18 +92,30 @@ export default defineConfig({
   transformHead: ({ page, title, description }) => {
     const rel = page.replace(/\.(html|md)$/, '').replace(/(^|\/)index$/, '$1').replace(/\/$/, '')
     const url = `https://xqly.xt91tv.shop/wiki/${rel ? `${rel}/` : ''}`
-    const pageDescription = description && description !== '星穹旅驿Wiki'
+    const globalDescription = '星穹旅驿 Wiki · 我的世界阵营生存服'
+    const pageDescription = description && description !== globalDescription
       ? description
-      : `${title}：星穹旅驿 Wiki 文档，包含进服指南、Java / 基岩双端教程、黎明誓约与暮夜同盟阵营玩法、服务器规则与架构说明。`
-    return [
+      : `${title}：星穹旅驿我的世界 1.21 阵营服文档，包含 Java / 基岩互通进服指南、黎明誓约与暮夜同盟阵营玩法、1.21.11 生存服版本支持与服务器规则。`
+    // VitePress 传入的 title 已带站点后缀，先剥掉再补统一品类后缀，避免两次拼接
+    const siteTitleSuffix = '星穹旅驿 Wiki · 我的世界阵营生存服'
+    const plainTitle = title.endsWith(siteTitleSuffix)
+      ? title.slice(0, -siteTitleSuffix.length).replace(/\s*\|\s*$/, '')
+      : title
+    const pageTitle = `${plainTitle} | 星穹旅驿 我的世界阵营生存服`
+    const head = [
       ['link', { rel: 'canonical', href: url }],
       ['meta', { name: 'description', content: pageDescription }],
-      ['meta', { property: 'og:title', content: `${title} | 星穹旅驿Wiki` }],
+      ['meta', { property: 'og:title', content: pageTitle }],
       ['meta', { property: 'og:description', content: pageDescription }],
       ['meta', { property: 'og:url', content: url }],
-      ['meta', { name: 'twitter:title', content: `${title} | 星穹旅驿Wiki` }],
+      ['meta', { name: 'twitter:title', content: pageTitle }],
       ['meta', { name: 'twitter:description', content: pageDescription }]
     ]
+    // 只有加入方式页注入 FAQPage，避免把进服问答重复打到每页稀释权重
+    if (page.replace(/\\/g, '/').endsWith('for-new/quick-start/index.md')) {
+      head.push(['script', { type: 'application/ld+json' }, JSON.stringify(FAQ_JSON_LD)])
+    }
+    return head
   },
   themeConfig: {
     logo: '/favicon.ico',
@@ -120,7 +198,7 @@ export default defineConfig({
     },
     footer: {
       message: '联系邮箱: <a href="mailto:3896301937@qq.com">3896301937@qq.com</a>',
-      copyright: 'Copyright © 2025 星穹旅驿 Minecraft服务器 | 本服务器与Mojang及Microsoft无关'
+      copyright: '© 2025-2026 星穹旅驿 Minecraft 服务器 | 本服务器与Mojang及Microsoft无关'
     },
 
     socialLinks: [

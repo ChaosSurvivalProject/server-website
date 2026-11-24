@@ -1,19 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  星穹旅驿官网 sitemap.xml
-  只列公开、规范、返回 200 的静态 URL；域名与站长平台验证的站点完全一致（不带 www）。
-  不包含 /admin/、/api/、登录注册页，也不含 /staff/:code、/forum/post/:id 等
-  用户相关动态路由（由 P2/P3 按实际数据生成后再追加）。
-  lastmod 取对应页面源文件最后一次提交日期，不写统一的“当前时间”。
+  星穹旅驿官网 sitemap.xml（FLPR-62 建立，FLPR-64 规范化）
+  规则：只列公开、规范、返回 200 的静态 URL；域名与站长平台验证的站点完全一致（不带 www）。
+  不包含 /admin/、/api/、/login、/register，也不含 /staff/:code、/forum/post/:id 等
+  用户动态路由。lastmod 取对应页面源文件最后一次提交日期，不用统一的“当前时间”。
+  wiki 的 index.md 映射为带斜杠目录 URL，单文件（如 mechanics.md）映射为无斜杠 URL。
 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- 主站公开页面 -->
   <url>
     <loc>https://xqly.xt91tv.shop/</loc>
-    <lastmod>2026-11-21</lastmod>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://xqly.xt91tv.shop/team</loc>
-    <lastmod>2026-11-20</lastmod>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://xqly.xt91tv.shop/forum</loc>
@@ -21,11 +22,21 @@
   </url>
   <url>
     <loc>https://xqly.xt91tv.shop/resources</loc>
-    <lastmod>2026-11-21</lastmod>
+    <lastmod>2026-11-24</lastmod>
   </url>
+
+  <!-- Wiki：纯静态落地页（VitePress 输出 HTML，无 JS 也可读） -->
   <url>
     <loc>https://xqly.xt91tv.shop/wiki/</loc>
-    <lastmod>2026-10-03</lastmod>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/quick-start/</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/versions/</loc>
+    <lastmod>2026-11-24</lastmod>
   </url>
   <url>
     <loc>https://xqly.xt91tv.shop/wiki/for-new/visitor-guidelines/</loc>
@@ -41,24 +52,47 @@
   </url>
   <url>
     <loc>https://xqly.xt91tv.shop/wiki/for-new/factions/</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/factions/usage</loc>
     <lastmod>2026-10-03</lastmod>
   </url>
   <url>
-    <loc>https://xqly.xt91tv.shop/wiki/for-new/faq/</loc>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/factions/mechanics</loc>
     <lastmod>2026-09-15</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/faq/</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/law/player-agreement/</loc>
+    <lastmod>2026-09-04</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/law/regulations-on-players-rights/</loc>
+    <lastmod>2026-09-04</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/law/server-code/</loc>
+    <lastmod>2026-09-04</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/management/law-for-ops/</loc>
+    <lastmod>2026-09-04</lastmod>
   </url>
   <url>
     <loc>https://xqly.xt91tv.shop/wiki/develop/architecture/</loc>
     <lastmod>2026-09-15</lastmod>
   </url>
-  <!-- FLPR-63：新增的可索引落地页（正文为静态 HTML，无 JS 也可读） -->
   <url>
-    <loc>https://xqly.xt91tv.shop/wiki/for-new/quick-start/</loc>
-    <lastmod>2026-11-24</lastmod>
+    <loc>https://xqly.xt91tv.shop/wiki/develop/roadmap/</loc>
+    <lastmod>2026-09-15</lastmod>
   </url>
   <url>
-    <loc>https://xqly.xt91tv.shop/wiki/for-new/versions/</loc>
-    <lastmod>2026-11-24</lastmod>
+    <loc>https://xqly.xt91tv.shop/wiki/develop/issues/</loc>
+    <lastmod>2026-09-04</lastmod>
   </url>
   <url>
     <loc>https://xqly.xt91tv.shop/wiki/about/service-status/</loc>

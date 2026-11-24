@@ -10,7 +10,7 @@ import { reactive } from "vue";
 import defaultLogo from "../assets/images/logo.png";
 
 // 默认网站标题（浏览器标签页）：与 frontend/index.html 的 <title> 保持一致
-const DEFAULT_TITLE = "星穹旅驿 | 生存服务器";
+const DEFAULT_TITLE = "星穹旅驿 | 我的世界 Java/基岩互通 1.21.11 生存服";
 const DEFAULT_NAME = "星穹旅驿";
 
 export const siteBranding = reactive({
