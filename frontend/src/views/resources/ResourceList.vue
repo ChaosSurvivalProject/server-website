@@ -206,6 +206,9 @@ const ENV_OPTIONS = [
   { key: "server", label: "服务端" },
 ];
 
+// FLPR-63：预渲染阶段在 Node 中运行，没有 localStorage，视图偏好回退默认值
+const hasStorage = typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+
 export default {
   name: "ResourceList",
   components: { ResourceCard, FilterGroup, Pager },
@@ -233,9 +236,9 @@ export default {
       drawerOpen: false,
       searchTimer: null,
       // 视图模式（P1）：grid=网格 list=列表；本地偏好持久化，无 URL 参数
-      viewMode: localStorage.getItem("res_view_mode") === "list" ? "list" : "grid",
+      viewMode: hasStorage && localStorage.getItem("res_view_mode") === "list" ? "list" : "grid",
       // 左侧筛选面板折叠态（P0）：本地持久化，刷新/再次进入保持上次选择
-      sideCollapsed: localStorage.getItem("res_side_collapsed") === "1",
+      sideCollapsed: hasStorage && localStorage.getItem("res_side_collapsed") === "1",
     };
   },
   computed: {

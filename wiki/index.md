@@ -17,6 +17,9 @@ hero:
       text: 阵营玩法
       link: /for-new/factions/
     - theme: alt
+      text: 进服指南
+      link: /for-new/quick-start/
+    - theme: alt
       text: 访问官网
       # 外链（带协议）不会被 VitePress 加 base 前缀；2026-10-03 起官网为 HTTPS xqly.xt91tv.shop（标准 443）
       link: https://xqly.xt91tv.shop/

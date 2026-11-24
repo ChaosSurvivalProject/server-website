@@ -118,7 +118,9 @@ export default {
     };
   },
   created() {
-    this.fetchTeam();
+    // FLPR-63：vite-ssg 在 Node 端预渲染时没有同源 API，名单留到浏览器端再取；
+    // 静态 HTML 保留页面骨架与头部信息，不会因请求失败刷错误日志。
+    if (typeof window !== "undefined") this.fetchTeam();
   },
   methods: {
     staffRoleColor,

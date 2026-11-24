@@ -64,6 +64,7 @@ import fastRunLogo from "./assets/images/download/logo-white.png";
 import { authAPI, siteConfigAPI } from "./api/api.js";
 import { getToken, setAuth } from "./utils/auth.js";
 import { applySiteBranding } from "./utils/siteBranding.js";
+import { useSeoHead } from "./utils/seoHead.js";
 import McConfig from "./config/mc-config.js";
 
 // 页脚内置默认值：与后端 site_config.DEFAULTS / Home.vue HOME_DEFAULT_CONFIG 同一口径，
@@ -129,6 +130,8 @@ export default {
     },
   },
   setup() {
+    // 按路由注入 head（title / description / canonical / OG），预渲染时随 HTML 落盘
+    useSeoHead()
     // Options API 下模板绑定的静态资源/配置必须经 setup 显式返回
     return { fastRunLogo, chatWidgetEnabled: McConfig.chatWidget.enabled };
   },

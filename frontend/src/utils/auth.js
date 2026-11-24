@@ -17,10 +17,22 @@ function readUserFromStorage() {
   }
 }
 
+// FLPR-63：vite-ssg 在 Node 端预渲染时没有 localStorage，登录态只能留空；
+// 浏览器端照旧从存储恢复。否则 SSR 阶段会因为 localStorage 未定义直接崩掉。
+const hasStorage = typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
+
+function readToken() {
+  try {
+    return hasStorage ? window.localStorage.getItem(TOKEN_KEY) || '' : ''
+  } catch (e) {
+    return ''
+  }
+}
+
 // 全局响应式登录态
 export const authState = reactive({
-  token: localStorage.getItem(TOKEN_KEY) || '',
-  user: readUserFromStorage(), // { username, role } 或 null
+  token: readToken(),
+  user: hasStorage ? readUserFromStorage() : null,
 });
 
 export function getToken() {

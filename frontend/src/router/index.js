@@ -1,7 +1,9 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Home from '../views/Home.vue'
 
-const routes = [
+// FLPR-63：routes / routerOptions 导出给 vite-ssg 使用（ViteSSG 自行按 SSR/CSR
+// 选择 memory/web history，因此 routerOptions 里不能带 history 字段）。
+export const routes = [
   {
     path: '/',
     name: 'Home',
@@ -121,8 +123,9 @@ const routes = [
   }
 ]
 
-const router = createRouter({
-  history: createWebHistory(),
+// FLPR-63：共享的路由选项（vite-ssg 与开发环境 createRouter 各取一份，
+// 避免两处配置分叉）；history 由各自入口决定。
+export const routerOptions = {
   routes,
   // 配置当前激活路由的类名
   linkActiveClass: 'active',
@@ -141,6 +144,15 @@ const router = createRouter({
     // 否则滚动到页面顶部
     return { top: 0 }
   }
-})
+}
+
+// 开发环境/旧入口直接用的 router 实例；vite-ssg 只消费上面的 routerOptions，
+// 且 SSR 阶段没有 window，不能在模块顶层调用 createWebHistory()。
+const router = typeof window !== 'undefined'
+  ? createRouter({
+      history: createWebHistory(),
+      ...routerOptions
+    })
+  : null
 
 export default router

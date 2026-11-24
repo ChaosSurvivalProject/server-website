@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite-ssg build",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -20,7 +20,9 @@
     "vue-router": "^4.6.3"
   },
   "devDependencies": {
+    "@unhead/vue": "^2.1.19",
     "@vitejs/plugin-vue": "^6.0.1",
-    "vite": "^7.2.4"
+    "vite": "^7.2.4",
+    "vite-ssg": "^28.3.0"
   }
 }
