@@ -34,3 +34,11 @@ docker compose up -d --build
 - `/api/kb/` 的反代需保留 SSE 四件套：`proxy_http_version 1.1`、`proxy_set_header Connection ''`、`proxy_buffering off`、`gzip off`、`proxy_read_timeout 300s`（与后端响应头 `X-Accel-Buffering: no` 两个都要，否则流式被缓冲成一次性返回）。
 - 生产 1panel 站点的 conf 快照在 `for-deploy/`：`xqly.xt91tv.shop.conf`（面板生成）+ `xqly-app.conf`（手工 location），与线上字节一致。`web/nginx.conf` 与 `xqly-app.conf` 是同一套规则的两个载体，改其一必须同步另一份（详见 [docs/agents/deployment.md](./agents/deployment.md) 与 `for-deploy/README.md`）。
 - 定时任务已进后端镜像（`backend/crontab` 四条，`backend/docker-entrypoint.sh` 拉起），不再挂宿主机 crontab；日志进 `docker logs xqly-website-backend`。
+
+## 爬虫可见性与运维信息收口（SEO P4 / FLPR-66）
+
+- `frontend/public/robots.txt` 是 AI 检索/训练立场的唯一声明源：检索 / 引用类 UA（`OAI-SearchBot`、`ChatGPT-User`、`PerplexityBot`、`Perplexity-User`、`Claude-SearchBot`、`Claude-User`）放行；训练类（`GPTBot`、`ClaudeBot`、`Google-Extended`、`CCBot`）拒绝。两者是独立开关——屏蔽 `GPTBot` 不会把站点移出 ChatGPT Search，屏蔽 `OAI-SearchBot` 才会；`User-agent: *` 段只挡后台与接口路径。
+- 该文件由 `web/nginx.conf` 与 `for-deploy/xqly-app.conf` 的 `location = /robots.txt` 精确匹配提供，**任意 UA 均 200、`Content-Type: text/plain`**（`default_type` 兜底，不依赖 mime.types）；`sitemap.xml` 同款精确匹配。改 nginx 时两份配置必须同步（见上方约定）。
+- 边缘网关 / CDN 的 Bot 放行属 P0，不在此仓库；CDN 默认 Bot 规则可能静默覆盖 robots.txt。**每季度对照访问日志复审一次 UA 清单**，新 UA 出现频繁；`Bytespider` 若需拦截只能在 CDN / WAF 做连接级拒绝（robots.txt 只是请求，不是墙）。
+- 运维信息收口：nginx 对 `*.bak` / `*.sql` / `*.db` / `*.zip` / `*.log` / `*.pem` 等敏感后缀统一返回 404，`/admin/` 返回 `X-Robots-Tag: noindex, nofollow`。`Disallow` 不等于不可索引，敏感内容必须在服务端层面不公开。
+- 公告与后台录入内容禁止写服务器路径、备份文件名、部署命令等运维细节；历史内容若已被外链引用，要从源头删除，不能只靠 robots.txt。
