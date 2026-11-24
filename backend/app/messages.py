@@ -109,8 +109,8 @@ _STREAM_QUEUE_MAXSIZE = 32
 class MessageStreamRegistry(ABC):
     """站内信 SSE 连接注册表接口。
 
-    实现只需提供 connect / disconnect / publish 三个操作；多 worker 场景替换为
-    Redis pub/sub 实现即可，create_*_message 与 stream 路由都只依赖本接口。
+    实现只需提供 connect / disconnect / publish / online_users 四个操作；多 worker
+    场景替换为 Redis pub/sub 实现即可，create_*_message 与 stream 路由都只依赖本接口。
     """
 
     @abstractmethod
@@ -124,6 +124,10 @@ class MessageStreamRegistry(ABC):
     @abstractmethod
     async def publish(self, user_id: int, frame: dict) -> None:
         """向目标用户的全部活跃连接广播一帧。"""
+
+    @abstractmethod
+    def online_users(self) -> list[int]:
+        """返回当前有活跃连接的用户 ID 列表（广播类消息逐用户触达用）。"""
 
 
 class InMemoryMessageStreamRegistry(MessageStreamRegistry):
@@ -161,6 +165,10 @@ class InMemoryMessageStreamRegistry(MessageStreamRegistry):
                 return
             if not conns:
                 self._connections.pop(user_id, None)
+
+    def online_users(self) -> list[int]:
+        with self._lock:
+            return list(self._connections.keys())
 
     async def publish(self, user_id: int, frame: dict) -> None:
         with self._lock:
@@ -208,6 +216,35 @@ async def _notify_unread(db: AsyncSession, user_id: int, refresh: bool = True) -
     except Exception:
         # 推送失败绝不影响写库主流程（与点赞通知同口径：通知失败 try/except 兜底）
         logger.exception("站内信 SSE 推送失败（user_id=%s）", user_id)
+
+
+async def _notify_online_users(db: AsyncSession, refresh: bool = True) -> None:
+    """广播类消息：遍历当前所有在线用户，逐用户重算未读数并推送。
+
+    广播面向全体用户且**每个用户的未读数不同**，因此不能用单用户 publish 发同一帧，
+    必须经 online_users() 枚举在线用户后逐个走 _notify_unread。仅在 SSE 连接注册表
+    中登记过的用户会被触达；离线用户下次建连时首帧 unread 会以服务端为准补齐。
+    单个用户推送异常不影响其余用户（_notify_unread 内部已 try/except，这里再兜一层）。
+    """
+    for user_id in message_streams.online_users():
+        try:
+            await _notify_unread(db, user_id, refresh=refresh)
+        except Exception:
+            logger.exception("站内信 SSE 广播推送失败（user_id=%s）", user_id)
+
+
+async def _notify_message_audience(db: AsyncSession, obj: Message) -> None:
+    """管理员增改/删除消息后按受众触达。
+
+    - 广播消息（系统公告 / 活动公告）：遍历全部在线用户广播；
+    - 定向消息：只通知 related_user_id 指向的接收者，无接收者则不推送。
+
+    写库已由 admin_* crud 完成，本函数只做推送，失败一律兜底不影响接口返回。
+    """
+    if obj.is_broadcast == 1:
+        await _notify_online_users(db)
+    elif obj.related_user_id is not None:
+        await _notify_unread(db, obj.related_user_id)
 
 
 async def get_stream_user(
@@ -499,6 +536,8 @@ async def admin_create(
 ):
     """创建站内信。"""
     obj = await admin_create_message(db, data)
+    # 后台创建也要实时触达：广播遍历全部在线用户，定向只通知 related_user_id
+    await _notify_message_audience(db, obj)
     return _ok({
         "id": obj.id,
         "type": obj.type,
@@ -530,6 +569,8 @@ async def admin_update(
     obj = await admin_update_message(db, message_id, data)
     if obj is None:
         raise HTTPException(status_code=404, detail="消息不存在")
+    # 编辑会重置已读状态：广播影响全体在线用户，定向只通知接收者
+    await _notify_message_audience(db, obj)
     return _ok({
         "id": obj.id,
         "type": obj.type,
@@ -557,9 +598,15 @@ async def admin_delete(
     _admin: User = Depends(require_admin),
 ):
     """删除站内信（软删 messages.is_deleted=1）。"""
+    # 先留存受众口径：软删后消息本身已标记删除，但广播/接收者信息仍来自该记录
+    target = await admin_get_message(db, message_id)
+    if target is None:
+        raise HTTPException(status_code=404, detail="消息不存在")
     ok = await admin_delete_message(db, message_id)
     if not ok:
         raise HTTPException(status_code=404, detail="消息不存在")
+    # 删除会改变全体/接收者的未读数与列表，在线用户需即时刷新
+    await _notify_message_audience(db, target)
     return _ok()
 
 

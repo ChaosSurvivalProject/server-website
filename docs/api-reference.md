@@ -323,7 +323,7 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 - `event: refresh` → `data: {}`：提示客户端重拉当前打开的 Tab 列表；由常驻的 NavBar 转交给弹层（同一连接，弹层不另开 EventSource）。
 - `event: closed` → `data: {"reason":"too_many_connections"}`：控制帧。同一用户上限 5 连接，超出立即优雅关闭最旧连接；收到后客户端应停掉 SSE 转轮询，避免自动重连来回踢连接。
 - **心跳**：服务端每 ≤30s 发送注释行 `: ping\n\n` 保活。nginx 复用 kb/chat 的 SSE 四件套，两份配置 `web/nginx.conf` 与 `for-deploy/xqly-app.conf` 必须同步。
-- **推送触发**：`messages.py` 各 `create_*_message` 写库成功后重算未读数并广播；已读 / 批量已读 / 删除成功后同样广播，保证多标签页一致。连接注册表 `InMemoryMessageStreamRegistry` 实现可替换接口 `MessageStreamRegistry`，仅适用生产单 worker；多 worker 前必须换成 Redis pub/sub（与限流共享存储同一条遗留）。
+- **推送触发**：`messages.py` 各 `create_*_message` 写库成功后重算未读数并广播；已读 / 批量已读 / 删除成功后同样广播，保证多标签页一致。管理员 `POST /api/messages/admin/create`、`PUT /api/messages/admin/update/{id}`、`DELETE /api/messages/admin/delete/{id}` 写库成功后亦触达：广播消息经 `MessageStreamRegistry.online_users()` 遍历全部在线用户，逐用户重算未读并推送（每个用户未读数不同，不能复用单用户 publish 的单一帧）；定向消息只通知 `related_user_id` 指向的接收者。连接注册表 `InMemoryMessageStreamRegistry` 实现可替换接口 `MessageStreamRegistry`，仅适用生产单 worker；多 worker 前必须换成 Redis pub/sub（与限流共享存储同一条遗留）。
 
 ## 资源中心
 
