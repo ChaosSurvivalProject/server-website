@@ -1,6 +1,7 @@
 # 星穹旅驿官网 robots.txt
 # 立场：搜索与分享抓取全放行；AI 检索/引用类放行；AI 训练类按本站立场拒绝。
 # 抓取放行依赖网关/WAF/CDN 边缘策略（FLPR-62），robots.txt 只是声明，不是墙。
+# FLPR-66：检索类与训练类是两个独立开关；本文件须对任意 UA 返回 200 + text/plain。
 
 User-agent: *
 Allow: /
@@ -25,5 +26,9 @@ User-agent: ClaudeBot
 User-agent: Google-Extended
 User-agent: CCBot
 Disallow: /
+
+# Bytespider 有反复无视 robots.txt 的记录；若要拦须在 CDN / WAF 做连接级拒绝，
+# robots.txt 只是请求而非墙（CDN 默认 Bot 规则也可能静默覆盖本站策略）。
+# 每季度对照访问日志复审一次机器人清单——新 UA 出现频繁。
 
 Sitemap: https://xqly.xt91tv.shop/sitemap.xml
