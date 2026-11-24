@@ -451,6 +451,25 @@
         </div>
       </section>
 
+      <!-- FLPR-63：/wiki/ 落地页集群的静态入口。全部使用真实 <a href>，
+           无 JS 也能从首页顺着链接遍历到各指南页（VitePress 已输出静态 HTML）。 -->
+      <section class="wiki-landing" id="wiki-guides">
+        <h2 class="home-content-title">
+          完整 <span style="color: var(--brand)">玩家指南</span>
+        </h2>
+        <p class="home-content-subtitle">
+          进服教程、阵营规则、版本支持与架构说明均有纯文字版，无需运行 JavaScript 即可阅读。
+        </p>
+        <div class="wiki-landing-links">
+          <a href="/wiki/for-new/quick-start/">进服指南（Java / 基岩并列）</a>
+          <a href="/wiki/for-new/versions/">版本与客户端支持范围（1.21.1 ~ 1.21.11）</a>
+          <a href="/wiki/for-new/factions/">黎明誓约 / 暮夜同盟阵营规则</a>
+          <a href="/wiki/develop/architecture/">插件清单与技术架构</a>
+          <a href="/wiki/about/service-status/">服务状态说明</a>
+          <a href="/wiki/about/announcements/">活动与公告归档</a>
+        </div>
+      </section>
+
       <!-- 玩家社区 -->
       <section class="player-forum" id="forum">
         <h2 class="home-content-title">
@@ -1315,6 +1334,46 @@ export default {
   font-size: 20px;
   font-weight: bold;
   font-family: "Courier New", monospace;
+}
+
+/* ── FLPR-63：/wiki/ 落地页入口（真实 a 链接，跟随主题令牌与窄屏布局） ── */
+.wiki-landing {
+  padding: 40px 20px;
+  margin: 40px 20px;
+  border-radius: 12px;
+  background-color: var(--surface);
+}
+.wiki-landing-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  justify-content: center;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.wiki-landing-links a {
+  display: inline-block;
+  padding: 10px 16px;
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  color: var(--brand);
+  text-decoration: none;
+  font-size: 14px;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+.wiki-landing-links a:hover {
+  border-color: var(--brand);
+  background-color: color-mix(in srgb, var(--brand) 8%, transparent);
+}
+@media (max-width: 768px) {
+  .wiki-landing {
+    padding: 30px 10px;
+    margin: 30px 10px;
+  }
+  .wiki-landing-links {
+    flex-direction: column;
+    align-items: stretch;
+  }
 }
 
 /* 玩家论坛样式 */

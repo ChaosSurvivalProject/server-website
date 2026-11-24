@@ -34,6 +34,6 @@ export function applySiteBranding(site) {
   if (typeof site.logo === "string" && site.logo.trim()) {
     siteBranding.logo = site.logo.trim();
   }
-  // 同步浏览器标签页标题
-  document.title = siteBranding.title;
+  // 浏览器标签标题由 FLPR-63 的 useSeoHead() 统一注入（含 canonical / OG），
+  // 这里只更新站点标识状态，不再直接写 document.title，避免两处抢写导致路由标题被覆盖。
 }

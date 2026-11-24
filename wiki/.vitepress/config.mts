@@ -12,19 +12,33 @@ export default defineConfig({
     ['style', {}, `:root{--vp-c-brand-1:var(--brand-lt,#4caf50);--vp-c-brand-2:var(--brand-lt-hover,#43a047);--vp-c-brand-3:var(--brand-lt-active,#388e3c);--vp-c-brand-soft:var(--brand-lt-tint,#e8f5e9);}html.dark{--vp-c-brand-1:var(--brand-dk,#66bb6a);--vp-c-brand-2:var(--brand-dk-hover,#7bc87f);--vp-c-brand-3:var(--brand-dk-active,#55a55a);--vp-c-brand-soft:var(--brand-dk-tint,rgba(102,187,106,.16));}`],
     // 分享卡片：QQ / 微信抓取不执行 JS，OG 标签必须出现在服务器返回的原始 HTML 里。
     // VitePress 会把 head 原样写进每个静态页；og:image 复用主站根的封面图。
+    // 按路由变化的 og:title / og:description / og:url 与 canonical 由 transformHead 注入。
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:site_name', content: '星穹旅驿Wiki' }],
-    ['meta', { property: 'og:title', content: '星穹旅驿Wiki | 我的世界阵营生存服文档' }],
-    ['meta', { property: 'og:description', content: '星穹旅驿 Wiki：进服指南、Java / 基岩双端教程、黎明誓约与暮夜同盟阵营玩法、服务器规则与架构文档。' }],
-    ['meta', { property: 'og:url', content: 'https://xqly.xt91tv.shop/wiki/' }],
     ['meta', { property: 'og:image', content: 'https://xqly.xt91tv.shop/og-cover.png' }],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-    ['meta', { name: 'twitter:title', content: '星穹旅驿Wiki | 我的世界阵营生存服文档' }],
-    ['meta', { name: 'twitter:description', content: '星穹旅驿 Wiki：进服指南、Java / 基岩双端教程、黎明誓约与暮夜同盟阵营玩法、服务器规则与架构文档。' }],
     ['meta', { name: 'twitter:image', content: 'https://xqly.xt91tv.shop/og-cover.png' }]
   ],
+  // FLPR-63：每页独立的 canonical / description / OG，构建期写进静态 HTML。
+  // 站点描述是全局兜底，只在页面未写 description 时生成一段可读文案。
+  transformHead: ({ page, title, description }) => {
+    const rel = page.replace(/\.(html|md)$/, '').replace(/(^|\/)index$/, '$1').replace(/\/$/, '')
+    const url = `https://xqly.xt91tv.shop/wiki/${rel ? `${rel}/` : ''}`
+    const pageDescription = description && description !== '星穹旅驿Wiki'
+      ? description
+      : `${title}：星穹旅驿 Wiki 文档，包含进服指南、Java / 基岩双端教程、黎明誓约与暮夜同盟阵营玩法、服务器规则与架构说明。`
+    return [
+      ['link', { rel: 'canonical', href: url }],
+      ['meta', { name: 'description', content: pageDescription }],
+      ['meta', { property: 'og:title', content: `${title} | 星穹旅驿Wiki` }],
+      ['meta', { property: 'og:description', content: pageDescription }],
+      ['meta', { property: 'og:url', content: url }],
+      ['meta', { name: 'twitter:title', content: `${title} | 星穹旅驿Wiki` }],
+      ['meta', { name: 'twitter:description', content: pageDescription }]
+    ]
+  },
   themeConfig: {
     logo: '/favicon.ico',
     // 文档站跟随 VitePress 内置的三态外观切换（自动 / 浅色 / 深色），
@@ -46,6 +60,16 @@ export default defineConfig({
 
     sidebar: {
       '/': [{
+        text: '快速开始',
+        collapsed: false,
+        items: [
+          { text: '进服指南（Java / 基岩并列）', link: '/for-new/quick-start/' },
+          { text: '版本与客户端支持范围', link: '/for-new/versions/' },
+          { text: '服务状态说明', link: '/about/service-status/' },
+          { text: '活动与公告归档', link: '/about/announcements/' }
+        ]
+      },
+      {
         text: '萌新指南',
         collapsed: false,
         items: [

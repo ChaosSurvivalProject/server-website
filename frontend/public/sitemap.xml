@@ -51,4 +51,21 @@
     <loc>https://xqly.xt91tv.shop/wiki/develop/architecture/</loc>
     <lastmod>2026-09-15</lastmod>
   </url>
+  <!-- FLPR-63：新增的可索引落地页（正文为静态 HTML，无 JS 也可读） -->
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/quick-start/</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/for-new/versions/</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/about/service-status/</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
+  <url>
+    <loc>https://xqly.xt91tv.shop/wiki/about/announcements/</loc>
+    <lastmod>2026-11-24</lastmod>
+  </url>
 </urlset>
