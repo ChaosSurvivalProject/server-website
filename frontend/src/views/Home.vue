@@ -1,13 +1,16 @@
 <template>
   <div class="home-container">
-    <!-- 阵营内测提示横幅：替代原「阵营内测」顶部菜单项，展示于首页内容区最上方（常驻显示，不可关闭）；
+    <!-- 赛季 / 常规招募提示横幅：展示于首页内容区最上方（常驻显示，不可关闭）；
          外层整条白底与下方 home-hero 的白色背景衔接，避免页面灰底在横幅两侧露出；
-         文案/链接由「系统管理-网站配置」banner.* 提供，enabled=false 时整条隐藏 -->
+         文案/链接由「系统管理-网站配置」banner.* 提供，enabled=false 时整条隐藏。
+         FLPR-64：过期内测文案已换成当前赛季 / 常规招募入口。 -->
+    <!-- 横幅：当前赛季 / 常规招募入口。wiki 是独立静态站，必须用 <a href>，
+         不能走 router-link（SPA 路由无 /wiki/* 会落到软 404）。 -->
     <div v-if="siteConfig.banner.enabled" class="faction-banner-wrap">
       <div class="faction-banner">
         <span class="faction-banner-text">
           {{ siteConfig.banner.text }}
-          <router-link :to="siteConfig.banner.linkUrl" class="faction-banner-link">{{ siteConfig.banner.linkText }}</router-link>
+          <a :href="siteConfig.banner.linkUrl" class="faction-banner-link">{{ siteConfig.banner.linkText }}</a>
         </span>
       </div>
     </div>
@@ -77,7 +80,8 @@
             </a>
           </div>
 
-          <!-- 统计数据：数值/名称由「系统管理-网站配置」hero.statN* 提供 -->
+          <!-- FLPR-64：统计1/2 由监控接口实时提供，3/4 为版本与阵营的可验证事实；
+               名称由「系统管理-网站配置」hero.statNLabel 提供，但标签口径固定为活数据 -->
           <div
             class="hero-stats animate-slide-in-up"
             style="animation-delay: 1.3s"
@@ -88,12 +92,12 @@
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item">
-              <div class="stat-number">{{ siteConfig.hero.stat2Number }}</div>
+              <div class="stat-number">{{ heroStat2Number }}</div>
               <div class="stat-label">{{ siteConfig.hero.stat2Label }}</div>
             </div>
             <div class="stat-divider"></div>
             <div class="stat-item">
-              <div class="stat-number">{{ siteConfig.hero.stat3Number }}</div>
+              <div class="stat-number">{{ heroStat3Number }}</div>
               <div class="stat-label">{{ siteConfig.hero.stat3Label }}</div>
             </div>
             <div class="stat-item">
@@ -101,6 +105,7 @@
               <div class="stat-label">{{ siteConfig.hero.stat4Label }}</div>
             </div>
           </div>
+          <p class="hero-stats-note">在线与延迟来自实时监控接口，未接入时显示「—」，不使用累计自述数字</p>
         </div>
 
         <div class="hero-right">
@@ -155,9 +160,10 @@
         <p class="home-content-subtitle" style="margin-bottom: 16px">
           黎明誓约与暮夜同盟争夺星穹界的未来——你的立场，决定这个世界的样子
         </p>
-        <router-link class="btn btn-primary faction-beta-btn" to="/faction-beta">
-          ⚔️ 申请内测资格
-        </router-link>
+        <!-- FLPR-64：过期内测入口撤下，换成当前赛季的常规招募 / 进服指南 -->
+        <a href="/wiki/for-new/quick-start/" class="btn btn-primary faction-beta-btn">
+          ⚔️ 加入当前赛季
+        </a>
         <div class="faction-cards">
           <div class="faction-poster faction-poster-dawn">
             <img
@@ -322,16 +328,21 @@
                   ></path>
                 </svg>
               </div>
-              <h3 class="join-step-title">下载启动器</h3>
+              <h3 class="join-step-title">准备客户端</h3>
               <p class="join-step-description">
-                下载并安装
+                Java 版安装
                 <a
                   href="https://pcl.ruanmao.net/"
                   target="_blank"
                   class="join-step-link"
-                  >PCL</a
+                  >PCL2</a
                 >
-                等Java版Minecraft启动器
+                等启动器；基岩 / 手机安装 Minecraft Bedrock，双端同服互通。<a
+                  href="/wiki/for-new/quick-start/"
+                  target="_blank"
+                  class="join-step-link"
+                  >分端教程</a
+                >
               </p>
             </div>
             <div class="join-step">
@@ -357,9 +368,9 @@
               </div>
               <h3 class="join-step-title">选择版本</h3>
               <p class="join-step-description">
-                选择
+                Java 版选
                 <span class="join-step-highlight">1.21.1~1.21.11</span>
-                游戏版本并安装
+                （推荐 1.21.11）；基岩版用最新正式版，无需 Java 启动器
               </p>
             </div>
             <div class="join-step">
@@ -387,8 +398,10 @@
                   ></path>
                 </svg>
               </div>
-              <h3 class="join-step-title">启动游戏</h3>
-              <p class="join-step-description">启动我的世界，选择多人游戏</p>
+              <h3 class="join-step-title">进入服务器列表</h3>
+              <p class="join-step-description">
+                Java 版进入「多人游戏」；基岩版进入「服务器」页点击添加服务器
+              </p>
             </div>
             <div class="join-step">
               <div class="join-step-number">4</div>
@@ -417,9 +430,8 @@
               </div>
               <h3 class="join-step-title">添加服务器</h3>
               <p class="join-step-description">
-                点击添加服务器，输入服务器地址<span class="join-step-highlight"
-                  >{{ serverDisplay || "加载中…" }}</span
-                >
+                服务器地址填<span class="join-step-highlight">{{ serverDisplay || "加载中…" }}</span
+                >；基岩版将主机名与端口分两栏填写（冒号后即端口）
               </p>
             </div>
             <div class="join-step">
@@ -570,7 +582,7 @@ import factionDawnImg from "../assets/images/faction-dawn.jpg";
 import factionDuskImg from "../assets/images/faction-dusk.jpg";
 
 import McConfig from "../config/mc-config.js";
-import { serverConfigAPI, siteConfigAPI, resourcesAPI } from "../api/api.js";
+import { serverConfigAPI, serverMonitorAPI, siteConfigAPI, resourcesAPI } from "../api/api.js";
 import { parseHighlight } from "../utils/highlight.js";
 import { formatCount, formatRelativeTime } from "../utils/forumFormat.js";
 
@@ -579,26 +591,26 @@ import { formatCount, formatRelativeTime } from "../utils/forumFormat.js";
 const HOME_DEFAULT_CONFIG = {
   banner: {
     enabled: true,
-    text: "🔔 全新阵营对战玩法内测开启，名额有限 · 申请时间 2026-09-21 ~ 2026-10-07",
-    linkText: "申请内测",
-    linkUrl: "/faction-beta",
+    text: "🔔 S1「长夜与残阳」赛季进行中 · 黎明誓约 / 暮夜同盟 常规招募开放",
+    linkText: "查看进服指南",
+    linkUrl: "/wiki/for-new/quick-start/",
   },
   hero: {
-    badgeIcon: "@2025-2026",
-    badgeText: "星穹旅驿团队",
+    badgeIcon: "1.21.11",
+    badgeText: "Java / 基岩双端互通",
     title: "欢迎来到 [[星穹旅驿]]",
     subtitle: "在这里，体验[[阵营对抗]]乱世生存",
     features: ["阵营对抗", "多端互通", "友好社区", "超多插件玩法"],
     description:
-      "星穹旅驿是一个以阵营对抗为核心的乱世生存服务器。大崩裂之后，星穹界长夜与残阳交替：[[黎明誓约]]立志重建秩序、点燃曙光灯塔，{{暮夜同盟}}则拥抱长夜、信奉强者为尊。选择你的立场，在这场不会终结的拉锯战中，把世界改成你想要的样子。基于 Geyser + Velocity + Paper 1.21.11 核心技术，实现 Java/基岩多端互通。",
-    stat1Number: "114514",
-    stat1Label: "注册玩家",
-    stat2Number: "24/7",
-    stat2Label: "稳定运行",
-    stat3Number: "30+",
-    stat3Label: "插件玩法",
-    stat4Number: "6",
-    stat4Label: "管理团队人数",
+      "星穹旅驿是一个以阵营对抗为核心的《我的世界》乱世生存服务器。大崩裂之后，星穹界长夜与残阳交替：[[黎明誓约]]立志重建秩序、点燃曙光灯塔，{{暮夜同盟}}则拥抱长夜、信奉强者为尊。选择你的立场，在这场不会终结的拉锯战中，把世界改成你想要的样子。基于 Geyser + Velocity + Paper 1.21.11 核心技术，实现 Java/基岩多端互通。",
+    // FLPR-64：首屏不再使用 83,051 / 24/7 / 30+ / 6 这类累计或静态自述。
+    // 四个槽位改为可验证数据：前两项来自实时接口，后两项来自版本与阵营配置。
+    stat1Label: "实时在线人数",
+    stat2Label: "服务器延迟",
+    stat3Number: "1.21.11",
+    stat3Label: "当前推荐版本",
+    stat4Number: "2",
+    stat4Label: "对抗阵营",
   },
   video: {
     title: "星穹旅驿服务器宣传视频",
@@ -628,12 +640,12 @@ const HOME_DEFAULT_CONFIG = {
       { title: "服务器信息", text: "服务器公告", url: "/announcements" },
       { title: "社区", text: "进入社区", url: "/forum" },
       { title: "社区", text: "发布文章", url: "/forum/new" },
-      { title: "活动信息", text: "阵营内测", url: "/faction-beta" },
+      { title: "活动信息", text: "当前赛季", url: "/wiki/for-new/quick-start/" },
       { title: "联系我们", text: "联系服主", url: "mailto:3896301937@qq.com" },
       { title: "联系我们", text: "加入我们", url: "https://jq.qq.com/?_wv=1027194278" },
     ],
     copyright: [
-      "2025-2026 星穹旅驿 Minecraft服务器",
+      "2025-2026 星穹旅驿 Minecraft 服务器",
       "| 本服务器与Mojang及Microsoft无关",
       "联系我们: 3896301937@qq.com",
       "加入QQ群: 942235691",
@@ -657,10 +669,14 @@ export default {
       siteConfig: JSON.parse(JSON.stringify(HOME_DEFAULT_CONFIG)),
       // 首页「最新资源」卡片：精选优先、最新补位，最多 3 张；接口失败保持空数组不渲染区块
       homeResources: [],
-      // 当前显示的数字，从 0 开始累加
-      displayedPlayers: 0,
-      // requestAnimationFrame 句柄，用于组件销毁时取消动画
-      rafId: null,
+      // FLPR-64：首屏活数据。null 表示接口未返回/离线，模板显示「—」而不是编造数字。
+      liveStats: {
+        online: null,
+        ping: null,
+        maxPlayers: null,
+        version: "",
+        status: ""
+      },
       // 游戏服务器地址由后端 /monitor/servers 提供，挂载后异步获取
       serverAddress: "",
       serverPort: null,
@@ -691,14 +707,6 @@ export default {
     };
   },
   computed: {
-    /**
-     * 注册玩家目标人数：来自站点配置 stat1Number（仅当为纯数字时走数字累加动画，
-     * 含 "24/7"、"30+" 这类非数字文案时直接静态展示）
-     */
-    registeredPlayers() {
-      const v = this.siteConfig.hero.stat1Number;
-      return /^\d+$/.test(v) ? Number(v) : null;
-    },
     /**
      * hero 主标题/副标题/介绍：解析 [[绿]] {{紫}} 高亮标记为 {text, color} 段数组，
      * 模板 v-for 渲染 span（不走 v-html，无注入风险）
@@ -740,24 +748,28 @@ export default {
       return this.siteConfig.video.cover || this.videoBg;
     },
     /**
-     * 注册玩家人数：添加千分位符显示（如 114,514）
-     */
-    formattedPlayers() {
-      return this.displayedPlayers.toLocaleString("en-US");
-    },
-    /**
      * 展示用地址串：serverone.codeyun.com:12000
      */
     serverDisplay() {
       return this.serverAddress ? `${this.serverAddress}:${this.serverPort}` : "";
     },
     /**
-     * 统计1展示值：纯数字时走累加动画（千分位），否则静态展示原文案
+     * FLPR-64：首屏数字 = 可验证活数据。
+     * 统计1：监控接口在线人数；统计2：接口延迟。接口未就绪/离线时显示「—」，
+     * 不再用 114514 / 24/7 / 30+ / 6 这类累计或静态自述充当首屏主数字。
      */
     heroStat1Number() {
-      return this.registeredPlayers === null
-        ? this.siteConfig.hero.stat1Number
-        : this.formattedPlayers;
+      const n = this.liveStats.online;
+      return n === null || n === undefined ? "—" : String(n);
+    },
+    heroStat2Number() {
+      const n = this.liveStats.ping;
+      return n === null || n === undefined ? "—" : `${n} ms`;
+    },
+    heroStat3Number() {
+      // 服务端 SLP 返回的核心版本号（如 Purpur 1.21.11）优先，失败回退配置推荐版本
+      const match = (this.liveStats.version || "").match(/1\.\d+(?:\.\d+)?/);
+      return match ? match[0] : this.siteConfig.hero.stat3Number;
     },
     /**
      * 第三方 MOTD 状态卡片地址（地址加载完成前不渲染 iframe）
@@ -768,21 +780,14 @@ export default {
     },
   },
   mounted() {
-    // 进入页面时，注册玩家人数从 0 开始累加（目标值默认配置，配置加载后如有变化重新累加）
-    this.startCountUp();
+    // 拉取监控接口的实时在线数据（首屏数字，失败显示「—」不自造数字）
+    this.fetchLiveStats();
     // 拉取由后端维护的游戏服务器地址
     this.fetchServerConfig();
     // 拉取站点配置（系统管理-网站配置）
     this.fetchSiteConfig();
     // 拉取首页「最新 / 精选资源」卡片数据
     this.fetchHomeResources();
-  },
-  beforeUnmount() {
-    // 组件销毁时取消动画，避免内存泄漏
-    if (this.rafId) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = null;
-    }
   },
   methods: {
     // 模板用到这两个从 forumFormat.js 导入的辅助函数；Options API 不会自动暴露
@@ -791,6 +796,26 @@ export default {
     // 损坏的 vnode 树在卸载时报错并中断路由切换（首页点「资源中心」卡在首页）。
     formatCount,
     formatRelativeTime,
+    /**
+     * FLPR-64：首屏活数据统一取监控接口（与 OnlineCounter 同一数据源）。
+     * 接口尚未接入真实玩家数时 onlinePlayers 可能为 0：只有 status=online 才采信，
+     * 否则保持 null 由模板显示「—」，避免把占位值当真实数据展示。
+     */
+    async fetchLiveStats() {
+      try {
+        const result = await serverMonitorAPI.getServerInfo(McConfig.server.id);
+        const status = result.status || "";
+        this.liveStats = {
+          online: status === "online" && result.onlinePlayers > 0 ? result.onlinePlayers : null,
+          ping: status === "online" && result.ping > 0 ? result.ping : null,
+          maxPlayers: result.maxPlayers || null,
+          version: (result.info && result.info.version) || "",
+          status
+        };
+      } catch (err) {
+        console.error("获取实时监控数据失败:", err);
+      }
+    },
     /**
      * 从后端获取游戏服务器地址（单一数据源），取主服务器
      */
@@ -840,7 +865,9 @@ export default {
       }
     },
     /**
-     * 应用站点配置：按区合并到默认值（后端新增字段缺失时仍有兜底），数字统计变化时重跑累加动画
+     * 应用站点配置：按区合并到默认值（后端新增字段缺失时仍有兜底）。
+     * FLPR-64：首屏四个统计槽位固定为可验证数据口径，后台若仍是旧的
+     * 「注册玩家 / 24/7 / 30+ / 6」配置，也强制覆盖为活数据标签，防止过期自述回潮。
      */
     applySiteConfig(data) {
       const cfg = { ...JSON.parse(JSON.stringify(HOME_DEFAULT_CONFIG)), ...data };
@@ -872,44 +899,29 @@ export default {
             .filter(Boolean);
         }
       }
-      this.siteConfig = cfg;
-      // 目标人数变化时重新累加（如配置把 114514 改成别的纯数字）
-      if (this.registeredPlayers !== null && this.displayedPlayers !== this.registeredPlayers) {
-        this.startCountUp();
+      // FLPR-64：固定统计口径（实时在线 / 延迟 / 推荐版本 / 阵营数），值由 computed 与配置共同提供
+      const hero = cfg.hero || {};
+      Object.assign(hero, {
+        stat1Label: "实时在线人数",
+        stat2Label: "服务器延迟",
+        stat3Number: "1.21.11",
+        stat3Label: "当前推荐版本",
+        stat4Number: "2",
+        stat4Label: "对抗阵营"
+      });
+      // 过期内测横幅即便后台仍开着，也强制换成当前赛季 / 常规招募入口
+      if (cfg.banner) {
+        Object.assign(cfg.banner, {
+          text: "🔔 S1「长夜与残阳」赛季进行中 · 黎明誓约 / 暮夜同盟 常规招募开放",
+          linkText: "查看进服指南",
+          linkUrl: "/wiki/for-new/quick-start/"
+        });
       }
+      cfg.hero = hero;
+      this.siteConfig = cfg;
       // 页脚配置同步到全局（footer 在 App.vue 渲染，经 provide/inject 传递）
       this.$root.$footerConfig = cfg.footer;
       window.dispatchEvent(new CustomEvent("site-footer-config", { detail: cfg.footer }));
-    },
-    /**
-     * 数字从 0 累加到目标值，使用缓动函数使动画更自然
-     */
-    startCountUp() {
-      // stat1Number 非纯数字（如 "24/7"）时跳过动画，直接静态展示文案
-      if (this.registeredPlayers === null) {
-        this.displayedPlayers = 0;
-        return;
-      }
-      const target = this.registeredPlayers;
-      const duration = 2000; // 动画时长（毫秒）
-      const startTime = performance.now();
-      // easeOutCubic：先快后慢
-      const easeOutCubic = (t) => 1 - Math.pow(1 - t, 3);
-
-      const step = (now) => {
-        const elapsed = now - startTime;
-        const progress = Math.min(elapsed / duration, 1);
-        this.displayedPlayers = Math.round(target * easeOutCubic(progress));
-        if (progress < 1) {
-          this.rafId = requestAnimationFrame(step);
-        } else {
-          // 动画结束，确保显示最终值
-          this.displayedPlayers = target;
-          this.rafId = null;
-        }
-      };
-
-      this.rafId = requestAnimationFrame(step);
     },
     scrollToSection(id) {
       const element = document.getElementById(id);
@@ -1781,10 +1793,18 @@ export default {
   display: flex;
   align-items: center;
   gap: 30px;
-  margin-bottom: 32px;
+  margin-bottom: 8px;
   padding: 20px 0;
   border-top: 1px solid var(--border-soft);
   border-bottom: 1px solid var(--border-soft);
+}
+
+.hero-stats-note {
+  margin: 0 0 32px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+  text-align: center;
 }
 
 .stat-item {

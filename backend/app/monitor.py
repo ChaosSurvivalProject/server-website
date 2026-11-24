@@ -24,6 +24,13 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, select
 
+# FLPR-64：真实在线人数 / 版本来自 mcstatus（SLP 查询）；缺依赖时回退 TCP 探测，
+# 不阻断启动。响应结构保持不变，前端首屏与 OnlineCounter 共用这一数据源。
+try:
+    from mcstatus import JavaServer
+except ImportError:  # pragma: no cover - 部署镜像未装依赖时走 TCP 回退
+    JavaServer = None
+
 from .auth.deps import require_admin
 from .crud import _TZ as BEIJING_TZ
 from .database import ServerRecord, async_session_maker
@@ -235,16 +242,40 @@ async def server_info(
     if server is None:
         raise HTTPException(status_code=404, detail="server not found")
 
-    online = await probe_tcp(server["address"], server["port"])
+    online_players = 0
+    max_players = 0
+    ping_ms = 0
+    version = ""
+    online = False
+    if JavaServer is not None:
+        try:
+            # mcstatus 是同步网络调用，放线程池避免阻塞 FastAPI 事件循环
+            mc_status = await asyncio.to_thread(
+                JavaServer.lookup(f"{server['address']}:{server['port']}").status
+            )
+            online_players = mc_status.players.online
+            max_players = mc_status.players.max
+            ping_ms = int(round(mc_status.latency))
+            version = mc_status.version.name
+            online = True
+        except Exception as exc:
+            logger.warning("mcstatus 查询失败 %s:%s -> %s", server["address"], server["port"], exc)
+    if not online:
+        online = await probe_tcp(server["address"], server["port"])
+
     return {
         "code": 0,
         "message": "success",
         "data": {
             "status": "online" if online else "offline",
-            "ping": 0,
-            "onlinePlayers": 0,
-            "maxPlayers": 0,
-            "info": {"address": server["address"], "port": server["port"]},
+            "ping": ping_ms,
+            "onlinePlayers": online_players,
+            "maxPlayers": max_players,
+            "info": {
+                "address": server["address"],
+                "port": server["port"],
+                "version": version,
+            },
             "historyStatusList": [],
         },
     }

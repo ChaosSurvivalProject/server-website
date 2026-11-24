@@ -16,6 +16,26 @@ import { SHARE_COPY, DEFAULT_DESCRIPTION, composedTitle } from './shareMeta.js'
 const SITE_ORIGIN = 'https://xqly.xt91tv.shop'
 const OG_IMAGE = `${SITE_ORIGIN}/og-cover.png`
 
+// FLPR-64：全站结构化数据。WebSite + SearchAction 让引擎识别站点身份与站内搜索
+// 入口（/forum?q= 是真实存在的搜索结果页，不是摆设）；FAQPage 在 /wiki/ 加入方式页。
+const WEBSITE_JSON_LD = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: '星穹旅驿 我的世界阵营生存服',
+  alternateName: '星穹旅驿',
+  url: SITE_ORIGIN + '/',
+  inLanguage: 'zh-CN',
+  description: '我的世界 1.21 阵营服：Java / 基岩互通的 MC 双端互通服，黎明誓约与暮夜同盟阵营对抗，1.21.11 生存服。',
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: {
+      '@type': 'EntryPoint',
+      urlTemplate: SITE_ORIGIN + '/forum?q={search_term_string}'
+    },
+    'query-input': 'required name=search_term_string'
+  }
+}
+
 export function useSeoHead() {
   const route = useRoute()
 
@@ -43,7 +63,7 @@ export function useSeoHead() {
         { property: 'og:image:type', content: 'image/png' },
         { property: 'og:image:width', content: '1200' },
         { property: 'og:image:height', content: '630' },
-        { property: 'og:image:alt', content: `${siteName} · 我的世界 Java/基岩双端互通阵营生存服` },
+        { property: 'og:image:alt', content: `${siteName} · 我的世界 1.21 阵营服 / Java 基岩互通 MC 双端互通服` },
         { name: 'twitter:card', content: 'summary_large_image' },
         { name: 'twitter:title', content: title },
         { name: 'twitter:description', content: description },
@@ -51,6 +71,12 @@ export function useSeoHead() {
       ],
       link: [
         { rel: 'canonical', href: url }
+      ],
+      script: [
+        {
+          type: 'application/ld+json',
+          innerHTML: JSON.stringify(WEBSITE_JSON_LD)
+        }
       ]
     }
   }))
