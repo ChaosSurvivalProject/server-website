@@ -12,7 +12,9 @@
 5. **布尔语义用 int**：如 `isPublished`，`0=草稿, 1=已发布`，不要改成 bool。
 6. **监控接口**：`GET /api/monitor/server-info/{id}` 目前是 TCP 探测的最小实现（`online/offline` + 占位字段），响应结构被首页 `OnlineCounter` 组件依赖，扩展时不能破坏现有字段。
 7. **公告正文双格式**：对外字段为 `rawContent`（原始内容）+ `contentType`（`'html'`=富文本 / `'markdown'`=Markdown，缺省 `html`；Pydantic 侧 Python 字段名仍是 `content`/`content_type`，仅 alias 对外）。`html` 行入库前经 `nh3` 消毒；`markdown` 行**原样入库**（nh3 会破坏 Markdown 语法），渲染全在前端——主站 `src/utils/markdown.js`（marked + DOMPurify）统一渲染并消毒，后台按格式切换 wangEditor / md-editor-v3。新加内容格式相关逻辑时不要绕过这两个入口。
-8. **SSE 包络例外（全项目唯一）**：`POST /api/kb/chat` 返回 `text/event-stream`，**不返回 `{code, message, data}` 包络**——SSE 流无法包络，这不是遗漏，不要"修正"它。**仅登录用户可调用**：`get_current_user` 依赖校验 Bearer JWT，未登录/过期 401（属流前错误，标准 HTTP + `detail`）；`streamChat` 用裸 `fetch` 不走 axiosInstance，需自行携带 token。帧协议见 `docs/智能客服/智能客服P0落地方案.md` §4.3（首帧 `sources`、`delta`/`reasoning` 交错、`[DONE]` 收尾；流前错误走标准 HTTP + 包络口径的 `detail`，流开始后只能发 `{"error":...}` 帧）。`frontend/src/api/api.js` 的 `chatAPI.streamChat` 因此用 `fetch` + `ReadableStream` 而非 axios。
+8. **SSE 包络例外（全项目共 2 个）**：以下接口返回 `text/event-stream`，**不返回 `{code, message, data}` 包络**——SSE 流无法包络，这不是遗漏，不要"修正"它。新增 SSE 接口必须同步登记本清单与 `docs/api-reference.md`。
+   - `POST /api/kb/chat`（智能客服流式问答）：**仅登录用户可调用**：`get_current_user` 依赖校验 Bearer JWT，未登录/过期 401（属流前错误，标准 HTTP + `detail`）；`streamChat` 用裸 `fetch` 不走 axiosInstance，需自行携带 token。帧协议见 `docs/智能客服/智能客服P0落地方案.md` §4.3（首帧 `sources`、`delta`/`reasoning` 交错、`[DONE]` 收尾；流前错误走标准 HTTP + 包络口径的 `detail`，流开始后只能发 `{"error":...}` 帧）。`frontend/src/api/api.js` 的 `chatAPI.streamChat` 因此用 `fetch` + `ReadableStream` 而非 axios。
+   - `GET /api/messages/stream`（站内信实时推送，FLPR-32）：业务事件 `unread`（`data:{"count":N}`，建连首帧必发，重连后以服务端为准）与 `refresh`（提示重拉当前 Tab），另有控制帧 `closed`（连接超 5 条/用户被挤掉）与 `: ping` 心跳。原生 `EventSource` 不能自定义请求头，token 走 `?token=<JWT>`，由后端 `get_stream_user` 专用依赖鉴权（401/403 在流前以标准 HTTP + `detail` 返回）；前端 `messagesAPI.createMessageStream`，error 时先交给 EventSource 原生自动重连，连续失败 3 次后关闭连接降级 60s 轮询，杜绝重试风暴。nginx 四件套与 kb/chat 共用（`web/nginx.conf`、`for-deploy/xqly-app.conf` 两份必须同步）。详见 `docs/api-reference.md`「站内信」一节。
 
 ## 附：管理员接口鉴权（原 README「约定」小节并入，2026-11-07）
 

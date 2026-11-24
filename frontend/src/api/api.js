@@ -134,7 +134,7 @@ export const factionBetaAPI = {
 // 客服 API（智能客服 P0）
 // 注意：/kb/chat 是 SSE 流式接口，浏览器端 axios 不支持读取 POST 响应的增量 body，
 // 因此这里用 fetch + ReadableStream 实现（baseURL 仍取自 McConfig，与其他接口保持一致）。
-// 该接口是全项目唯一不返回 {code, message, data} 包络的接口，
+// 该接口与 /api/messages/stream 是全项目仅有的两个不返回 {code, message, data} 包络的接口，
 // 帧协议见 docs/智能客服/智能客服P0落地方案.md §4.3
 export const chatAPI = {
   /** 客服元信息：data: {enabled, title, greeting, faq, model} */
@@ -449,8 +449,44 @@ export const forumAPI = {
 
 // 站内信 API（PRD §7.1）
 export const messagesAPI = {
-  /** 未读计数（含定向未读 + 广播未点击） */
-  getUnreadCount: () => axiosInstance.get('/api/messages/unread-count'),
+  /** 未读计数（含定向未读 + 广播未点击）；config.silent 用于降级轮询时抑制全局报错弹窗 */
+  getUnreadCount: (config = {}) => axiosInstance.get('/api/messages/unread-count', config),
+
+  /**
+   * 站内信实时推送（SSE）：GET /api/messages/stream。
+   * 与 /api/kb/chat 并列的全项目第二个包络例外（不返回 {code,message,data}）。
+   * 浏览器 EventSource 不能自定义请求头，故 token 走 query 参数（后端专用鉴权依赖）；
+   * 建连首帧必带服务端未读数，重连后以服务端为准。
+   * @param {{onUnread: Function, onRefresh: Function, onOpen?: Function, onClosed?: Function, onError?: Function}} handlers
+   * @returns {EventSource} 调用方负责在合适时机 close()
+   */
+  createMessageStream: ({ onUnread, onRefresh, onOpen, onClosed, onError }) => {
+    const token = getToken();
+    if (!token) throw new Error('未登录');
+    const url = `${McConfig.baseApiURL}/api/messages/stream?token=${encodeURIComponent(token)}`;
+    const source = new EventSource(url);
+    const parse = (e, fallback) => {
+      try { return JSON.parse(e.data); } catch { return fallback; }
+    };
+    source.onopen = () => onOpen?.();
+    source.addEventListener('unread', (e) => {
+      const data = parse(e, {});
+      if (typeof data.count === 'number') onUnread?.(data.count);
+    });
+    source.addEventListener('refresh', () => onRefresh?.());
+    source.addEventListener('closed', (e) => {
+      // 连接数超上限被挤掉：立即停掉本连接，避免 EventSource 自动重连抖动
+      const data = parse(e, {});
+      source.close();
+      onClosed?.(data.reason);
+    });
+    source.onerror = () => {
+      // 不在这里无条件重连：EventSource 原生自动重连由浏览器进行，
+      // 调用方按连续失败次数决定何时 close() 并降级轮询，杜绝无限重试风暴
+      onError?.();
+    };
+    return source;
+  },
 
   /** 回复我的列表 */
   getReplies: (page = 1, pageSize = 10) =>

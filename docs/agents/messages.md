@@ -11,3 +11,5 @@
 - **定向消息的已读/删除仅接收者本人可操作**（`crud.py::mark_message_read` / `delete_user_message` 均校验 `user_messages` 归属）：`messages.is_deleted` 是**全局标记**，不校验归属就等于任意登录用户凭 ID 删掉别人的收件箱内容；他人操作返回 404/400。广播消息不受此限（补插即已读是设计语义）。
 - **`mark_all_read` 的 `msg_type` 与 Tab 一一对应**（reply / like / system，缺省=全部定向）：新增 Tab 时必须同步补分支，否则「全部已读」会静默漏掉该类。前台 `Messages.vue` 的 tabs / load / loadAllTabUnread / handleClick / handleMarkAllRead 五处都要带 like，后台 `announcement/list.vue` 的类型筛选与 `typeLabel` 同步补「收到点赞」。
 - 点赞通知计入未读总数（定向未读口径天然覆盖，无需特判）；前台点击跳 `/forum/post/{articleId}`，评论点赞额外带 `?commentId=` 定位。
+
+- **实时推送（FLPR-32）**：`GET /api/messages/stream` 是 SSE（第二个包络例外，帧协议见 `docs/api-reference.md`「站内信」一节）。NavBar 常驻且每个标签页只开一条连接，事件 `unread`（建连首帧必发、重连后以服务端为准）/`refresh`（弹层重拉当前 Tab）/`closed`（同一用户超 5 连接被挤掉，停 SSE 转轮询）；error 时先交给 EventSource 原生重连、连续失败 3 次后关闭连接降级 60s 轮询，禁止无限重试风暴。各 `create_*_message` 及已读/删除写库成功后经可替换接口 `MessageStreamRegistry` 广播（单 worker 进程内实现，多 worker 前换 Redis pub/sub）；原生 EventSource 不能自定义头，token 走 `?token=`。

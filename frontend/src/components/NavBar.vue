@@ -179,6 +179,8 @@
     <!-- 站内信弹窗 -->
     <MessagesPopup
       :visible="showMessagesPopup"
+      :stream-unread="unreadCount"
+      :refresh-signal="messageRefreshSignal"
       @update:visible="val => { showMessagesPopup = val; }"
       @read-change="handleMessagesReadChange"
     />
@@ -204,7 +206,10 @@ export default {
       defaultAvatar,
       avatarMenuOpen: false,
       unreadCount: 0,
-      unreadTimer: null,
+      messageStream: null,
+      streamErrorCount: 0,
+      unreadFallbackTimer: null,
+      messageRefreshSignal: 0,
       showMessagesPopup: false,
       avatarUploading: false,
     };
@@ -275,21 +280,82 @@ export default {
     closeMessagesPopup() {
       this.showMessagesPopup = false;
     },
-    /** 未读计数变化（弹窗内触发） */
+    /** 未读计数变化（弹窗内触发）：SSE 在线时由服务端推送统一刷新，降级轮询期间接受弹层同步 */
     handleMessagesReadChange(count) {
+      if (this.messageStream) return;
       this.unreadCount = count;
     },
-    /** 轮询未读计数（每 30 秒） */
+    /** 拉取未读计数（降级轮询每 60 秒一次；silent 抑制偶发网络/登录态报错弹窗） */
     async loadUnreadCount() {
       if (!authState.token) {
         this.unreadCount = 0;
         return;
       }
       try {
-        const res = await messagesAPI.getUnreadCount();
+        const res = await messagesAPI.getUnreadCount({ silent: true });
         this.unreadCount = res.count || 0;
       } catch (e) {
-        // ignore
+        // ignore：降级轮询失败保留上一次角标，不打断页面
+      }
+    },
+    /** 建立 SSE 实时推送：NavBar 常驻，每个标签页只开一条连接（上限 5/用户） */
+    startMessageStream() {
+      this.stopMessageStream();
+      if (!authState.token) {
+        this.unreadCount = 0;
+        return;
+      }
+      try {
+        this.streamErrorCount = 0;
+        this.messageStream = messagesAPI.createMessageStream({
+          onOpen: () => {
+            // 原生重连成功：清零连续失败计数，有机会退出轮询兜底
+            this.streamErrorCount = 0;
+            this.stopUnreadFallback();
+          },
+          onUnread: (count) => {
+            this.unreadCount = count;
+            this.streamErrorCount = 0;
+          },
+          onRefresh: () => {
+            // 同一条 SSE 连接把 refresh 转给弹层，避免弹层再开连接占用 5 连接上限
+            this.messageRefreshSignal += 1;
+          },
+          onClosed: () => {
+            // 连接数超上限被挤掉：停 SSE 转轮询，不自动重连以免来回踢连接
+            this.stopMessageStream();
+            this.startUnreadFallback();
+          },
+          onError: () => {
+            // 短暂弱网交给 EventSource 原生自动重连；连续失败 3 次才停掉连接，
+            // 避免 401 等永久错误引发重试风暴，然后降级 60s 轮询
+            this.streamErrorCount += 1;
+            if (this.streamErrorCount >= 3) {
+              this.stopMessageStream();
+              this.startUnreadFallback();
+            }
+          },
+        });
+        this.stopUnreadFallback();
+      } catch (e) {
+        this.startUnreadFallback();
+      }
+    },
+    stopMessageStream() {
+      if (this.messageStream) {
+        this.messageStream.close();
+        this.messageStream = null;
+      }
+    },
+    startUnreadFallback() {
+      if (this.unreadFallbackTimer) return;
+      this.loadUnreadCount();
+      this.unreadFallbackTimer = setInterval(this.loadUnreadCount, 60000);
+    },
+    stopUnreadFallback() {
+      if (this.unreadFallbackTimer) {
+        clearInterval(this.unreadFallbackTimer);
+        this.unreadFallbackTimer = null;
       }
     },
     toggleMenu() {
@@ -357,19 +423,29 @@ export default {
       }
     },
   },
+  watch: {
+    loggedIn(val) {
+      if (val) {
+        this.startMessageStream();
+      } else {
+        // 退出登录：停掉连接与轮询，角标清零
+        this.stopMessageStream();
+        this.stopUnreadFallback();
+        this.unreadCount = 0;
+      }
+    },
+  },
   mounted() {
     // 点击头像以外区域时关闭下拉菜单
     document.addEventListener("click", this.closeAvatarMenu);
-    // 站内信未读计数轮询
+    // 站内信未读角标：SSE 实时推送；建连失败自动降级 60s 轮询
     this.loadUnreadCount();
-    this.unreadTimer = setInterval(this.loadUnreadCount, 30000);
+    this.startMessageStream();
   },
   beforeUnmount() {
     document.removeEventListener("click", this.closeAvatarMenu);
-    if (this.unreadTimer) {
-      clearInterval(this.unreadTimer);
-      this.unreadTimer = null;
-    }
+    this.stopMessageStream();
+    this.stopUnreadFallback();
   },
 };
 </script>

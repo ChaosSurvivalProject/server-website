@@ -143,6 +143,16 @@ export default {
       type: Boolean,
       default: false,
     },
+    /** NavBar 的 SSE 推送未读数：弹层副标题与铃铛角标同源，避免弹层重复建连 */
+    streamUnread: {
+      type: Number,
+      default: null,
+    },
+    /** NavBar 收到 SSE refresh 后的递增信号：弹层打开时重拉当前 Tab 列表 */
+    refreshSignal: {
+      type: Number,
+      default: 0,
+    },
   },
   emits: ["update:visible", "read-change"],
   setup(props, { emit }) {
@@ -260,9 +270,11 @@ export default {
     async function loadUnreadCount() {
       if (!authState.token) return;
       try {
-        const res = await messagesAPI.getUnreadCount();
-        unreadCount.value = res.count || 0;
-        emit("read-change", res.count || 0);
+        const res = await messagesAPI.getUnreadCount({ silent: true });
+        const count = res.count || 0;
+        // SSE 在线时以推送值为准，避免并发拉取的旧响应把角标/副标题打回旧值
+        if (typeof props.streamUnread !== "number") unreadCount.value = count;
+        emit("read-change", count);
       } catch (e) {
         // ignore
       }
@@ -379,6 +391,22 @@ export default {
         load();
       }
     });
+
+    // SSE 未读数 → 弹层副标题（与 NavBar 角标同源，重连后以服务端为准）
+    watch(
+      () => props.streamUnread,
+      (val) => {
+        if (typeof val === "number") unreadCount.value = val;
+      }
+    );
+
+    // SSE refresh → 弹层打开时重拉当前 Tab（关闭时不发请求）
+    watch(
+      () => props.refreshSignal,
+      (val) => {
+        if (val > 0 && props.visible) load();
+      }
+    );
 
     return {
       activeTab,

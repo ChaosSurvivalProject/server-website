@@ -102,7 +102,7 @@
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | GET | `/api/kb/info` | 客服元信息（`enabled` / `title` / `greeting` / `faq` / `model`；未配置 API Key 时 `enabled:false`，前端不渲染悬浮球） |
-| POST | `/api/kb/chat` | **SSE 流式问答**（body: `{message, history?}`；`text/event-stream`，**全项目唯一不走 `{code, message, data}` 包络的接口**，帧协议见下方） |
+| POST | `/api/kb/chat` | **SSE 流式问答**（body: `{message, history?}`；`text/event-stream`，**两个不走 `{code, message, data}` 包络的接口之一**，另一个是 `/api/messages/stream`；帧协议见下方） |
 | GET | `/api/kb/admin/documents` | 文档分页列表（**需管理员**；参数: page, pageSize, sourceType 可选） |
 | POST | `/api/kb/admin/documents` | 手动新增知识（**需管理员**；body: `{title, content}`，同步切片 + Embedding） |
 | DELETE | `/api/kb/admin/documents/{id}` | 删除文档（**需管理员**；`wiki` 来源返回 400，提示走同步脚本） |
@@ -305,6 +305,26 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 
 **契约变更**：`author.badge` 由单值字符串（`null`|`"管理员"`）改为**数组**（如 `["管理员","Lv.3","开荒先锋"]`，顺序 管理员 → 等级 → 头衔），已注销用户返回 `[]`。后台不缓存，author 下发即实时查询，撤销头衔前台即时失效。前端改动收敛在 `frontend/src/utils/forumBadges.js` 与 `frontend/src/components/forum/UserBadge.vue`（后台同名表 `admin-frontend/src/utils/forumBadges.ts`），其余组件经 `author.badge` 透传零改动。**不做**经验商城 / 排行榜 / 存量 retrofit（从上线起算，不补算历史行为）。
 
+## 站内信（消息中心）
+
+前台展示名「消息中心」，模块 / 接口 / 表名仍是站内信。实施依据 `docs/站内信/站内信功能PRD.md`；规约见 `docs/agents/messages.md`。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/messages/unread-count` | 未读计数（定向未读 + 广播未点击），走包络 |
+| GET | `/api/messages/stream` | **SSE 实时推送**（`text/event-stream`，第二个不走 `{code, message, data}` 包络的接口；需登录，帧协议见下） |
+| GET | `/api/messages/replies` / `/likes` / `/system` | 三个分页列表（参数 page / pageSize），走包络 |
+| POST | `/api/messages/{id}/read`、`/read-all`；DELETE | 标记单条 / 批量已读、删除定向消息，走包络 |
+
+**SSE 帧协议（`GET /api/messages/stream`）**
+
+- **鉴权**：原生 `EventSource` 不能自定义请求头，token 经 query 参数 `?token=<JWT>` 传递（后端 `get_stream_user` 专用依赖，同时兼容 `Authorization: Bearer`）。缺失 / 过期 token 在流前返回标准 HTTP 401 + `detail`；前端 EventSource error 后先由浏览器原生重连，连续失败 3 次则关闭连接并降级 60s 轮询。query token 可能出现在访问日志中，这是原生 EventSource 的固有限制。
+- `event: unread` → `data: {"count": N}`：未读数。**建连首帧必发**；断线自动重连后以服务端值覆盖本地，弱网不错数。
+- `event: refresh` → `data: {}`：提示客户端重拉当前打开的 Tab 列表；由常驻的 NavBar 转交给弹层（同一连接，弹层不另开 EventSource）。
+- `event: closed` → `data: {"reason":"too_many_connections"}`：控制帧。同一用户上限 5 连接，超出立即优雅关闭最旧连接；收到后客户端应停掉 SSE 转轮询，避免自动重连来回踢连接。
+- **心跳**：服务端每 ≤30s 发送注释行 `: ping\n\n` 保活。nginx 复用 kb/chat 的 SSE 四件套，两份配置 `web/nginx.conf` 与 `for-deploy/xqly-app.conf` 必须同步。
+- **推送触发**：`messages.py` 各 `create_*_message` 写库成功后重算未读数并广播；已读 / 批量已读 / 删除成功后同样广播，保证多标签页一致。连接注册表 `InMemoryMessageStreamRegistry` 实现可替换接口 `MessageStreamRegistry`，仅适用生产单 worker；多 worker 前必须换成 Redis pub/sub（与限流共享存储同一条遗留）。
+
 ## 资源中心
 
 资源中心一阶段 MVP：后台手动维护资源/版本/下载资产元数据，前台展示列表与详情，下载一律经本站端点 302 跳转到后台录入的 GitHub Release 资产链接。实施依据 `docs/资源中心/资源中心一阶段MVP需求.md`；GitHub Release **双轨同步**（2026-11-14 新增，覆盖原「不做自动同步」口径）：`docs/资源中心/GitHub Release 版本同步需求说明.md`，核心在 `backend/app/resource_sync_core.py`（纯 SQLAlchemy+httpx，API 层与定时 CLI 共用），定时任务 `backend/github_sync.py`。落点 `backend/app/resource_center.py`（请求模型 `app/pydantic_models.py`，五表 `app/database.py`：`dict_items` / `resources`（+三张关联表）/ `resource_versions` / `version_assets` / `download_events`）。**计数口径是「下载跳转次数」**——本站记录的是下载按钮跳转点击次数，文件由 GitHub 托管，不是 GitHub 实际下载量；**不做** 文件代理 / SHA-256 校验 / 下载量同步 / 用户系统（PRD「明确不做」）。
@@ -359,7 +379,8 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 |------|------|------|
 | GET | `/health` | 健康检查 |
 | GET | `/api/kb/info` | 智能客服元信息（见本文「知识库 / 智能客服」一节） |
-| POST | `/api/kb/chat` | 智能客服流式问答（SSE，唯一不走包络） |
+| POST | `/api/kb/chat` | 智能客服流式问答（SSE，两个包络例外之一） |
+| GET | `/api/messages/stream` | 站内信实时推送（SSE，另一个包络例外；见「站内信」一节） |
 | * | `/api/kb/admin/mcp/*`、`/api/kb/admin/tool-config`、`/api/kb/admin/tool-logs`、`/api/kb/admin/chat-config`、`/api/kb/admin/models` | 智能客服 P1：MCP Server 管理 / 工具白名单 / 内置工具配置 / 调用审计 / 客服模型设置（模型+思考强度）/ 上游模型列表（见「MCP 扩展」小节） |
 
 ## 图片上传

@@ -17,7 +17,7 @@ cd admin-frontend && pnpm install && pnpm dev                      # 后台管�
 
 ## API 契约规约
 
-完整规约见 [docs/agents/api-conventions.md](docs/agents/api-conventions.md)。硬性禁区：接口统一挂 `/api` 前缀；响应包络 `{code, message, data}`（`code=0` 成功，前端组件不得再判 `code`；`POST /api/kb/chat` SSE 是全项目唯一包络例外）；DB snake_case / 对外 JSON camelCase（新增字段必须同步补 Pydantic alias）；**新增或修改后端接口必须同步契约参照 `frontend/src/api/api.js` 与 `admin-frontend/src/api/`**；时间统一存北京时间 naive ISO `YYYY-MM-DDTHH:MM:SS`；布尔语义用 int（`isPublished` 0=草稿/1=已发布）；上传 `FormData` 必须显式加 `Content-Type: multipart/form-data`（否则 422）。
+完整规约见 [docs/agents/api-conventions.md](docs/agents/api-conventions.md)。硬性禁区：接口统一挂 `/api` 前缀；响应包络 `{code, message, data}`（`code=0` 成功，前端组件不得再判 `code`；`POST /api/kb/chat` 与 `GET /api/messages/stream` 两个 SSE 是全项目仅有的包络例外）；DB snake_case / 对外 JSON camelCase（新增字段必须同步补 Pydantic alias）；**新增或修改后端接口必须同步契约参照 `frontend/src/api/api.js` 与 `admin-frontend/src/api/`**；时间统一存北京时间 naive ISO `YYYY-MM-DDTHH:MM:SS`；布尔语义用 int（`isPublished` 0=草稿/1=已发布）；上传 `FormData` 必须显式加 `Content-Type: multipart/form-data`（否则 422）。
 
 ## 主题适配规约（全局）
 

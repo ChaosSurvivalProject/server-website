@@ -5,6 +5,7 @@
 接口一览：
   ── 登录用户 ──
   GET    /messages/unread-count        未读计数
+  GET    /messages/stream              站内信实时推送（SSE，第二个包络例外）
   GET    /messages/replies             回复我的列表
   GET    /messages/likes               收到点赞列表
   GET    /messages/system              系统通知列表（广播 + 审核通知）
@@ -18,14 +19,22 @@
   PUT    /messages/admin/update/{id}   编辑站内信
   DELETE /messages/admin/delete/{id}   删除站内信（软删）
 """
+import asyncio
+import json
+import logging
+from abc import ABC, abstractmethod
+from collections import deque
 from datetime import datetime
+from threading import Lock
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, func, or_, union_all
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from .auth.deps import get_current_user, require_admin
+from .auth.security import decode_token
 from .crud import (
     _now_iso,
     get_message,
@@ -44,6 +53,8 @@ from .crud import (
 from .database import (
     Message,
     UserMessage,
+    USER_STATUS_DELETED,
+    USER_STATUS_DISABLED,
     get_db,
 )
 from .schemas import (
@@ -69,6 +80,8 @@ from .forum import ForumComment, ForumArticle, User
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
+logger = logging.getLogger(__name__)
+
 
 # ── 常量 ──────────────────────────────────────────────────────────
 _TYPE_REPLY = "reply"
@@ -82,6 +95,155 @@ _CATEGORY_SYSTEM = "system"
 _CATEGORY_ACTIVITY = "activity"
 _CATEGORY_ARTICLE_REVIEW = "article_review"
 _CATEGORY_BETA_REVIEW = "beta_review"
+
+
+# ── SSE 实时推送：连接注册表（可替换接口） ─────────────────────────
+# 生产为单 worker 进程，进程内注册表足够。将来多 worker 前，把
+# message_streams 换成基于 Redis pub/sub 的同接口实现即可，业务代码不用改
+# （与 KB 限流共享存储是同一条遗留）。
+_STREAM_MAX_CONNECTIONS = 5
+_STREAM_HEARTBEAT_SECONDS = 25  # ≤30s 一次心跳注释行
+_STREAM_QUEUE_MAXSIZE = 32
+
+
+class MessageStreamRegistry(ABC):
+    """站内信 SSE 连接注册表接口。
+
+    实现只需提供 connect / disconnect / publish 三个操作；多 worker 场景替换为
+    Redis pub/sub 实现即可，create_*_message 与 stream 路由都只依赖本接口。
+    """
+
+    @abstractmethod
+    async def connect(self, user_id: int) -> asyncio.Queue:
+        """登记一条新连接并返回其专属事件队列。"""
+
+    @abstractmethod
+    def disconnect(self, user_id: int, queue: asyncio.Queue) -> None:
+        """移除连接（生成器 finally 中调用）。"""
+
+    @abstractmethod
+    async def publish(self, user_id: int, frame: dict) -> None:
+        """向目标用户的全部活跃连接广播一帧。"""
+
+
+class InMemoryMessageStreamRegistry(MessageStreamRegistry):
+    """进程内实现：dict[user_id, deque[asyncio.Queue]]。"""
+
+    def __init__(self, max_per_user: int = _STREAM_MAX_CONNECTIONS):
+        self._max_per_user = max_per_user
+        self._connections: dict[int, deque] = {}
+        # 临界区内无 await，用 threading.Lock 避免跨事件循环隐患
+        self._lock = Lock()
+
+    async def connect(self, user_id: int) -> asyncio.Queue:
+        queue: asyncio.Queue = asyncio.Queue(maxsize=_STREAM_QUEUE_MAXSIZE)
+        with self._lock:
+            conns = self._connections.setdefault(user_id, deque())
+            while len(conns) >= self._max_per_user:
+                oldest = conns.popleft()
+                # 哨兵 None：让最旧连接立即优雅收尾（前端收到 closed 后转轮询，
+                # 避免 EventSource 自动重连引发「新连接踢旧连接」的抖动）
+                try:
+                    oldest.put_nowait(None)
+                except asyncio.QueueFull:
+                    pass
+            conns.append(queue)
+        return queue
+
+    def disconnect(self, user_id: int, queue: asyncio.Queue) -> None:
+        with self._lock:
+            conns = self._connections.get(user_id)
+            if not conns:
+                return
+            try:
+                conns.remove(queue)
+            except ValueError:
+                return
+            if not conns:
+                self._connections.pop(user_id, None)
+
+    async def publish(self, user_id: int, frame: dict) -> None:
+        with self._lock:
+            conns = list(self._connections.get(user_id, ()))
+        for queue in conns:
+            try:
+                queue.put_nowait(frame)
+            except asyncio.QueueFull:
+                # 弱网/长时间不消费：丢最旧一帧腾位置，保证新事件不被积压淹没
+                try:
+                    queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                try:
+                    queue.put_nowait(frame)
+                except asyncio.QueueFull:
+                    pass
+
+
+# 全局唯一注册表实例；多 worker 时替换为共享存储实现（见类注释）
+message_streams: MessageStreamRegistry = InMemoryMessageStreamRegistry()
+
+
+def _sse_frame(event: str, data: dict) -> str:
+    """把一帧业务事件格式化为 SSE 文本（包络例外：不包 {code,message,data}）。"""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+async def _notify_unread(db: AsyncSession, user_id: int, refresh: bool = True) -> None:
+    """以服务端为准重算未读数，并向目标用户的全部活跃连接推送。
+
+    所有 create_*_message 以及已读/删除操作写库成功后调用；客户端角标永远以
+    这里的 count 覆盖，重连/弱网场景下不会重复计数。
+    """
+    try:
+        count = await get_unread_count(db, user_id)
+    except Exception:
+        logger.exception("站内信 SSE 重算未读数失败（user_id=%s）", user_id)
+        return
+    try:
+        await message_streams.publish(user_id, {"event": "unread", "data": {"count": count}})
+        if refresh:
+            # 提示客户端重拉当前打开的 Tab 列表（新消息/已读状态变化都会影响列表）
+            await message_streams.publish(user_id, {"event": "refresh", "data": {}})
+    except Exception:
+        # 推送失败绝不影响写库主流程（与点赞通知同口径：通知失败 try/except 兜底）
+        logger.exception("站内信 SSE 推送失败（user_id=%s）", user_id)
+
+
+async def get_stream_user(
+    request: Request,
+    token: Optional[str] = Query(
+        default=None,
+        description="EventSource 无法自定义请求头，登录 token 经 query 参数传递",
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """SSE 专用鉴权：优先读 ?token=，兼容 Authorization: Bearer 头。
+
+    与 get_current_user 同口径：缺失/过期 token、用户不存在/已删除 → 401；
+    被禁用用户 → 403。流前错误走标准 HTTP + detail，不进入 SSE 流。
+    """
+    raw = token
+    if not raw:
+        auth_header = request.headers.get("Authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            raw = auth_header[7:].strip()
+    if not raw:
+        raise HTTPException(status_code=401, detail="未登录或缺少认证信息")
+    payload = decode_token(raw)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="登录状态已失效，请重新登录")
+    username = payload.get("sub")
+    if not username:
+        raise HTTPException(status_code=401, detail="登录状态已失效，请重新登录")
+    user = (
+        await db.execute(select(User).where(User.username == username))
+    ).scalar_one_or_none()
+    if user is None or user.status == USER_STATUS_DELETED:
+        raise HTTPException(status_code=401, detail="用户不存在或已被删除")
+    if user.status == USER_STATUS_DISABLED:
+        raise HTTPException(status_code=403, detail="该账号已被禁用，无法继续操作")
+    return user
 
 
 # ── 辅助函数 ──────────────────────────────────────────────────────
@@ -126,6 +288,62 @@ async def unread_count(
     """未读计数（含定向未读 + 广播未点击）。"""
     count = await get_unread_count(db, user.id)
     return _ok({"count": count})
+
+
+@router.get("/stream")
+async def message_stream(
+    request: Request,
+    user: User = Depends(get_stream_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """站内信实时推送（SSE，第二个不走 {code,message,data} 包络的接口）。
+
+    事件：
+      unread  data:{count}   未读数（建连首帧必发；重连后以服务端 unread 为准）
+      refresh data:{}        提示客户端重拉当前 Tab 列表
+      closed  data:{reason}  控制帧：连接数超上限被挤掉，客户端应停 SSE 转轮询
+    心跳：每 25s 一行 ": ping" 注释保活并探断连。
+    鉴权失败在流前以标准 HTTP + detail 返回（401/403），不进入事件流。
+    """
+    # 建连即以服务端未读数打底：重连/弱网不错数，首帧覆盖客户端旧值
+    initial_count = await get_unread_count(db, user.id)
+    queue = await message_streams.connect(user.id)
+
+    async def _generate():
+        try:
+            yield _sse_frame("unread", {"count": initial_count})
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    frame = await asyncio.wait_for(
+                        queue.get(), timeout=_STREAM_HEARTBEAT_SECONDS
+                    )
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+                    continue
+                if frame is None:
+                    # 被第 6 条连接挤掉：通知前端转轮询后结束，避免自动重连抖动
+                    yield _sse_frame("closed", {"reason": "too_many_connections"})
+                    break
+                yield _sse_frame(frame["event"], frame["data"])
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("站内信 SSE 流异常（user_id=%s）", user.id)
+        finally:
+            message_streams.disconnect(user.id, queue)
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            # 只对 proxy_pass 直连生效；nginx 侧仍需 proxy_buffering off（两个都要）
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.get("/replies")
@@ -191,6 +409,8 @@ async def mark_read(
     ok = await mark_message_read(db, user.id, message_id)
     if not ok:
         raise HTTPException(status_code=404, detail="消息不存在")
+    # 多标签页一致：已读状态变化后同步刷新其他标签的角标与列表
+    await _notify_unread(db, user.id)
     return _ok()
 
 
@@ -202,6 +422,7 @@ async def mark_all_read_endpoint(
 ):
     """批量标记已读（定向消息 + 可选系统/审核通知）。"""
     count = await mark_all_read(db, user.id, msg_type)
+    await _notify_unread(db, user.id)
     return _ok({"count": count})
 
 
@@ -215,6 +436,7 @@ async def delete_message(
     ok = await delete_user_message(db, user.id, message_id)
     if not ok:
         raise HTTPException(status_code=400, detail="无法删除该消息")
+    await _notify_unread(db, user.id)
     return _ok()
 
 
@@ -401,6 +623,8 @@ async def create_reply_message(
     db.add(um)
     await db.commit()
     await db.refresh(msg)
+    # 新消息实时触达：推送未读数 + 列表刷新给该用户全部活跃连接
+    await _notify_unread(db, target_user_id)
     return msg
 
 
@@ -459,6 +683,7 @@ async def create_article_comment_message(
     db.add(um)
     await db.commit()
     await db.refresh(msg)
+    await _notify_unread(db, article_author_id)
     return msg
 
 
@@ -551,6 +776,7 @@ async def create_like_message(
     db.add(um)
     await db.commit()
     await db.refresh(msg)
+    await _notify_unread(db, author_id)
     return msg
 
 
@@ -604,6 +830,7 @@ async def create_article_review_message(
     db.add(um)
     await db.commit()
     await db.refresh(msg)
+    await _notify_unread(db, author_id)
     return msg
 
 
@@ -656,6 +883,7 @@ async def create_beta_review_message(
     db.add(um)
     await db.commit()
     await db.refresh(msg)
+    await _notify_unread(db, user.id)
     return msg
 
 
