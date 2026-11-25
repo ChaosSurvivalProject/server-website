@@ -146,9 +146,9 @@
           </div>
         </section>
 
-        <!-- 全部回复（正序、不分页），主评论是回复时也列出其所属顶层评论下的所有兄弟回复 -->
+        <!-- 回复列表（FLPR-40：默认第一页 10 条、正序，按页追加，口径同文章页评论区） -->
         <section class="fx-card detail-card">
-          <div class="fx-card-hd"><span>全部回复 {{ replies.length }}</span></div>
+          <div class="fx-card-hd"><span>全部回复 {{ replyTotal }}</span></div>
           <div class="fx-card-pad">
             <div v-if="!replies.length" class="fx-empty">
               <div class="fx-empty-title">还没有回复</div>
@@ -220,6 +220,17 @@
                 </div>
               </div>
             </div>
+            <!-- 回复分页（FLPR-40）：与文章页评论区同一文案口径 -->
+            <div v-if="replyTotal > 10" class="reply-more">
+              <button
+                type="button"
+                class="cmt-act reply-more-btn"
+                :disabled="repliesLoading"
+                @click="toggleReplyPage"
+              >
+                {{ replyButtonText }}
+              </button>
+            </div>
           </div>
         </section>
       </div>
@@ -249,6 +260,10 @@ export default {
       comment: null,
       rootComment: null,
       replies: [],
+      replyTotal: 0,
+      replyPage: 1,
+      replyHasMore: false,
+      repliesLoading: false,
       loading: true,
       error: "",
       deletedMain: false,
@@ -281,6 +296,16 @@ export default {
         query: { commentId: String(this.comment.id) },
       };
     },
+    /** 回复分页按钮文案：与 CommentSection 同一口径 */
+    replyButtonText() {
+      if (this.replies.length >= this.replyTotal) return "收起";
+      const left = this.replyTotal - this.replies.length;
+      return left >= 10 ? "查看10条更多评论" : `查看剩余${left}条评论`;
+    },
+    /** 所属顶层评论 id：主评论是回复时用 rootComment.id，否则就是主评论 id */
+    rootId() {
+      return this.rootComment ? this.rootComment.id : this.comment ? this.comment.id : null;
+    },
   },
   watch: {
     commentId() {
@@ -302,17 +327,73 @@ export default {
       this.loading = true;
       this.error = "";
       this.deletedMain = false;
+      this.replies = [];
+      this.replyTotal = 0;
+      this.replyPage = 1;
+      this.replyHasMore = false;
       try {
         const res = await forumAPI.getCommentDetail(this.commentId);
         this.article = res.article;
         this.comment = res.comment;
         this.rootComment = res.rootComment || null;
         this.replies = res.replies || [];
+        this.replyTotal = typeof res.replyTotal === "number" ? res.replyTotal : this.replies.length;
+        this.replyPage = res.replyPage || 1;
+        this.replyHasMore = res.replyHasMore === true;
+
+        // 站内信直达的目标回复可能在第 11 条以后：后端按 commentId 返回所在页，
+        // 逐页追加加载，保证「当前评论」在列表里可见（FLPR-40 高亮兼容口径）
+        if (this.rootComment && !this.replies.some((r) => r.id === this.commentId)) {
+          const located = await forumAPI.getCommentReplies(this.article.id, this.rootId, {
+            pageSize: 10,
+            commentId: this.commentId,
+          });
+          const targetPage = located?.page || 1;
+          while (this.replyPage < targetPage) {
+            if (!(await this.loadNextReplies())) break;
+          }
+        }
       } catch (e) {
         // getCommentDetail 用 silent 请求，404 的明确提示由本页空态负责
         this.error = e?.response?.data?.detail || e?.message || "评论加载失败，请稍后重试";
       } finally {
         this.loading = false;
+      }
+    },
+
+    /** 查看更多 / 收起（收起只回第一页 10 条，不重新请求） */
+    async toggleReplyPage() {
+      if (this.repliesLoading) return;
+      if (this.replies.length >= this.replyTotal) {
+        this.replies = this.replies.slice(0, 10);
+        this.replyPage = 1;
+        return;
+      }
+      await this.loadNextReplies();
+    },
+
+    /** 请求下一页回复并追加，total 始终以后端为准 */
+    async loadNextReplies() {
+      if (this.repliesLoading) return false;
+      this.repliesLoading = true;
+      try {
+        const next = this.replyPage + 1;
+        const res = await forumAPI.getCommentReplies(this.article.id, this.rootId, {
+          page: next,
+          pageSize: 10,
+        });
+        const items = res.items || [];
+        if (!items.length) return false; // 页码越界（数据变动）：避免死循环
+        this.replies.push(...items);
+        this.replyPage = res.page || next;
+        if (typeof res.total === "number") this.replyTotal = res.total;
+        this.replyHasMore = res.hasNext === true;
+        return true;
+      } catch (e) {
+        this.showForumToast(e?.message || "加载更多回复失败");
+        return false;
+      } finally {
+        this.repliesLoading = false;
       }
     },
 
@@ -363,7 +444,11 @@ export default {
           parentId: this.replyTarget.rootId,
           replyToUserId: this.replyTarget.authorId,
         });
-        this.replies.push(created); // 回复按时间正序，新回复落在末尾
+        const wasAllLoaded = this.replies.length >= this.replyTotal;
+        this.replyTotal += 1;
+        // 折叠态下新回复落在未加载页，不插进第一页
+        if (wasAllLoaded) this.replies.push(created);
+        this.replyHasMore = this.replies.length < this.replyTotal;
         this.closeReply();
       } catch (e) {
         this.showForumToast(e?.message || "回复发表失败");
@@ -387,6 +472,8 @@ export default {
           this.deletedMain = true;
         } else {
           this.replies = this.replies.filter((r) => r.id !== comment.id);
+          if (this.replyTotal > 0) this.replyTotal -= 1;
+          this.replyHasMore = this.replies.length < this.replyTotal;
         }
         this.showForumToast("已删除");
       } catch (e) {
@@ -524,6 +611,13 @@ export default {
 }
 .cmt-reply .cmt-text {
   font-size: 13.5px;
+}
+/* 回复分页（FLPR-40）：沿用全局 .cmt-act 令牌色，深浅主题一致 */
+.reply-more {
+  margin-top: 8px;
+}
+.reply-more-btn {
+  font-size: 12.5px;
 }
 .empty-card {
   margin-top: 14px;

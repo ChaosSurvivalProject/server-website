@@ -215,8 +215,9 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 | GET | `/api/forum/config` | 前台配置（Banner 三项 + `defaultSort` + `searchPlaceholder`；打赏预留键不下发） |
 | GET | `/api/forum/articles` | 文章列表（参数 `page`,`pageSize`,`category`,`sort`,`q`,`tag`,`authorId`；`category=home`=全部 / `recommend`=置顶∪加精按浏览量；`sort=latest\|views\|comments`；`authorId`=按作者筛，**只含已发布**，个人主页「TA 的帖子」用；**置顶帖在任意排序档中都恒排最前**） |
 | GET | `/api/forum/articles/{id}` | 详情（未公开文章对非作者非管理员按 404 处理；**回收站帖对所有人 404，含作者本人**；**不计数浏览量**） |
-| GET | `/api/forum/articles/{id}/comments` | 评论列表（`page`,`pageSize`；**只对顶层评论分页**，每条内嵌 `replies`；已登录附每条 `liked`） |
-| GET | `/api/forum/comments/{id}` | 单条评论详情（匿名可读；`id` 可为顶层评论或回复；返回 `{comment, rootComment, replies, article}`，`replies` 为所属顶层评论下全部正常回复、正序不分页；评论已删除 / 文章不可见一律 404） |
+| GET | `/api/forum/articles/{id}/comments` | 评论列表（`page`,`pageSize`；**只对顶层评论分页**，每条内嵌**第一页 10 条**回复 + `replyTotal`/`replyPage`/`replyHasMore`；已登录附每条 `liked`；FLPR-40） |
+| GET | `/api/forum/articles/{id}/comments/{rootId}/replies` | 回复按页（`page`,`pageSize`，默认 10，正序；返回 `{items, page, pageSize, total, totalPages, hasNext}`；传 `commentId` 时忽略 `page`、返回目标回复所在页，供高亮/回复前置加载；`rootId` 必须是顶层评论，否则 404；FLPR-40） |
+| GET | `/api/forum/comments/{id}` | 单条评论详情（匿名可读；`id` 可为顶层评论或回复；返回 `{comment, rootComment, replies, article, replyTotal, replyPage, replyHasMore}`，`replies` 为所属顶层评论下**第一页 10 条**正常回复、正序，分页口径同文章页评论区；评论已删除 / 文章不可见一律 404） |
 | GET | `/api/forum/articles/{id}/author-posts` | 作者其他已发布文章（最多 5 条） |
 | POST | `/api/forum/articles/{id}/view` | 浏览量 +1（匿名可调；原子自增，重复刷新重复计为已接受行为） |
 | GET | `/api/forum/users/{userId}/stats` | 某人的公开论坛数据（作者卡 / 个人主页头部用；`{author, postCount, likeCount, followerCount, createTime}`，`followerCount` 恒 0，不下发任何私有字段；用户不存在或已注销返 404） |

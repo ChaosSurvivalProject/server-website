@@ -269,7 +269,9 @@ export const forumAPI = {
   getArticle: (articleId) => axiosInstance.get(`/api/forum/articles/${articleId}`),
 
   /**
-   * 评论列表（只对顶层评论分页，每条顶层评论内嵌 replies 数组）
+   * 评论列表（顶层评论分页；每条顶层评论内嵌**第一页 10 条**回复）。
+   * 顶层节点额外带 replyTotal / replyPage / replyHasMore，供「查看10条更多评论」
+   * 「查看剩余N条评论」文案与按页追加（FLPR-40）。
    * @param {number} articleId
    * @param {{page?: number, pageSize?: number}} [params]
    * @returns {Promise} - data: {items: [评论树], page, pageSize, total, ...}
@@ -278,13 +280,25 @@ export const forumAPI = {
     axiosInstance.get(`/api/forum/articles/${articleId}/comments`, { params }),
 
   /**
+   * 某条顶层评论下的回复分页（FLPR-40）。默认 pageSize=10，正序。
+   * @param {number} articleId
+   * @param {number} commentId - 顶层评论 id（rootId）
+   * @param {{page?: number, pageSize?: number, commentId?: number}} [params]
+   *   commentId 可选：传目标回复 id 时后端返回**其所在页**（用于高亮/回复前置加载）
+   * @returns {Promise} - data: {items: [回复节点], page, pageSize, total, totalPages, hasNext}
+   */
+  getCommentReplies: (articleId, commentId, params = {}) =>
+    axiosInstance.get(`/api/forum/articles/${articleId}/comments/${commentId}/replies`, { params }),
+
+  /**
    * 单条评论详情（站内信直达评论详情页使用；顶层评论 id 与回复 id 都可传入）。
    * 匿名可读；评论已删除 / 所属文章不可见时后端 404（silent 交由页面展示明确空态）。
    * @param {number} commentId
    * @returns {Promise} - data: {
    *   comment: 主评论节点,
    *   rootComment: 所属顶层评论节点（主评论本身是回复时才有，否则 null）,
-   *   replies: [该顶层评论下的全部回复（正序、不分页）],
+   *   replies: [该顶层评论下的第一页 10 条回复（正序）],
+   *   replyTotal: number, replyPage: number, replyHasMore: boolean,
    *   article: {id, title, status, publishTime, author}
    * }
    *   节点字段与 getComments 一致：{id, articleId, content, parentId, replyToUserId,

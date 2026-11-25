@@ -13,8 +13,9 @@
   GET    /forum/config                     前台配置（Banner 三项 + defaultSort + searchPlaceholder）
   GET    /forum/articles                   文章列表（category/sort/q/tag/page；authorId=按作者筛，个人主页用）
   GET    /forum/articles/{id}              详情（未公开文章对非作者/管理员按 404 处理）
-  GET    /forum/articles/{id}/comments     评论列表（只对顶层评论分页，每条内嵌 replies）
-  GET    /forum/comments/{id}               单条评论详情（顶层/回复均可；含顶层上下文 + 全部回复 + 文章摘要，匿名可读）
+  GET    /forum/articles/{id}/comments     顶层评论分页；每条内嵌第一页 10 条回复 + replyTotal（FLPR-40）
+  GET    /forum/articles/{id}/comments/{rootId}/replies  回复按页（page/pageSize/commentId 定位所在页）
+  GET    /forum/comments/{id}               单条评论详情（顶层/回复均可；含顶层上下文 + 第一页回复 + 文章摘要，匿名可读）
   GET    /forum/articles/{id}/author-posts 作者其他已发布文章（最多 5 条）
   GET    /forum/users/{id}/stats           指定用户的公开论坛数据（发帖/获赞/粉丝 + 注册时间，匿名可读）
   GET    /forum/users/{id}/comments        指定用户的公开评论（仅已发布文章下的正常评论，匿名可读，分页）
@@ -164,6 +165,9 @@ MAX_TAG_NAME_LEN = 20
 TITLE_MIN, TITLE_MAX = 2, 100
 CONTENT_MIN, CONTENT_MAX = 10, 50000
 COMMENT_MIN, COMMENT_MAX = 1, 500
+# 回复分页每页条数（FLPR-40）：与前端「查看10条更多评论」按钮文案锁定为同一口径。
+# 顶层评论分页的 pageSize 由请求参数单独控制，二者互不影响。
+REPLY_PAGE_SIZE = 10
 REVIEW_NOTE_MAX = 200
 SUMMARY_LEN = 100
 
@@ -1026,9 +1030,17 @@ async def _comment_node(
 
 
 async def _comment_nodes(
-    db: AsyncSession, comments: list[ForumComment], viewer: Optional[User]
+    db: AsyncSession,
+    comments: list[ForumComment],
+    viewer: Optional[User],
+    reply_totals: Optional[dict[int, int]] = None,
 ) -> list[dict]:
-    """批量构造评论树：只对顶层评论分页，顶层按时间倒序、其下回复按时间正序。"""
+    """批量构造评论树：只对顶层评论分页；每条顶层下**只内嵌第一页回复**（正序 10 条）。
+
+    FLPR-40：回复改为后端分页，`replies` 不再全量下发。节点额外带
+    `replyTotal` / `replyPage` / `replyHasMore` 供前端生成「查看10条更多评论」
+    「查看剩余N条评论」文案；后续页走 `GET /articles/{id}/comments/{rootId}/replies`。
+    """
     if not comments:
         return []
     top = [c for c in comments if c.parent_id == 0]
@@ -1054,8 +1066,14 @@ async def _comment_nodes(
 
     nodes = []
     for c in top:
+        child_rows = by_parent.get(c.id, [])
+        reply_total = (
+            reply_totals.get(c.id, len(child_rows))
+            if reply_totals is not None
+            else len(child_rows)
+        )
         child_nodes = []
-        for rc in by_parent.get(c.id, []):
+        for rc in child_rows[:REPLY_PAGE_SIZE]:  # 默认只渲染第一页（最早的 10 条）
             reply_to = user_map.get(rc.reply_to_user_id) if rc.reply_to_user_id else None
             child_nodes.append(
                 await _comment_node(
@@ -1066,9 +1084,11 @@ async def _comment_nodes(
                     reply_to_name=(reply_to.nickname or reply_to.username) if reply_to else None,
                 )
             )
-        nodes.append(
-            await _comment_node(db, c, user_map.get(c.author_id), liked_ids, replies=child_nodes)
-        )
+        node = await _comment_node(db, c, user_map.get(c.author_id), liked_ids, replies=child_nodes)
+        node["replyTotal"] = reply_total
+        node["replyPage"] = 1
+        node["replyHasMore"] = reply_total > REPLY_PAGE_SIZE
+        nodes.append(node)
     return nodes
 
 
@@ -1080,7 +1100,12 @@ async def list_comments(
     db: AsyncSession = Depends(get_db),
     user: Optional[User] = Depends(get_optional_user),
 ):
-    """评论列表：只对顶层评论分页（每页 10 条），其下回复一次性全返且不嵌套 replies。"""
+    """评论列表：顶层评论分页（默认每页 10 条）；每条顶层下只内嵌**第一页 10 条**回复。
+
+    FLPR-40：回复不再全量下发。节点带 replyTotal / replyPage / replyHasMore，
+    后续页走 `GET /articles/{id}/comments/{rootId}/replies`（支持 commentId 定位所在页）。
+    顶层评论的分页参数与行为保持不变。
+    """
     article = await _get_article(db, article_id)
     if article is None or not _can_view_article(article, user):
         raise HTTPException(status_code=404, detail="帖子不存在或已被删除")
@@ -1116,18 +1141,140 @@ async def list_comments(
         top_rows = list(top_r.scalars().all())
         top_ids = [c.id for c in top_rows]
         reply_rows: list[ForumComment] = []
+        reply_totals: dict[int, int] = {}
         if top_ids:
-            reply_r = await db.execute(
-                select(ForumComment).where(
+            # 每条顶层评论的回复总数（只查计数，不把全量正文拉回来）
+            cnt_reply = await db.execute(
+                select(ForumComment.parent_id, func.count())
+                .where(
                     ForumComment.article_id == article_id,
                     ForumComment.parent_id.in_(top_ids),
                     ForumComment.status == COMMENT_NORMAL,
                 )
+                .group_by(ForumComment.parent_id)
             )
-            reply_rows = list(reply_r.scalars().all())
-        nodes = await _comment_nodes(db, top_rows + reply_rows, user)
+            reply_totals = {pid: n for pid, n in cnt_reply.all()}
+
+            # 用窗口函数只取每条顶层评论的前 REPLY_PAGE_SIZE 条回复（正序）
+            ranked = (
+                select(
+                    ForumComment.id.label("rid"),
+                    func.row_number()
+                    .over(
+                        partition_by=ForumComment.parent_id,
+                        order_by=(ForumComment.create_time.asc(), ForumComment.id.asc()),
+                    )
+                    .label("rn"),
+                )
+                .where(
+                    ForumComment.article_id == article_id,
+                    ForumComment.parent_id.in_(top_ids),
+                    ForumComment.status == COMMENT_NORMAL,
+                )
+                .subquery()
+            )
+            first_ids = list(
+                (
+                    await db.execute(select(ranked.c.rid).where(ranked.c.rn <= REPLY_PAGE_SIZE))
+                ).scalars().all()
+            )
+            if first_ids:
+                reply_r = await db.execute(
+                    select(ForumComment).where(ForumComment.id.in_(first_ids))
+                )
+                reply_rows = list(reply_r.scalars().all())
+        nodes = await _comment_nodes(db, top_rows + reply_rows, user, reply_totals)
 
     return _ok(_page_payload(nodes, page, page_size, total))
+
+
+@router.get("/articles/{article_id}/comments/{comment_id}/replies")
+async def list_comment_replies(
+    article_id: int,
+    comment_id: int,
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=REPLY_PAGE_SIZE, ge=1, le=100),
+    commentId: Optional[int] = Query(
+        default=None, description="目标回复 id；传入时忽略 page，返回其所在页"
+    ),
+    db: AsyncSession = Depends(get_db),
+    user: Optional[User] = Depends(get_optional_user),
+):
+    """按页返回某条顶层评论下的回复（正序）：`{items, page, pageSize, total, ...}`。
+
+    - `comment_id` 必须是该文章下**正常的顶层评论**（parent_id=0），否则 404；
+    - `pageSize` 默认 10，与前端按钮文案和顶层评论第一页口径一致；
+    - 传 `commentId`（站内信 / 高亮直达的回复 id）时按正序位置计算其所在页并返回该页，
+      供前端先加载到目标页再滚动高亮；目标不是该顶层下的正常回复则 404。
+    """
+    article = await _get_article(db, article_id)
+    if article is None or not _can_view_article(article, user):
+        raise HTTPException(status_code=404, detail="帖子不存在或已被删除")
+    root = (
+        await db.execute(
+            select(ForumComment).where(
+                ForumComment.id == comment_id,
+                ForumComment.article_id == article_id,
+                ForumComment.parent_id == 0,
+                ForumComment.status == COMMENT_NORMAL,
+            )
+        )
+    ).scalar_one_or_none()
+    if root is None:
+        raise HTTPException(status_code=404, detail="评论不存在或已被删除")
+
+    reply_where = and_(
+        ForumComment.article_id == article_id,
+        ForumComment.parent_id == comment_id,
+        ForumComment.status == COMMENT_NORMAL,
+    )
+    total = (
+        await db.execute(select(func.count()).select_from(ForumComment).where(reply_where))
+    ).scalar_one()
+    if commentId is not None:
+        target = (
+            await db.execute(
+                select(ForumComment).where(
+                    reply_where,
+                    ForumComment.id == commentId,
+                )
+            )
+        ).scalar_one_or_none()
+        if target is None:
+            raise HTTPException(status_code=404, detail="回复不存在或已被删除")
+        # 正序位置 = 创建时间更早的条数 + 同时间但 id 更小的条数
+        before = (
+            await db.execute(
+                select(func.count())
+                .select_from(ForumComment)
+                .where(
+                    reply_where,
+                    or_(
+                        ForumComment.create_time < target.create_time,
+                        and_(
+                            ForumComment.create_time == target.create_time,
+                            ForumComment.id < target.id,
+                        ),
+                    ),
+                )
+            )
+        ).scalar_one()
+        page = before // pageSize + 1
+    offset = (page - 1) * pageSize
+    page_rows = list(
+        (
+            await db.execute(
+                select(ForumComment)
+                .where(reply_where)
+                .order_by(ForumComment.create_time.asc(), ForumComment.id.asc())
+                .offset(offset)
+                .limit(pageSize)
+            )
+        ).scalars().all()
+    )
+    nodes = await _comment_node_map(db, page_rows, user)
+    items = [nodes[c.id] for c in page_rows]
+    return _ok(_page_payload(items, page, pageSize, total))
 
 
 async def _comment_node_map(
@@ -1177,8 +1324,10 @@ async def get_comment_detail(
 
     - :id 可以是顶层评论，也可以是回复：回复同样作为主评论渲染，所属顶层评论作为
       `rootComment` 上下文一并下发；顶层评论的 `rootComment` 为 null。
-    - `replies` 是所属顶层评论下的**全部**正常回复，(create_time, id) 正序、不分页，
-      解决原方案"目标评论在第 11 条以后，文章页第 1 页 DOM 里找不到"的问题。
+    - `replies` 是所属顶层评论下的**第一页**正常回复（正序 10 条），与文章页评论区
+      同一分页口径：额外带 `replyTotal` / `replyPage` / `replyHasMore`，后续页走
+      `GET /articles/{id}/comments/{rootId}/replies?commentId=...`（FLPR-40）。
+      站内信直达的目标回复若不在第一页，前端先按 commentId 定位到所在页再展开。
     - 可见性与文章详情同口径：评论 status != 1 或文章 _can_view_article 不放行 → 404；
       前端按 404 展示明确空态（"该评论已被删除"），不静默白屏。
       **不要顺手放宽到未公开文章**——那会成为枚举未公开文章 id 的新入口。
@@ -1206,16 +1355,47 @@ async def get_comment_detail(
         ):
             raise HTTPException(status_code=404, detail="评论不存在或已被删除")
 
-    r = await db.execute(
-        select(ForumComment)
+    reply_total = (
+        await db.execute(
+            select(func.count())
+            .select_from(ForumComment)
+            .where(
+                ForumComment.article_id == article.id,
+                ForumComment.parent_id == root.id,
+                ForumComment.status == COMMENT_NORMAL,
+            )
+        )
+    ).scalar_one()
+    ranked = (
+        select(
+            ForumComment.id.label("rid"),
+            func.row_number()
+            .over(
+                partition_by=ForumComment.parent_id,
+                order_by=(ForumComment.create_time.asc(), ForumComment.id.asc()),
+            )
+            .label("rn"),
+        )
         .where(
             ForumComment.article_id == article.id,
             ForumComment.parent_id == root.id,
             ForumComment.status == COMMENT_NORMAL,
         )
-        .order_by(ForumComment.create_time.asc(), ForumComment.id.asc())
+        .subquery()
     )
-    replies = list(r.scalars().all())
+    first_ids = list(
+        (
+            await db.execute(select(ranked.c.rid).where(ranked.c.rn <= REPLY_PAGE_SIZE))
+        ).scalars().all()
+    )
+    replies = []
+    if first_ids:
+        replies = list(
+            (
+                await db.execute(select(ForumComment).where(ForumComment.id.in_(first_ids)))
+            ).scalars().all()
+        )
+        replies.sort(key=lambda c: (c.create_time, c.id))  # 正序：先来后到
 
     nodes = await _comment_node_map(db, [comment, root] + replies, user)
     article_author = (await _get_users(db, {article.author_id})).get(article.author_id)
@@ -1224,6 +1404,9 @@ async def get_comment_detail(
             "comment": nodes[comment.id],
             "rootComment": nodes[root.id] if comment.parent_id else None,
             "replies": [nodes[rc.id] for rc in replies],
+            "replyTotal": reply_total,
+            "replyPage": 1,
+            "replyHasMore": reply_total > REPLY_PAGE_SIZE,
             "article": {
                 "id": article.id,
                 "title": article.title,

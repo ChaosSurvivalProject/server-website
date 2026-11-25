@@ -976,6 +976,67 @@ def main() -> int:
         l1 = exp_of(bob_uid)
         check("每日登录经验按日封顶", l1 == l0, f"{l0}->{l1}")
 
+        print("\n[23] 回复分页（FLPR-40：后端按页 + total，顶层分页不回归）")
+        aid_p = client.post("/api/forum/articles", headers=H(alice), json={
+            "categoryId": cat_id, "title": "回复分页验证帖",
+            "content": "x" * 30}).json()["data"]["id"]
+        client.put(f"/api/forum/admin/articles/{aid_p}/review", headers=H(admin), json={"status": 1})
+        root_p = client.post(f"/api/forum/articles/{aid_p}/comments", headers=H(alice),
+                             json={"content": "分页顶楼"}).json()["data"]
+        reply_ids = [
+            client.post(f"/api/forum/articles/{aid_p}/comments", headers=H(bob),
+                        json={"content": f"回复{i}", "parentId": root_p["id"]}).json()["data"]["id"]
+            for i in range(31)
+        ]
+        cl = client.get(f"/api/forum/articles/{aid_p}/comments").json()["data"]
+        top_node = next(c for c in cl["items"] if c["id"] == root_p["id"])
+        check("顶层默认只内嵌第一页 10 条回复", len(top_node["replies"]) == 10,
+              str(len(top_node["replies"])))
+        check("replyTotal=31 / replyHasMore=true",
+              top_node["replyTotal"] == 31 and top_node["replyHasMore"] is True, str(top_node))
+        check("第一页是最早 10 条（正序）",
+              [r["id"] for r in top_node["replies"]] == reply_ids[:10],
+              str([r["id"] for r in top_node["replies"]]))
+        p2 = client.get(f"/api/forum/articles/{aid_p}/comments/{root_p['id']}/replies?page=2&pageSize=10").json()["data"]
+        check("第 2 页 10 条 + total=31",
+              len(p2["items"]) == 10 and p2["total"] == 31 and p2["page"] == 2
+              and p2["items"][0]["id"] == reply_ids[10], str(p2["page"]))
+        p4 = client.get(f"/api/forum/articles/{aid_p}/comments/{root_p['id']}/replies?page=4").json()["data"]
+        check("第 4 页仅剩 1 条（共 31）", len(p4["items"]) == 1 and p4["total"] == 31,
+              str(len(p4["items"])))
+        loc = client.get(f"/api/forum/articles/{aid_p}/comments/{root_p['id']}/replies?commentId={reply_ids[25]}").json()["data"]
+        check("按 commentId 定位目标所在页（第 3 页）",
+              loc["page"] == 3 and reply_ids[25] in [x["id"] for x in loc["items"]],
+              str(loc["page"]))
+        d_reply = client.get(f"/api/forum/comments/{reply_ids[25]}").json()["data"]
+        check("评论详情页同口径：第一页 10 + replyTotal=31",
+              len(d_reply["replies"]) == 10 and d_reply["replyTotal"] == 31
+              and d_reply["rootComment"]["id"] == root_p["id"], str(d_reply["replyTotal"]))
+        check("回复 id 不能当 rootId 调分页接口（404）",
+              client.get(f"/api/forum/articles/{aid_p}/comments/{reply_ids[0]}/replies").status_code == 404)
+        check("顶层评论分页行为不回归（total=1）", cl["total"] == 1 and cl["pageSize"] == 10,
+              f"total={cl['total']}")
+
+        # 15 条回复：默认 10 条，下一页 5 条（前端据此显示「查看剩余5条评论」）
+        aid15 = client.post("/api/forum/articles", headers=H(alice), json={
+            "categoryId": cat_id, "title": "回复分页 15 条验证帖",
+            "content": "y" * 30}).json()["data"]["id"]
+        client.put(f"/api/forum/admin/articles/{aid15}/review", headers=H(admin), json={"status": 1})
+        root15 = client.post(f"/api/forum/articles/{aid15}/comments", headers=H(alice),
+                             json={"content": "15 条顶楼"}).json()["data"]
+        ids15 = [
+            client.post(f"/api/forum/articles/{aid15}/comments", headers=H(bob),
+                        json={"content": f"r{i}", "parentId": root15["id"]}).json()["data"]["id"]
+            for i in range(15)
+        ]
+        cl15 = client.get(f"/api/forum/articles/{aid15}/comments").json()["data"]["items"][0]
+        check("15 条回复默认 10 条 + replyTotal=15",
+              len(cl15["replies"]) == 10 and cl15["replyTotal"] == 15, str(cl15["replyTotal"]))
+        p15_2 = client.get(f"/api/forum/articles/{aid15}/comments/{root15['id']}/replies?page=2").json()["data"]
+        check("15 条回复第 2 页 5 条",
+              len(p15_2["items"]) == 5 and p15_2["total"] == 15
+              and [x["id"] for x in p15_2["items"]] == ids15[10:], str(len(p15_2["items"])))
+
     print("\n" + "=" * 64)
     if FAILS:
         print(f"\033[31m{len(FAILS)} 项失败：\033[0m")

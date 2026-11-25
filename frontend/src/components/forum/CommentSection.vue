@@ -202,6 +202,17 @@
                   />
                 </div>
               </div>
+              <!-- 回复分页按钮（FLPR-40）：数字来自 replyTotal - 已加载数，不前端硬编码 -->
+              <div v-if="(c.replyTotal || 0) > 10" class="reply-more">
+                <button
+                  type="button"
+                  class="cmt-act reply-more-btn"
+                  :disabled="c.replyLoading"
+                  @click="toggleReplyPage(c)"
+                >
+                  {{ replyButtonText(c) }}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -254,6 +265,8 @@ export default {
       replySubmitting: false,
       deleteTarget: null,
       deleteSubmitting: false,
+      /** 高亮前置加载防重入（watch 与 fetchComments finally 可能同时触发） */
+      flashLoading: false,
     };
   },
   computed: {
@@ -303,7 +316,8 @@ export default {
       this.error = "";
       try {
         const res = await forumAPI.getComments(this.articleId, { page, pageSize: 10 });
-        this.comments = res.items || [];
+        // FLPR-40：补齐回复分页的本地状态字段（新属性必须 $set 语义，故整体重建对象）
+        this.comments = (res.items || []).map((c) => this.decorateTop(c));
         this.page = res.page || 1;
         this.total = res.total || 0;
         this.totalPages = res.totalPages || 1;
@@ -318,26 +332,166 @@ export default {
       }
     },
 
-    /** 高亮闪烁指定评论 2 次（从站内信点击进入） */
-    flashComment(commentId) {
-      const el = document.getElementById("comment-" + commentId);
-      if (!el) return;
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
+    /** 顶层评论节点的本地分页状态（$set 语义：整对象重建，保证新字段响应式） */
+    decorateTop(c) {
+      return {
+        ...c,
+        replies: c.replies || [],
+        replyTotal: typeof c.replyTotal === "number" ? c.replyTotal : (c.replies || []).length,
+        replyPage: c.replyPage || 1,
+        replyHasMore: c.replyHasMore === true,
+        replyLoading: false,
+      };
+    },
 
-      let timer;
-      const finish = () => {
-        clearTimeout(timer);
-        timer = setTimeout(() => {
+    /** 按钮文案：剩余 ≥10 → 查看10条更多评论；剩余 <10 → 查看剩余N条评论；全加载 → 收起 */
+    replyButtonText(c) {
+      const loaded = (c.replies || []).length;
+      const total = c.replyTotal || 0;
+      if (loaded >= total) return "收起";
+      const left = total - loaded;
+      return left >= 10 ? "查看10条更多评论" : `查看剩余${left}条评论`;
+    },
+
+    /** 查看更多 / 收起（收起只回第一页 10 条，不重新请求） */
+    async toggleReplyPage(c) {
+      if (c.replyLoading) return;
+      if ((c.replies || []).length >= (c.replyTotal || 0)) {
+        c.replies = (c.replies || []).slice(0, 10);
+        c.replyPage = 1;
+        return;
+      }
+      await this.loadNextReplyPage(c);
+    },
+
+    /** 请求下一页回复并追加渲染；total 始终以后端返回为准 */
+    async loadNextReplyPage(c) {
+      if (c.replyLoading) return false;
+      c.replyLoading = true;
+      try {
+        const next = (c.replyPage || 1) + 1;
+        const res = await forumAPI.getCommentReplies(this.articleId, c.id, {
+          page: next,
+          pageSize: 10,
+        });
+        const items = res.items || [];
+        if (!items.length) return false; // 页码越界（数据变动）：避免死循环
+        if (!c.replies) c.replies = [];
+        c.replies.push(...items);
+        c.replyPage = res.page || next;
+        if (typeof res.total === "number") c.replyTotal = res.total;
+        c.replyHasMore = res.hasNext === true;
+        return true;
+      } catch (e) {
+        this.$emit("placeholder", e?.message || "加载更多评论失败");
+        return false;
+      } finally {
+        c.replyLoading = false;
+      }
+    },
+
+    /** 单次请求失败重试一次（高亮 / 回复前置加载共用） */
+    async _getWithRetry(fn) {
+      try {
+        return await fn();
+      } catch (e) {
+        return await fn();
+      }
+    },
+
+    /**
+     * 确保目标评论已在 DOM：顶层评论翻页 + 回复分页前置加载（FLPR-40 硬性）。
+     * 站内信 `?commentId=` 可能是第 11 条以后的回复：先用详情接口拿所属顶层 id，
+     * 再让后端按 commentId 返回所在页，逐页追加到该页后再滚动高亮。
+     */
+    async ensureCommentLoaded(commentId) {
+      if (document.getElementById("comment-" + commentId)) return true;
+      const asTop = this.comments.find((c) => c.id === commentId);
+      if (asTop) return true;
+      for (const c of this.comments) {
+        if ((c.replies || []).some((r) => r.id === commentId)) return true;
+      }
+
+      const detail = await this._getWithRetry(() => forumAPI.getCommentDetail(commentId));
+      const rootId =
+        detail?.rootComment?.id ||
+        (detail?.comment?.parentId ? detail.comment.parentId : detail?.comment?.id);
+      if (!rootId) return false;
+
+      // 所属顶层评论不在当前顶层页时，翻到它所在页
+      let host = this.comments.find((c) => c.id === rootId);
+      if (!host) {
+        for (let p = 1; p <= (this.totalPages || 1); p++) {
+          if (p === this.page) continue;
+          const res = await this._getWithRetry(() =>
+            forumAPI.getComments(this.articleId, { page: p, pageSize: 10 })
+          );
+          host = (res.items || []).find((c) => c.id === rootId);
+          if (host) {
+            this.comments = (res.items || []).map((c) => this.decorateTop(c));
+            this.page = res.page || p;
+            break;
+          }
+        }
+      }
+      if (!host) return false;
+
+      if (!(host.replies || []).some((r) => r.id === commentId)) {
+        const located = await this._getWithRetry(() =>
+          forumAPI.getCommentReplies(this.articleId, rootId, { pageSize: 10, commentId })
+        );
+        const targetPage = located?.page || 1;
+        while ((host.replyPage || 1) < targetPage) {
+          if (!(await this.loadNextReplyPage(host))) return false;
+        }
+        // 数据变动兜底：仍未出现就继续追加，直到全部加载
+        while (
+          !(host.replies || []).some((r) => r.id === commentId) &&
+          (host.replies || []).length < (host.replyTotal || 0)
+        ) {
+          if (!(await this.loadNextReplyPage(host))) return false;
+        }
+      }
+      return host.id === commentId || (host.replies || []).some((r) => r.id === commentId);
+    },
+
+    /** 高亮闪烁指定评论（从站内信点击进入）：先保证目标已加载，再滚动定位 */
+    async flashComment(commentId) {
+      if (this.flashLoading) return;
+      this.flashLoading = true;
+      try {
+        try {
+          await this.ensureCommentLoaded(commentId);
+        } catch (e) {
+          // 前置加载失败：按验收要求重试一次
+          try {
+            await this.ensureCommentLoaded(commentId);
+          } catch (e2) {
+            return;
+          }
+        }
+        await this.$nextTick();
+        const el = document.getElementById("comment-" + commentId);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+
+        let timer;
+        const finish = () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => {
+            window.removeEventListener("scroll", finish);
+            this.$nextTick(() => this._startFlash(el));
+          }, 120);
+        };
+
+        window.addEventListener("scroll", finish);
+        setTimeout(() => {
           window.removeEventListener("scroll", finish);
           this.$nextTick(() => this._startFlash(el));
-        }, 120);
-      };
-
-      window.addEventListener("scroll", finish);
-      setTimeout(() => {
-        window.removeEventListener("scroll", finish);
-        this.$nextTick(() => this._startFlash(el));
-      }, 500);
+        }, 500);
+      } finally {
+        this.flashLoading = false;
+      }
     },
 
     _startFlash(el) {
@@ -369,7 +523,7 @@ export default {
         const created = await forumAPI.createComment(this.articleId, {
           content: this.draft.trim(),
         });
-        this.comments.unshift(created);
+        this.comments.unshift(this.decorateTop(created));
         this.total += 1;
         this.draft = "";
         this.bumpCount(1);
@@ -385,12 +539,19 @@ export default {
      * @param {object} target - 被回复的评论（顶层或回复）
      * @param {object} [root] - target 是回复时，传入它所属的顶层评论
      */
-    toggleReply(target, root) {
+    async toggleReply(target, root) {
       if (!this.ensureLoggedIn()) return;
       if (this.replyTarget && this.replyTarget.id === target.id) {
         this.closeReply();
         return;
       }
+      // 折叠/未加载全部态下回复仍可用：先确保该层楼处于可回复状态（已渲染则零请求）
+      try {
+        await this.ensureCommentLoaded(target.id);
+      } catch (e) {
+        // 前置加载失败不阻塞弹框：目标本就在 DOM 里，回复可直接发
+      }
+      await this.$nextTick();
       // parentId 只指向**顶层评论**：点回复的回复时，root 才是真正的 parentId
       const rootId = root ? root.id : target.id;
       this.replyTarget = {
@@ -422,8 +583,12 @@ export default {
         });
         const root = this.comments.find((c) => c.id === this.replyTarget.rootId);
         if (root) {
+          const wasAllLoaded = (root.replies || []).length >= (root.replyTotal || 0);
+          root.replyTotal = (root.replyTotal || 0) + 1;
           if (!root.replies) root.replies = [];
-          root.replies.push(created);
+          // 折叠态下新回复落在未加载页，不插进第一页（避免刷屏）；全展开态直接追加
+          if (wasAllLoaded) root.replies.push(created);
+          root.replyHasMore = root.replies.length < root.replyTotal;
         }
         this.closeReply();
         this.bumpCount(1);
@@ -471,6 +636,8 @@ export default {
             const ri = c.replies.findIndex((r) => r.id === comment.id);
             if (ri !== -1) {
               c.replies.splice(ri, 1);
+              if (c.replyTotal > 0) c.replyTotal -= 1;
+              c.replyHasMore = c.replies.length < c.replyTotal;
               break;
             }
           }
@@ -588,6 +755,13 @@ a.nm:hover {
 }
 .cmt-reply .cmt-text {
   font-size: 13.5px;
+}
+/* 回复分页（FLPR-40）：沿用全局 .cmt-act 令牌色，深浅主题一致 */
+.reply-more {
+  margin-top: 9px;
+}
+.reply-more-btn {
+  font-size: 12.5px;
 }
 
 @media (max-width: 900px) {
