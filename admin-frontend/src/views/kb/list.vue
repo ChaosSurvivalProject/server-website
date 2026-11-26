@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, onMounted, onUnmounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import type { UploadFile, UploadInstance, UploadProps } from "element-plus";
 import {
   getKBStats,
   getKBDocuments,
   createKBDocument,
+  uploadKBDocument,
+  downloadKBDocument,
   deleteKBDocument,
   getKBChunks,
   reindexKBDocument
@@ -94,6 +97,88 @@ const submitCreate = async () => {
     ElMessage.error(e.message || "新增失败");
   } finally {
     creating.value = false;
+  }
+};
+
+// ── 窄屏适配：≤900px 时收起次要列，避免横向溢出 ──────────────────
+const isNarrow = ref(false);
+const mq = window.matchMedia("(max-width: 900px)");
+const onMediaChange = (e: MediaQueryListEvent | MediaQueryList) => {
+  isNarrow.value = e.matches;
+};
+onMounted(() => {
+  onMediaChange(mq);
+  mq.addEventListener("change", onMediaChange);
+});
+onUnmounted(() => mq.removeEventListener("change", onMediaChange));
+
+// ── 上传文档（FLPR-67） ─────────────────────────────────────────
+const DOC_ACCEPT = ".pdf,.docx,.md,.markdown,.txt";
+const MAX_UPLOAD_MB = 20;
+const uploadVisible = ref(false);
+const uploading = ref(false);
+const uploadTitle = ref("");
+const uploadFile = ref<File | null>(null);
+const uploadRef = ref<UploadInstance>();
+
+const openUpload = () => {
+  uploadTitle.value = "";
+  uploadFile.value = null;
+  uploadRef.value?.clearFiles();
+  uploadVisible.value = true;
+};
+
+// 前端先拦一道（后端仍按魔数 + 20MB 复核，拒绝不落盘）
+const onUploadChange: UploadProps["onChange"] = raw => {
+  const f = raw as UploadFile;
+  uploadFile.value = null;
+  const name = f.name.toLowerCase();
+  if (!/\.(pdf|docx|md|markdown|txt)$/.test(name)) {
+    ElMessage.error("仅支持 PDF / DOCX / Markdown / TXT 文档");
+    uploadRef.value?.clearFiles();
+    return;
+  }
+  if ((f.size ?? 0) > MAX_UPLOAD_MB * 1024 * 1024) {
+    ElMessage.error(`文件大小不能超过 ${MAX_UPLOAD_MB}MB`);
+    uploadRef.value?.clearFiles();
+    return;
+  }
+  if (!f.raw) return;
+  uploadFile.value = f.raw;
+  if (!uploadTitle.value) uploadTitle.value = f.name.replace(/\.[^.]+$/, "");
+};
+
+const submitUpload = async () => {
+  if (!uploadFile.value) {
+    ElMessage.warning("请选择要上传的文档");
+    return;
+  }
+  uploading.value = true;
+  try {
+    await uploadKBDocument(uploadFile.value, uploadTitle.value.trim());
+    ElMessage.success("上传成功，已解析入知识库");
+    uploadVisible.value = false;
+    refreshAll();
+  } catch (e: any) {
+    ElMessage.error(e.message || "上传失败");
+  } finally {
+    uploading.value = false;
+  }
+};
+
+// ── 下载上传的原始文件 ──────────────────────────────────────────
+const handleDownload = async (row: KBDocumentItem) => {
+  if (!row.originalFilename) return;
+  try {
+    const blob = await downloadKBDocument(row.id);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = row.originalFilename;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e: any) {
+    ElMessage.error(e.message || "下载失败");
   }
 };
 
@@ -214,7 +299,10 @@ onMounted(() => {
         <el-option label="手动新增" value="manual" />
       </el-select>
       <div class="toolbar-right">
-        <el-button type="primary" @click="openCreate">
+        <el-button type="primary" @click="openUpload">
+          <el-icon><UploadFilled /></el-icon> 上传文档
+        </el-button>
+        <el-button @click="openCreate">
           <el-icon><Plus /></el-icon> 新增知识
         </el-button>
         <el-button @click="refreshAll">刷新</el-button>
@@ -223,17 +311,27 @@ onMounted(() => {
 
     <!-- 列表 -->
     <el-table v-loading="loading" :data="tableData" border stripe style="width: 100%">
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
-      <el-table-column label="来源" width="100">
+      <el-table-column v-if="!isNarrow" prop="id" label="ID" width="70" />
+      <el-table-column
+        prop="title"
+        label="标题"
+        :min-width="isNarrow ? 140 : 200"
+        show-overflow-tooltip
+      />
+      <el-table-column v-if="!isNarrow" label="来源" width="100">
         <template #default="{ row }">
           <el-tag v-if="row.sourceType === 'wiki'" type="info">wiki</el-tag>
           <el-tag v-else type="primary">manual</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="chunkCount" label="切片数" width="80" />
-      <el-table-column prop="contentLength" label="字符数" width="90" />
-      <el-table-column label="状态" width="200">
+      <el-table-column label="类型" :width="isNarrow ? 78 : 96">
+        <template #default="{ row }">
+          <el-tag size="small" effect="plain">{{ row.docType || "markdown" }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column v-if="!isNarrow" prop="chunkCount" label="切片数" width="80" />
+      <el-table-column v-if="!isNarrow" prop="contentLength" label="字符数" width="90" />
+      <el-table-column v-if="!isNarrow" label="状态" width="200">
         <template #default="{ row }">
           <el-tag v-if="row.status === 'ready'" type="success">ready</el-tag>
           <el-tooltip v-else :content="row.errorMessage" placement="top">
@@ -241,9 +339,20 @@ onMounted(() => {
           </el-tooltip>
         </template>
       </el-table-column>
-      <el-table-column prop="updateTime" label="更新时间" width="170" />
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column v-if="!isNarrow" prop="updateTime" label="更新时间" width="170" />
+      <el-table-column
+        label="操作"
+        :width="isNarrow ? 168 : 280"
+        :fixed="isNarrow ? false : 'right'"
+      >
         <template #default="{ row }">
+          <el-button
+            v-if="row.originalFilename"
+            size="small"
+            type="success"
+            link
+            @click="handleDownload(row)"
+          >下载原件</el-button>
           <el-button size="small" type="primary" link @click="showChunks(row)">
             切片预览
           </el-button>
@@ -276,7 +385,7 @@ onMounted(() => {
     />
 
     <!-- 新增对话框 -->
-    <el-dialog v-model="createVisible" title="新增知识" width="640px">
+    <el-dialog v-model="createVisible" title="新增知识" :width="isNarrow ? '95%' : '640px'">
       <el-form label-width="60px">
         <el-form-item label="标题">
           <el-input v-model="createForm.title" maxlength="255" placeholder="知识条目标题" />
@@ -296,6 +405,53 @@ onMounted(() => {
         <el-button @click="createVisible = false">取消</el-button>
         <el-button type="primary" :loading="creating" @click="submitCreate">
           {{ creating ? "摄入中…" : "提交" }}
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 上传文档对话框（FLPR-67） -->
+    <el-dialog
+      v-model="uploadVisible"
+      title="上传文档"
+      :width="isNarrow ? '95%' : '560px'"
+      class="kb-upload-dialog"
+    >
+      <el-alert
+        class="kb-upload-tip"
+        type="info"
+        :closable="false"
+        title="支持 PDF / DOCX / Markdown / TXT，单个文件不超过 20MB；解析后统一转 Markdown 入知识库，原始文件可在列表下载。"
+      />
+      <el-form label-width="76px">
+        <el-form-item label="文档标题">
+          <el-input
+            v-model="uploadTitle"
+            maxlength="255"
+            placeholder="留空则使用文件名"
+          />
+        </el-form-item>
+        <el-form-item label="文档文件">
+          <el-upload
+            ref="uploadRef"
+            class="kb-uploader"
+            drag
+            :auto-upload="false"
+            :limit="1"
+            :accept="DOC_ACCEPT"
+            :on-change="onUploadChange"
+          >
+            <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
+            <div class="el-upload__text">将文件拖到此处，或<em>点击选择</em></div>
+            <template #tip>
+              <div class="el-upload__tip">PDF / DOCX / MD / TXT · ≤ 20MB</div>
+            </template>
+          </el-upload>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="uploadVisible = false">取消</el-button>
+        <el-button type="primary" :loading="uploading" @click="submitUpload">
+          {{ uploading ? "解析入库中…" : "上传" }}
         </el-button>
       </template>
     </el-dialog>
@@ -400,5 +556,52 @@ onMounted(() => {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: inherit;
+}
+/* FLPR-67 上传弹窗：颜色全部走 Element 令牌，浅/深色主题自动适配 */
+.kb-upload-tip {
+  margin-bottom: 16px;
+}
+.kb-uploader,
+.kb-uploader :deep(.el-upload),
+.kb-uploader :deep(.el-upload-dragger) {
+  width: 100%;
+}
+.kb-uploader :deep(.el-upload-dragger) {
+  background: var(--el-fill-color-blank);
+  border-color: var(--el-border-color);
+}
+
+/* 移动端：工具栏换行、统计条收紧，表格列由 v-if 收起，窄屏无横向溢出 */
+@media (max-width: 900px) {
+  .kb-list {
+    padding: 12px;
+  }
+  .kb-stats {
+    gap: 14px;
+    padding: 10px 12px;
+  }
+  .kb-stat-value {
+    font-size: 17px;
+  }
+  .toolbar {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .toolbar-right {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .toolbar-right .el-button {
+    margin-left: 0;
+  }
+  /* 操作列按钮窄屏换行，避免撑出横向滚动 */
+  .kb-list :deep(.el-table .cell) {
+    white-space: normal;
+  }
+  .kb-pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
 }
 </style>

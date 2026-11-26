@@ -103,9 +103,11 @@
 |------|------|------|
 | GET | `/api/kb/info` | 客服元信息（`enabled` / `title` / `greeting` / `faq` / `model`；未配置 API Key 时 `enabled:false`，前端不渲染悬浮球） |
 | POST | `/api/kb/chat` | **SSE 流式问答**（body: `{message, history?}`；`text/event-stream`，**两个不走 `{code, message, data}` 包络的接口之一**，另一个是 `/api/messages/stream`；帧协议见下方） |
-| GET | `/api/kb/admin/documents` | 文档分页列表（**需管理员**；参数: page, pageSize, sourceType 可选） |
-| POST | `/api/kb/admin/documents` | 手动新增知识（**需管理员**；body: `{title, content}`，同步切片 + Embedding） |
-| DELETE | `/api/kb/admin/documents/{id}` | 删除文档（**需管理员**；`wiki` 来源返回 400，提示走同步脚本） |
+| GET | `/api/kb/admin/documents` | 文档分页列表（**需管理员**；参数: page, pageSize, sourceType 可选；返回每条 `docType` 与 `originalFilename`） |
+| POST | `/api/kb/admin/documents` | 手动新增知识（**需管理员**；body: `{title, content}`，同步切片 + Embedding；`docType=markdown`） |
+| POST | `/api/kb/admin/documents/upload` | 上传文档（**需管理员**；`multipart/form-data`，`file` 必填 + `title` 可选；支持 PDF / DOCX / MD / TXT，后缀+魔数校验、单文件 ≤ `KB_UPLOAD_MAX_MB`(默认 20MB)；解析成 Markdown 入 manual 库并返回文档对象） |
+| GET | `/api/kb/admin/documents/{id}/download` | 下载上传原件（**需管理员**；按 id 关联，`Content-Disposition` 带原始文件名；`wiki` 来源或未上传原件返回 400/404） |
+| DELETE | `/api/kb/admin/documents/{id}` | 删除文档（**需管理员**；`wiki` 来源返回 400，提示走同步脚本；同时清理上传原件） |
 | GET | `/api/kb/admin/documents/{id}/chunks` | 切片预览（**需管理员**） |
 | POST | `/api/kb/admin/documents/{id}/reindex` | 重建（**需管理员**；幂等：wiki 来源读源文件整篇重建，manual 来源重嵌入现有切片） |
 | GET | `/api/kb/admin/stats` | 统计（**需管理员**；文档数 / 切片数 / 索引版本 / 维度一致性 / 总字符数） |
@@ -153,7 +155,7 @@ data: [DONE]                 ← 一定发（try/finally 保证）
 - 错误输入 / 限流 / 未开放等流前错误返回标准 HTTP 状态码 + `detail`；流中错误发 `{"error":...}` 帧（header 已发出无法改状态码）。
 - 限流（进程内滑动窗口，`=0` 关闭）：单 IP 每小时 `KB_RATE_LIMIT_PER_HOUR`（默认 20）+ 全局每分钟 `KB_RATE_LIMIT_GLOBAL_PER_MIN`（默认 5）+ 单 IP 并发 1；输入上限 `KB_MAX_INPUT_CHARS`（默认 300 字）超出 400。
 - 多轮对话由**客户端**携带 `history` 数组（服务端只取最后 `KB_MAX_HISTORY` 条），服务端无状态、不落库。
-- **wiki 是知识库单一数据源**：`source_type='wiki'` 的文档由同步脚本维护，后台只读；手动新增为 `manual` 来源。
+- **wiki 是知识库单一数据源**：`source_type='wiki'` 的文档由同步脚本维护，后台只读；手动新增 / 文档上传为 `manual` 来源。上传的 `doc_type` 由后缀推导（pdf / docx / markdown / txt），手工粘贴与存量行缺省 `markdown`；原始文件落 `KB_UPLOAD_DIR/kb/YYYYMM/` 并记 `original_path` / `original_filename`，与入库 Markdown 分开存放，删除文档时一并清理。
 
 知识库同步脚本 `backend/kb_sync.py`（在服务器上执行，按文件 MD5 增量）：
 
@@ -168,7 +170,7 @@ python3 kb_sync.py --list            # 列出库内文档与切片数
 
 同步会自增 `kb_settings.index_version`，**服务端下次对话自动重建内存索引，无需重启**（设计点，勿改成"重启生效"）。服务与脚本可同时运行（双侧均已开 WAL + busy_timeout，不会 `database is locked`）。
 
-知识库配置（`backend/.env`，**已 gitignore，含 API Key 勿提交**）：总开关 `KB_ENABLED`；对话模型 `KB_CHAT_BASE_URL` / `KB_CHAT_API_KEY` / `KB_CHAT_MODEL`（OpenAI 兼容）+ 思考强度缺省 `KB_CHAT_REASONING_EFFORT`（`off\|low\|high\|max`，默认 `high`=中；后台「智能客服 → 客服设置」可覆盖、即时生效）+ 可选 `KB_CHAT_EXTRA_BODY`（厂商私有参数原样 merge）；Embedding `KB_EMBED_BASE_URL` / `KB_EMBED_API_KEY` / `KB_EMBED_MODEL` / `KB_EMBED_DIM`；检索 `KB_TOP_K` / `KB_MIN_SCORE` / `KB_MAX_CHUNKS` 等；文案 `KB_TITLE` / `KB_GREETING` / `KB_FALLBACK_HINT`。改 `.env` 需重启后端生效（思考强度后台改则无需重启）。启动自检：密钥缺失 → 客服自动关闭（`/kb/info` 返回 `enabled:false`，`/kb/chat` 503）；库内向量维度/模型与配置不一致 → 关闭向量检索降级为仅 FTS，`/kb/admin/stats` 标记"需重建索引"。
+知识库配置（`backend/.env`，**已 gitignore，含 API Key 勿提交**）：总开关 `KB_ENABLED`；对话模型 `KB_CHAT_BASE_URL` / `KB_CHAT_API_KEY` / `KB_CHAT_MODEL`（OpenAI 兼容）+ 思考强度缺省 `KB_CHAT_REASONING_EFFORT`（`off\|low\|high\|max`，默认 `high`=中；后台「智能客服 → 客服设置」可覆盖、即时生效）+ 可选 `KB_CHAT_EXTRA_BODY`（厂商私有参数原样 merge）；Embedding `KB_EMBED_BASE_URL` / `KB_EMBED_API_KEY` / `KB_EMBED_MODEL` / `KB_EMBED_DIM`；检索 `KB_TOP_K` / `KB_MIN_SCORE` / `KB_MAX_CHUNKS` 等；文案 `KB_TITLE` / `KB_GREETING` / `KB_FALLBACK_HINT`；文档上传 `KB_UPLOAD_DIR`（默认 `backend/data/kb_uploads`，已 gitignore）/ `KB_UPLOAD_MAX_MB`（单文件上限，默认 20）。改 `.env` 需重启后端生效（思考强度后台改则无需重启）。启动自检：密钥缺失 → 客服自动关闭（`/kb/info` 返回 `enabled:false`，`/kb/chat` 503）；库内向量维度/模型与配置不一致 → 关闭向量检索降级为仅 FTS，`/kb/admin/stats` 标记"需重建索引"。
 
 ## 员工名片
 

@@ -148,6 +148,7 @@ _resource_custom_links_migrated = False
 _download_event_counted_migrated = False
 _resource_version_sync_migrated = False
 _kb_mcp_auth_migrated = False
+_kb_document_upload_migrated = False
 
 
 def migrate_user_extra_columns() -> None:
@@ -398,6 +399,47 @@ def migrate_kb_mcp_auth_columns() -> None:
         logger.warning("kb_mcp_servers 表鉴权列迁移检查失败: %s", e)
 
 
+def migrate_kb_document_upload_columns() -> None:
+    """kb_documents 表补 doc_type / original_filename / original_path（FLPR-67，幂等）。
+
+    存量行（wiki 同步 / 手动粘贴）经 ALTER 的 DEFAULT 自动归为 markdown、原始文件为空，
+    展示与下载行为不变；新库 create_all 已含新列，跳过。迁移失败不阻断启动。
+    """
+    global _kb_document_upload_migrated
+    if _kb_document_upload_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [
+                row[1] for row in con.execute("PRAGMA table_info('kb_documents')")
+            ]
+            if "doc_type" not in col_names:
+                con.execute(
+                    "ALTER TABLE kb_documents ADD COLUMN doc_type VARCHAR(32) "
+                    "NOT NULL DEFAULT 'markdown'"
+                )
+            if "original_filename" not in col_names:
+                con.execute(
+                    "ALTER TABLE kb_documents ADD COLUMN original_filename VARCHAR(255) "
+                    "NOT NULL DEFAULT ''"
+                )
+            if "original_path" not in col_names:
+                con.execute(
+                    "ALTER TABLE kb_documents ADD COLUMN original_path VARCHAR(512) "
+                    "NOT NULL DEFAULT ''"
+                )
+            con.commit()
+            logger.info("已为 kb_documents 补 doc_type / original_filename / original_path 列")
+        finally:
+            con.close()
+        _kb_document_upload_migrated = True
+    except Exception as e:
+        logger.warning("kb_documents 表上传列迁移检查失败: %s", e)
+
+
 def migrate_user_mute_column() -> None:
     """users 表补 mute_until 列（论坛禁言功能引入；幂等）。
     空串/None = 未禁言；now < mute_until 视为禁言中。禁言与 status 三态正交：
@@ -545,6 +587,10 @@ class KBDocument(Base):
     source_type: Mapped[str] = mapped_column(String(16), nullable=False)  # 'wiki' | 'manual'
     source_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # wiki 相对路径
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")  # 内容 MD5
+    # FLPR-67 文档上传：类型 + 原始文件（与入库 Markdown 分开存放；wiki 行为空）
+    doc_type: Mapped[str] = mapped_column(String(32), nullable=False, default="markdown")
+    original_filename: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    original_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ready")  # ready | failed
     error_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -1332,6 +1378,8 @@ async def init_db():
     await repair_resource_published_at()
     # 智能客服 P1：MCP Server 鉴权方式列（幂等；存量行为为自动回填）
     migrate_kb_mcp_auth_columns()
+    # 智能客服：文档上传列（FLPR-67，幂等；存量行默认 markdown / 无原始文件）
+    migrate_kb_document_upload_columns()
     # 站内信：announcements 表迁移到 messages 表（仅对存量库执行，新库跳过）
     await migrate_announcements_to_messages()
 
