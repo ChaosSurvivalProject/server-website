@@ -60,6 +60,9 @@ def ensure_tables(con: sqlite3.Connection) -> None:
             source_type VARCHAR(16) NOT NULL,
             source_path VARCHAR(512) NOT NULL,
             content_hash VARCHAR(64) NOT NULL,
+            doc_type VARCHAR(32) NOT NULL DEFAULT 'markdown',
+            original_filename VARCHAR(255) NOT NULL DEFAULT '',
+            original_path VARCHAR(512) NOT NULL DEFAULT '',
             status VARCHAR(16) NOT NULL,
             error_message TEXT NOT NULL,
             chunk_count INTEGER NOT NULL,
@@ -68,6 +71,24 @@ def ensure_tables(con: sqlite3.Connection) -> None:
             update_time VARCHAR(30) NOT NULL
         )"""
     )
+    # 存量库补列（FLPR-67）：旧版本脚本/服务端建的表可能没有这三列；
+    # 新库上面的 CREATE TABLE 已含列并带 DEFAULT，这里直接跳过。
+    _cols = {row[1] for row in con.execute("PRAGMA table_info('kb_documents')")}
+    if "doc_type" not in _cols:
+        con.execute(
+            "ALTER TABLE kb_documents ADD COLUMN doc_type VARCHAR(32) "
+            "NOT NULL DEFAULT 'markdown'"
+        )
+    if "original_filename" not in _cols:
+        con.execute(
+            "ALTER TABLE kb_documents ADD COLUMN original_filename VARCHAR(255) "
+            "NOT NULL DEFAULT ''"
+        )
+    if "original_path" not in _cols:
+        con.execute(
+            "ALTER TABLE kb_documents ADD COLUMN original_path VARCHAR(512) "
+            "NOT NULL DEFAULT ''"
+        )
     con.execute(
         """CREATE TABLE IF NOT EXISTS kb_chunks (
             id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -161,9 +182,10 @@ def ingest_file(con: sqlite3.Connection, path: Path, rel_path: str, doc: tuple |
 
     if doc is None:
         cur = con.execute(
-            "INSERT INTO kb_documents(title, source_type, source_path, content_hash, status,"
-            " error_message, chunk_count, content_length, create_time, update_time)"
-            " VALUES(?, 'wiki', ?, ?, 'ready', '', ?, ?, ?, ?)",
+            "INSERT INTO kb_documents(title, source_type, source_path, content_hash,"
+            " doc_type, original_filename, original_path,"
+            " status, error_message, chunk_count, content_length, create_time, update_time)"
+            " VALUES(?, 'wiki', ?, ?, 'markdown', '', '', 'ready', '', ?, ?, ?, ?)",
             (title, rel_path, content_hash, len(pieces), len(cleaned), now, now),
         )
         doc_id = cur.lastrowid
