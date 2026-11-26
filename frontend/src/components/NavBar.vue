@@ -139,6 +139,11 @@
         <router-link to="/forum" class="nav-icon" :class="{ 'nav-current': isSection('/forum') }"
           ><i class="fa-solid fa-users"></i>社区</router-link
         >
+        <!-- Wiki 是独立 VitePress 静态站，必须用 <a href> 而非 router-link；
+             样式复用 .nav-icon，与原有三个入口完全一致，不改变原有 UI。 -->
+        <a :href="wikiUrl" target="_blank" rel="noopener noreferrer" class="nav-icon"
+          ><i class="fa-solid fa-book"></i>Wiki</a
+        >
       </div>
 
       <!-- 移动端下拉菜单 -->
@@ -157,6 +162,11 @@
           <li>
             <router-link to="/forum" :class="{ active: isSection('/forum') }" @click="closeMenu()"
               ><i class="fa-solid fa-users"></i>社区</router-link
+            >
+          </li>
+          <li>
+            <a :href="wikiUrl" target="_blank" rel="noopener noreferrer" @click="closeMenu()"
+              ><i class="fa-solid fa-book"></i>Wiki</a
             >
           </li>
           <!-- 未登录：登录 / 注册入口 -->
@@ -249,6 +259,10 @@ export default {
     /** 后台管理入口 URL（配置化，支持相对/绝对路径） */
     adminUrl() {
       return McConfig.adminUrl;
+    },
+    /** Wiki 入口 URL（来自 VITE_WIKI_URL，dev 指向本地 VitePress） */
+    wikiUrl() {
+      return McConfig.wikiUrl;
     },
   },
   methods: {

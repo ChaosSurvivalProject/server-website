@@ -14,6 +14,7 @@ StaticFiles 挂载点，因此**零 nginx 改动**（新增挂载点会引入新
 """
 import io
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -43,6 +44,28 @@ ALLOWED_IMAGE_TYPES = {
     ".webp": "image/webp",
 }
 MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB
+
+# Wiki 动态文档附件：图片 + 常见文档/压缩包，≤20MB（与 nginx client_max_body_size 一致）。
+# 落盘复用同一 StaticFiles 挂载点，故 URL 仍是 /api/announcement/uploads/...，**零 nginx 改动**。
+# 不放行 svg：svg 可内嵌脚本，同域静态托管会形成存储型 XSS。
+WIKI_FILE_TYPES = {
+    **ALLOWED_IMAGE_TYPES,
+    ".pdf": "application/pdf",
+    ".md": "text/markdown",
+    ".txt": "text/plain",
+    ".doc": "application/msword",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xls": "application/vnd.ms-excel",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".ppt": "application/vnd.ms-powerpoint",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".zip": "application/zip",
+    ".tar": "application/x-tar",
+    ".gz": "application/gzip",
+    ".json": "application/json",
+}
+MAX_WIKI_FILE_SIZE = 20 * 1024 * 1024  # 20MB
+WIKI_SUB_PREFIX = "wiki"
 
 # 头像专用口径（FLPR-31）：仅 jpg/png/webp、≤2MB、中心裁剪 256×256
 AVATAR_IMAGE_TYPES = {
@@ -132,6 +155,99 @@ async def save_image(file: UploadFile, sub_prefix: str = "") -> str:
     parts.append(sub_dir)
     parts.append(name)
     return "/".join(parts)
+
+
+def _wiki_dir() -> Path:
+    return UPLOAD_DIR / WIKI_SUB_PREFIX
+
+
+def _safe_wiki_filename(filename: str, ext: str) -> str:
+    """清洗客户端文件名：只保留安全字符 + 随机后缀，避免路径穿越与覆盖。"""
+    stem = re.sub(r"[^A-Za-z0-9\u4e00-\u9fff_-]+", "_", Path(filename).stem).strip("_")[:60]
+    return f"{stem or 'file'}_{uuid.uuid4().hex[:8]}{ext}"
+
+
+async def save_wiki_file(file: UploadFile) -> dict:
+    """校验并落盘一个 Wiki 附件，返回 {url, name, size, contentType, path}。
+
+    图片走扩展名 + Content-Type + 魔数三重校验；文档类只按扩展名白名单拦截，
+    不盲信客户端 Content-Type。大小与 nginx 上传上限对齐（20MB）。
+    """
+    ext = Path(file.filename or "").suffix.lower()
+    if ext not in WIKI_FILE_TYPES:
+        allowed = " / ".join(sorted(WIKI_FILE_TYPES))
+        raise HTTPException(status_code=400, detail=f"不支持的文件类型，允许：{allowed}")
+    if ext in _MAGIC_CHECKS and not (file.content_type or "").lower().startswith("image/"):
+        raise HTTPException(status_code=400, detail="图片文件的 Content-Type 不正确")
+
+    declared = (file.headers or {}).get("content-length")
+    if declared and declared.isdigit() and int(declared) > MAX_WIKI_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="文件大小不能超过 20MB")
+
+    buf = bytearray()
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > MAX_WIKI_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="文件大小不能超过 20MB")
+    if ext in _MAGIC_CHECKS and not _MAGIC_CHECKS[ext](bytes(buf)):
+        raise HTTPException(status_code=400, detail="图片内容与扩展名不符，或文件已损坏")
+
+    sub_dir = datetime.now(_TZ).strftime("%Y%m")
+    target_dir = _wiki_dir() / sub_dir
+    target_dir.mkdir(parents=True, exist_ok=True)
+    name = _safe_wiki_filename(file.filename or "file", ext)
+    (target_dir / name).write_bytes(bytes(buf))
+    rel = f"{WIKI_SUB_PREFIX}/{sub_dir}/{name}"
+    return {
+        "url": f"{UPLOAD_URL_PREFIX}/{rel}",
+        "name": name,
+        "size": len(buf),
+        "contentType": WIKI_FILE_TYPES[ext],
+        "path": rel,
+    }
+
+
+def list_wiki_files() -> list[dict]:
+    """列出已上传的 Wiki 附件（按月目录倒序， newest first）。"""
+    root = _wiki_dir()
+    if not root.is_dir():
+        return []
+    items: list[dict] = []
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(UPLOAD_DIR).as_posix()
+        stat = path.stat()
+        items.append({
+            "name": path.name,
+            "path": rel,
+            "url": f"{UPLOAD_URL_PREFIX}/{rel}",
+            "size": stat.st_size,
+            "contentType": WIKI_FILE_TYPES.get(path.suffix.lower(), ""),
+            "updateTime": datetime.fromtimestamp(stat.st_mtime, _TZ).strftime("%Y-%m-%dT%H:%M:%S"),
+        })
+    items.sort(key=lambda x: x["updateTime"], reverse=True)
+    return items
+
+
+def delete_wiki_file(rel_path: str) -> bool:
+    """删除一个 Wiki 附件。仅接受本模块生成的 wiki/YYYYMM/<name> 相对路径。"""
+    parts = rel_path.split("/")
+    if len(parts) != 3 or parts[0] != WIKI_SUB_PREFIX or not parts[1].isdigit() or len(parts[1]) != 6:
+        return False
+    if Path(parts[2]).name != parts[2]:
+        return False
+    path = UPLOAD_DIR / parts[0] / parts[1] / parts[2]
+    try:
+        if path.is_file():
+            path.unlink()
+            return True
+    except OSError:
+        return False
+    return False
 
 
 async def save_avatar(file: UploadFile, user_id: int) -> str:
