@@ -588,9 +588,18 @@ class KBDocument(Base):
     source_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # wiki 相对路径
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")  # 内容 MD5
     # FLPR-67 文档上传：类型 + 原始文件（与入库 Markdown 分开存放；wiki 行为空）
-    doc_type: Mapped[str] = mapped_column(String(32), nullable=False, default="markdown")
-    original_filename: Mapped[str] = mapped_column(String(255), nullable=False, default="")
-    original_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")
+    # server_default 必须显式给出：SQLAlchemy 的 default= 只是 Python 侧默认值，
+    # 不会写进 DDL；否则 create_all() 在全新库上建出 NOT NULL 且无默认值的列，
+    # kb_sync.py 等原生 INSERT（不写这些列）会触发 NOT NULL 约束。
+    doc_type: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="markdown", server_default="markdown"
+    )
+    original_filename: Mapped[str] = mapped_column(
+        String(255), nullable=False, default="", server_default=""
+    )
+    original_path: Mapped[str] = mapped_column(
+        String(512), nullable=False, default="", server_default=""
+    )
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ready")  # ready | failed
     error_message: Mapped[str] = mapped_column(Text, nullable=False, default="")
     chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
