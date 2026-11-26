@@ -7,6 +7,10 @@ export type KBDocumentItem = {
   sourceType: "wiki" | "manual";
   sourcePath: string;
   contentHash: string;
+  /** 文档类型（默认 markdown；上传时按后缀落 pdf / docx / md / txt 等） */
+  docType: string;
+  /** 上传原件文件名；wiki / 手动粘贴为空，空即无可下载原件 */
+  originalFilename: string;
   status: "ready" | "failed";
   errorMessage: string;
   chunkCount: number;
@@ -65,9 +69,30 @@ export const createKBDocument = (data: { title: string; content: string }) => {
   return http.request<KBDocumentItem>("post", "/api/kb/admin/documents", { data });
 };
 
-/** 删除文档（wiki 来源会被后端 400 拒绝） */
+/** 删除文档（wiki 来源会被后端 400 拒绝；同时清理上传原件） */
 export const deleteKBDocument = (id: number) => {
   return http.request("delete", `/api/kb/admin/documents/${id}`);
+};
+
+/** 上传文档（PDF / DOCX / MD / TXT）：解析成 Markdown 入 manual 库并留存原始文件。
+ * ⚠️ FormData 必须显式声明 multipart/form-data，否则 http 默认 application/json 会 422。
+ * http 层已解包 {code,message,data}，拿到的直接是文档对象。 */
+export const uploadKBDocument = (file: File, title?: string): Promise<KBDocumentItem> => {
+  const fd = new FormData();
+  fd.append("file", file);
+  if (title) fd.append("title", title);
+  return http.request<KBDocumentItem>("post", "/api/kb/admin/documents/upload", {
+    data: fd,
+    timeout: 120000,
+    headers: { "Content-Type": "multipart/form-data" }
+  });
+};
+
+/** 下载上传的原始文件（wiki 来源 400；需带 token，走 blob 由调用方触发保存）。 */
+export const downloadKBDocument = (id: number): Promise<Blob> => {
+  return http.request<Blob>("get", `/api/kb/admin/documents/${id}/download`, {
+    responseType: "blob"
+  });
 };
 
 /** 切片预览 */

@@ -10,6 +10,8 @@
 管理接口（require_admin，包络正常）：
   GET    /kb/admin/documents              分页列表（page/pageSize/sourceType）
   POST   /kb/admin/documents              手动新增（同步切片 + Embedding）
+  POST   /kb/admin/documents/upload       文档上传（PDF / DOCX / MD / TXT → Markdown 入库 + 原件留存）
+  GET    /kb/admin/documents/{id}/download 下载上传的原始文件（wiki 来源拒绝）
   DELETE /kb/admin/documents/{id}         删除（wiki 来源拒绝，走同步脚本）
   GET    /kb/admin/documents/{id}/chunks  切片预览
   POST   /kb/admin/documents/{id}/reindex 重建（幂等：先删后建）
@@ -24,16 +26,20 @@
 import asyncio
 import contextlib
 import hashlib
+import io
 import json
 import logging
+import re
 import time
+import uuid
 from collections import defaultdict, deque
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Literal, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, func, select, text
 from sqlalchemy import bindparam
@@ -175,6 +181,9 @@ class KBDocumentOut(BaseModel):
     source_type: str = Field(..., alias="sourceType")
     source_path: str = Field(default="", alias="sourcePath")
     content_hash: str = Field(default="", alias="contentHash")
+    # FLPR-67：文档类型（默认 markdown）与上传原件文件名（wiki / 手动粘贴为空）
+    doc_type: str = Field(default="markdown", alias="docType")
+    original_filename: str = Field(default="", alias="originalFilename")
     status: str = Field(default="ready")
     error_message: str = Field(default="", alias="errorMessage")
     chunk_count: int = Field(default=0, alias="chunkCount")
@@ -297,10 +306,12 @@ async def _ingest_document(
     source_path: str = "",
     content: str,
     content_hash: str = "",
+    doc_type: str = "markdown",
 ) -> KBDocument:
     """清洗 → 切片 → Embedding → 落库（kb_documents / kb_chunks / kb_chunks_fts）。
 
-    doc=None 时新建文档行，否则在原文档行上重建（幂等：先删后建）。
+    doc=None 时新建文档行，否则在原文档行上重建（幂等：先删后建）；
+    doc_type 仅新建时写入（重建沿用原值，避免误清上传文档的类型）。
     Embedding 失败：文档行 status='failed' + error_message 落库，不写切片。
     """
     cleaned = kb_ingest.clean_markdown(content)
@@ -322,6 +333,7 @@ async def _ingest_document(
                 source_type=source_type,
                 source_path=source_path,
                 content_hash=content_hash,
+                doc_type=doc_type,
                 status="failed",
                 error_message=str(e)[:2000],
                 chunk_count=0,
@@ -346,6 +358,7 @@ async def _ingest_document(
             title=title[:255],
             source_type=source_type,
             source_path=source_path,
+            doc_type=doc_type,
             create_time=now,
             update_time=now,
         )
@@ -771,6 +784,263 @@ async def admin_create_document(
     return _envelope(_doc_out(doc))
 
 
+# ── 文档上传 / 原件下载（FLPR-67） ────────────────────────────────
+# 支持 PDF / DOCX / Markdown / TXT：先按后缀 + 魔数校验、限单文件大小，
+# 再解析成 Markdown 文本，复用 _ingest_document 既有管线入库（manual 来源、
+# index_version 自增热更新，服务端无需重启）。原始文件单独落盘，与入库文本分开；
+# 拒绝时（类型不符 / 超限 / 解析失败）在落盘前抛错，不产生孤儿文件。
+
+_DOC_TYPE_BY_EXT = {
+    ".pdf": "pdf",
+    ".docx": "docx",
+    ".md": "markdown",
+    ".markdown": "markdown",
+    ".txt": "txt",
+}
+_DOC_MIME_BY_EXT = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".md": "text/markdown; charset=utf-8",
+    ".markdown": "text/markdown; charset=utf-8",
+    ".txt": "text/plain; charset=utf-8",
+}
+_TEXT_ENCODINGS = ("utf-8-sig", "utf-8", "gb18030")  # 中文 TXT 常见 GB18030
+
+
+def _decode_document_text(data: bytes) -> str:
+    """MD / TXT：无 NUL 字节 + 按 UTF-8/GB18030 解码，空文件拒绝。"""
+    if b"\x00" in data:
+        raise HTTPException(status_code=400, detail="文本文件含非法 NUL 字节")
+    for enc in _TEXT_ENCODINGS:
+        try:
+            text = data.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise HTTPException(status_code=400, detail="文本文件编码无法识别，请另存为 UTF-8")
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="文件内容为空")
+    return text
+
+
+async def _read_upload_file(
+    file: UploadFile, max_bytes: int
+) -> tuple[bytes, str, str, str]:
+    """校验并返回 (原始字节, 安全文件名, 后缀, 已解码文本)。
+
+    大小检查在分块读取过程中完成，超限时立即中止——不把超大 body 整块读进内存；
+    魔数校验在落盘前完成，任何拒绝路径都不会留下文件。
+    """
+    filename = Path(file.filename or "").name
+    ext = Path(filename).suffix.lower()
+    if ext not in _DOC_TYPE_BY_EXT:
+        raise HTTPException(
+            status_code=400, detail="仅支持 PDF / DOCX / Markdown / TXT 文档"
+        )
+    size_label = f"{max_bytes // (1024 * 1024)}MB"
+    declared = (file.headers or {}).get("content-length")
+    if declared and declared.isdigit() and int(declared) > max_bytes:
+        raise HTTPException(status_code=400, detail=f"文件大小不能超过 {size_label}")
+
+    buf = bytearray()
+    while True:
+        chunk = await file.read(64 * 1024)
+        if not chunk:
+            break
+        buf.extend(chunk)
+        if len(buf) > max_bytes:
+            raise HTTPException(status_code=400, detail=f"文件大小不能超过 {size_label}")
+    data = bytes(buf)
+    if not data:
+        raise HTTPException(status_code=400, detail="文件内容为空")
+
+    text = ""
+    if ext == ".pdf":
+        if data.lstrip()[:5] != b"%PDF-":
+            raise HTTPException(status_code=400, detail="文件内容与 PDF 扩展名不符")
+    elif ext == ".docx":
+        # DOCX 是 ZIP 容器：PK 头 + word/document.xml 条目，挡住"改后缀"文件
+        if not data.startswith(b"PK\x03\x04") or b"word/document.xml" not in data:
+            raise HTTPException(status_code=400, detail="文件内容与 DOCX 扩展名不符")
+    else:
+        text = _decode_document_text(data)
+    return data, filename, ext, text
+
+
+def _parse_pdf(data: bytes) -> str:
+    """PDF → 纯文本（pypdf 逐页提取；图片型扫描件无文本时明确拒绝）。"""
+    try:
+        from pypdf import PdfReader
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="缺少 PDF 解析依赖，请在 backend 执行 pip install -r requirements.txt",
+        ) from e
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        parts = [(page.extract_text() or "").strip() for page in reader.pages]
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"PDF 解析失败：{e}") from e
+    content = "\n\n".join(p for p in parts if p)
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="PDF 未提取到可索引文本（图片扫描件暂不支持）")
+    return content
+
+
+def _parse_docx(data: bytes) -> str:
+    """DOCX → Markdown 近似文本（标题层级 + 段落 + 表格）。"""
+    try:
+        from docx import Document
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="缺少 DOCX 解析依赖，请在 backend 执行 pip install -r requirements.txt",
+        ) from e
+    try:
+        document = Document(io.BytesIO(data))
+        lines: list[str] = []
+        for para in document.paragraphs:
+            t = para.text.strip()
+            if not t:
+                continue
+            m = re.match(r"heading\s*(\d)", (para.style.name or "").lower())
+            lines.append(("#" * min(int(m.group(1)), 6) + " " + t) if m else t)
+        for table in document.tables:
+            rows = [
+                [
+                    c.text.strip().replace("\n", " ").replace("|", "\\|")
+                    for c in row.cells
+                ]
+                for row in table.rows
+            ]
+            if rows:
+                width = len(rows[0])
+                lines.extend(
+                    [
+                        "",
+                        "| " + " | ".join(rows[0]) + " |",
+                        "| " + " | ".join(["---"] * width) + " |",
+                    ]
+                )
+                lines.extend("| " + " | ".join(r) + " |" for r in rows[1:])
+        content = "\n\n".join(lines)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"DOCX 解析失败：{e}") from e
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="DOCX 未提取到可索引文本")
+    return content
+
+
+def _delete_original_file(doc: KBDocument) -> None:
+    """删除上传原件（幂等；只处理 KB.upload_dir 下的相对路径，防越权删除）。"""
+    if not doc.original_path:
+        return
+    base = KB.upload_dir.resolve()
+    try:
+        path = (base / doc.original_path).resolve()
+        path.relative_to(base)
+    except (ValueError, OSError):
+        return
+    try:
+        if path.is_file():
+            path.unlink()
+    except OSError:
+        # 文件清理失败不阻断数据库删除（避免文档已删却报 500）
+        logger.warning("删除知识库原件失败：%s", path)
+
+
+@router.post("/admin/documents/upload")
+async def admin_upload_document(
+    file: UploadFile = File(...),
+    title: str = Form(default=""),
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """上传文档（登录管理员）：解析为 Markdown 后复用摄入管线入 manual 库。
+
+    FormData 必须显式 Content-Type: multipart/form-data；doc_type 由后缀推导，
+    原始文件落 KB.upload_dir/kb/YYYYMM/ 并记录相对路径与原始文件名。
+    """
+    max_bytes = max(1, KB.upload_max_mb) * 1024 * 1024
+    data, filename, ext, text = await _read_upload_file(file, max_bytes)
+    doc_type = _DOC_TYPE_BY_EXT[ext]
+    if ext == ".pdf":
+        markdown = _parse_pdf(data)
+    elif ext == ".docx":
+        markdown = _parse_docx(data)
+    else:
+        markdown = text
+
+    doc = await _ingest_document(
+        db,
+        doc=None,
+        title=(title.strip() or Path(filename).stem)[:255],
+        source_type="manual",
+        content=markdown,
+        content_hash=hashlib.md5(markdown.encode("utf-8")).hexdigest(),
+        doc_type=doc_type,
+    )
+
+    # 原始文件与入库 Markdown 分开存放；落盘失败则回滚刚建的文档行，避免半状态
+    sub_dir = datetime.now(BEIJING_TZ).strftime("%Y%m")
+    target_dir = KB.upload_dir / "kb" / sub_dir
+    rel_path = f"kb/{sub_dir}/{doc.id}_{uuid.uuid4().hex}{ext}"
+    try:
+        target_dir.mkdir(parents=True, exist_ok=True)
+        (KB.upload_dir / rel_path).write_bytes(data)
+    except OSError as e:
+        logger.error("知识库文档「%s」原始文件落盘失败：%s", doc.title, e)
+        await _delete_chunks_only(db, doc)
+        await db.delete(doc)
+        await bump_index_version(db)
+        await db.commit()
+        raise HTTPException(status_code=500, detail="原始文件存储失败，请稍后重试") from e
+
+    doc.original_path = rel_path
+    doc.original_filename = filename
+    await db.commit()
+    await db.refresh(doc)
+    return _envelope(_doc_out(doc))
+
+
+@router.get("/admin/documents/{document_id}/download")
+async def admin_download_document(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """下载上传的原始文件（登录管理员）：按文档 id 关联，带原始文件名。
+
+    wiki 来源没有原始文件，直接 400；路径基于 KB.upload_dir 解析并校验无穿越。
+    """
+    doc = (
+        await db.execute(select(KBDocument).where(KBDocument.id == document_id))
+    ).scalar_one_or_none()
+    if doc is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if doc.source_type == "wiki":
+        raise HTTPException(status_code=400, detail="wiki 来源文档不提供原始文件下载")
+    if not doc.original_path:
+        raise HTTPException(status_code=404, detail="该文档没有上传的原始文件")
+
+    base = KB.upload_dir.resolve()
+    path = (base / doc.original_path).resolve()
+    try:
+        path.relative_to(base)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="原始文件路径非法")
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="原始文件已丢失")
+
+    ext = Path(doc.original_filename).suffix.lower()
+    return FileResponse(
+        path,
+        media_type=_DOC_MIME_BY_EXT.get(ext, "application/octet-stream"),
+        filename=doc.original_filename or f"document-{doc.id}{ext}",
+    )
+
+
 @router.delete("/admin/documents/{document_id}")
 async def admin_delete_document(
     document_id: int,
@@ -788,6 +1058,7 @@ async def admin_delete_document(
             status_code=400, detail="wiki 来源文档由同步脚本维护，请在服务器上执行 kb_sync.py 增删"
         )
     await _delete_chunks_only(db, doc)
+    _delete_original_file(doc)
     await db.delete(doc)
     await bump_index_version(db)
     await db.commit()
@@ -862,6 +1133,7 @@ async def admin_reindex_document(
             source_path=doc.source_path,
             content=raw,
             content_hash=content_hash,
+            doc_type=doc.doc_type,
         )
         return _envelope(_doc_out(doc))
 
