@@ -376,6 +376,26 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 - **字典表**：预置 24 项种子（类型/平台/游戏版本/侧别/渠道，幂等按 `type+key` 判存，不覆盖后台改过的值）；tag 无预置项由后台自建；停用用 `enabled=0`（MVP 无删除入口）。
 - 端到端回归脚本：`cd backend && python3 resource_center_smoke_test.py`（临时库 + `TestClient`，66 项断言：CRUD/唯一性/可见性/302 与事件/防重定向/限速/筛选排序/软删/统计）。
 
+## Wiki 动态文档（后台内容运营）
+
+静态 VitePress 目录仍是知识库 `kb_sync.py` 的单一数据源；本节接口只管理「动态文档」——在后台「内容运营 → Wiki 文档/附件」维护，保存后 Wiki 站点的 `/wiki/dynamic-docs/` 立即可见，不需要重新构建静态站或重启后端。实现见 `backend/app/wiki.py`，表名 `wiki_documents`。
+
+| 方法 | 路径 | 权限 | 说明 |
+|------|------|------|------|
+| GET | `/api/wiki/documents` | 公开 | 已发布文档列表（`category` 可选；列表项不含正文） |
+| GET | `/api/wiki/documents/{id}` | 公开 | 已发布文档详情（含 Markdown 正文） |
+| GET | `/api/wiki/admin/documents` | 管理员 | 分页列表（`page/pageSize/keyword/category/published`） |
+| GET | `/api/wiki/admin/documents/{id}` | 管理员 | 编辑回填（含正文） |
+| POST | `/api/wiki/admin/documents` | 管理员 | 新建（`title/slug/category/summary/content/author/isPublished`；`slug` 唯一） |
+| PUT | `/api/wiki/admin/documents/{id}` | 管理员 | 编辑（同上，`slug` 唯一性校验排除自身） |
+| DELETE | `/api/wiki/admin/documents/{id}` | 管理员 | 删除 |
+| POST | `/api/wiki/admin/upload` | 管理员 | 附件上传（`multipart/form-data`，字段名 `file`；≤20MB） |
+| GET | `/api/wiki/admin/files` | 管理员 | 已上传附件列表 |
+| DELETE | `/api/wiki/admin/files?path=` | 管理员 | 删除附件（仅允许 `wiki/YYYYMM/<name>` 相对路径） |
+| GET | `/api/wiki/admin/categories` | 管理员 | 分类字典（与 Wiki 侧边栏分区对齐） |
+
+附件落盘在 `uploads/wiki/YYYYMM/`，对外 URL 是 `/api/announcement/uploads/wiki/YYYYMM/<name>`，**复用现有静态挂载点、零 nginx 改动**。白名单：图片（png/jpg/jpeg/gif/webp，带魔数校验）+ PDF / Markdown / txt / Office / 压缩包 / JSON；不放行 SVG（同域托管可形成存储型 XSS）。`isPublished` 用 int（0=草稿，1=已发布），时间为北京时间 naive ISO 字符串，全部接口遵循 `{code, message, data}` 包络。
+
 ## 其他
 
 | 方法 | 路径 | 说明 |

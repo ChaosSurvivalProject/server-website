@@ -55,6 +55,14 @@ export default defineConfig({
   title: "星穹旅驿 Wiki · 我的世界阵营生存服",
   description: "星穹旅驿 Wiki：我的世界 1.21 阵营服 / Java 基岩互通服务器文档，含进服指南、黎明誓约与暮夜同盟阵营玩法、1.21.11 生存服版本支持与服务器规则。",
   base: '/wiki',
+  // 动态文档页读取后台接口；生产由 Nginx 反代 /api，dev 转发到本地 FastAPI。
+  vite: {
+    server: {
+      proxy: {
+        '/api': 'http://localhost:5000'
+      }
+    }
+  },
   // 主题色与官网主站共用同一份 localStorage 派生变量（XQ_theme_vars_v2，v2 使旧缓存失效），
   // 首屏同步写入，避免 wiki 与主站主题色不一致。
   head: [
@@ -144,7 +152,8 @@ export default defineConfig({
           { text: '进服指南（Java / 基岩并列）', link: '/for-new/quick-start/' },
           { text: '版本与客户端支持范围', link: '/for-new/versions/' },
           { text: '服务状态说明', link: '/about/service-status/' },
-          { text: '活动与公告归档', link: '/about/announcements/' }
+          { text: '活动与公告归档', link: '/about/announcements/' },
+          { text: '后台动态文档', link: '/dynamic-docs/' }
         ]
       },
       {

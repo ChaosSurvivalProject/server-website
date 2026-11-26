@@ -800,6 +800,28 @@ class SiteSetting(Base):
     update_time: Mapped[str] = mapped_column(String(30), nullable=False)
 
 
+# ── Wiki 内容管理（后台「内容运营 - Wiki 文档」） ───────────────────
+# 静态 VitePress 文档之外的动态文档：后台创建/编辑后，Wiki 站点的「动态文档」页
+# 通过公开接口实时读取。不参与 kb_sync（wiki 静态目录仍是知识库单一数据源）。
+
+
+class WikiDocument(Base):
+    """Wiki 动态文档：后台维护的 Markdown 页面（slug 唯一，status 控制发布）。"""
+
+    __tablename__ = "wiki_documents"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    category: Mapped[str] = mapped_column(String(32), nullable=False, default="other")
+    summary: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    author: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    is_published: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 0=草稿 1=已发布
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
 # ── 站内信模块（docs/站内信/站内信功能PRD.md） ──────────────────────
 # messages：消息主表；user_messages：用户消息状态表；tasks：通用任务表。
 
