@@ -25,8 +25,9 @@ from ..uploads import delete_avatar, save_avatar
 from ..forum_exp import grant_daily_login_exp
 
 logger = logging.getLogger("uvicorn.error")
+from ..email_auth import verify_email_code
 from .deps import get_current_user
-from .schemas import CaptchaVerifyRequest, LoginRequest, RegisterRequest
+from .schemas import CaptchaVerifyRequest, CodeLoginRequest, LoginRequest, RegisterRequest
 from .security import (
     consume_verified_captcha,
     create_access_token,
@@ -75,52 +76,56 @@ async def verify_captcha(req: CaptchaVerifyRequest):
 # ── 注册 ─────────────────────────────────────────────────────────
 @router.post("/register")
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
-    """邮箱（作为初始用户名）注册，注册成功角色为普通用户 user。"""
-    # 1. 滑块验证码（须已通过 /auth/captcha/verify；此处取出即销毁，一次性）
-    if not consume_verified_captcha(req.captchaId):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="滑块验证未通过或已过期，请重新验证",
-        )
-    # 2. 邮箱格式（email-validator 本地校验，不做 DNS 递送检查）
+    """邮箱（作为初始用户名）注册，邮箱验证码 + 滑块双重校验，角色为普通用户 user。"""
+    # 1. 邮箱格式（email-validator 本地校验，不做 DNS 递送检查）
+    email = (req.email or "").strip().lower()
     try:
-        validate_email(req.email, check_deliverability=False)
+        validate_email(email, check_deliverability=False)
     except EmailNotValidError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="邮箱格式不正确",
         ) from e
-    # 3. 两次密码一致
+    # 2. 两次密码一致
     if req.password != req.confirmPassword:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="两次输入的密码不一致",
         )
-    # 4. 密码规则：8-32 位且含字母和数字
+    # 3. 密码规则：8-32 位且含字母和数字
     if not is_valid_password(req.password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="密码需为 8-32 位且同时包含字母和数字",
         )
-    # 5. 邮箱未注册
+    # 4. 邮箱未注册
     result = await db.execute(
-        select(User).where(or_(User.username == req.email, User.email == req.email))
+        select(User).where(or_(User.username == email, User.email == email))
     )
     if result.scalar_one_or_none() is not None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="该邮箱已被注册",
         )
+    # 5. 邮箱验证码（4 位，5 分钟有效，一次性消费）
+    await verify_email_code(db, email, req.emailCode, "register")
+    # 6. 滑块验证码（须已通过 /auth/captcha/verify；此处取出即销毁，一次性）
+    if not consume_verified_captcha(req.captchaId):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="滑块验证未通过或已过期，请重新验证",
+        )
 
     # 昵称默认取邮箱前缀（如 foo@example.com → foo），管理员可在后台改
-    local_part = req.email.split("@")[0] if "@" in req.email else req.email
+    local_part = email.split("@")[0] if "@" in email else email
     user = User(
-        username=req.email,
+        username=email,
         nickname=local_part[:50] or None,
-        email=req.email,
+        email=email,
         password_hash=hash_password(req.password),
         role="user",
         status=USER_STATUS_NORMAL,
+        email_verified=1,
         create_time=_now_iso(),
     )
     db.add(user)
@@ -130,19 +135,8 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
 
 
 # ── 登录 ─────────────────────────────────────────────────────────
-@router.post("/login")
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    """用户名（普通用户为注册邮箱）+ 密码登录，成功签发 JWT。
-
-    禁用 / 已删除状态的用户不允许登录（软删除用户数据保留，可恢复后重新登录）。
-    """
-    result = await db.execute(select(User).where(User.username == req.username))
-    user = result.scalar_one_or_none()
-    if user is None or not verify_password(req.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="用户名或密码错误",
-        )
+def _ensure_login_allowed(user: User) -> None:
+    """禁用/软删除账号不允许登录。"""
     if user.status == USER_STATUS_DISABLED:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -154,6 +148,9 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="用户不存在",
         )
 
+
+async def _issue_login_response(db: AsyncSession, user: User) -> dict:
+    """登录成功后的公共处理：每日经验 + 签发 JWT + 组装响应（两种登录方式共用）。"""
     # FLPR-36：每日登录 +1 经验（北京时间自然日封顶；封存用户在 helper 内拦截）。
     # 经验失败不阻断登录主流程——登录是核心功能，等级体系是附属增益。
     try:
@@ -168,16 +165,49 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
         "message": "登录成功",
         "data": {
             "token": token,
-            # 下发 id 与 /auth/me 保持一致：前端登录后立刻就能判断
-            # "这条帖子是不是我的"，不必等下一次 /auth/me 往返
             "id": user.id,
             "username": user.username,
             "nickname": user.nickname,
             "role": user.role,
-            # 头像随登录一并下发，前端登录后立即能点亮导航栏真实头像（FLPR-31）
+            "email": user.email,
+            "emailVerified": bool(user.email_verified),
             "avatar": user.avatar or "",
         },
     }
+
+
+@router.post("/login")
+async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
+    """用户名（普通用户为注册邮箱）+ 密码登录，成功签发 JWT。
+
+    禁用 / 已删除状态的用户不允许登录（软删除用户数据保留，可恢复后重新登录）。
+    """
+    result = await db.execute(select(User).where(User.username == req.username))
+    user = result.scalar_one_or_none()
+    if user is None or not verify_password(req.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="用户名或密码错误",
+        )
+    _ensure_login_allowed(user)
+    return await _issue_login_response(db, user)
+
+
+@router.post("/login/code")
+async def login_by_code(req: CodeLoginRequest, db: AsyncSession = Depends(get_db)):
+    """邮箱验证码登录：邮箱 + 4 位验证码，无需密码；成功签发与帐密登录相同的 JWT。"""
+    email = (req.email or "").strip().lower()
+    result = await db.execute(select(User).where(User.email == email))
+    user = result.scalar_one_or_none()
+    if user is None:
+        # 与发码接口口径一致，不暴露账号是否存在
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="邮箱或验证码错误",
+        )
+    await verify_email_code(db, email, req.emailCode, "login")
+    _ensure_login_allowed(user)
+    return await _issue_login_response(db, user)
 
 
 # ── 当前用户 ─────────────────────────────────────────────────────
@@ -196,6 +226,7 @@ async def me(user: User = Depends(get_current_user)):
             "username": user.username,
             "nickname": user.nickname,
             "email": user.email,
+            "emailVerified": bool(user.email_verified),
             "role": user.role,
             "avatar": user.avatar or "",
         },

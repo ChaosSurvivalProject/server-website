@@ -32,46 +32,112 @@
 
       <!-- 登录表单 -->
       <form v-if="mode === 'login'" @submit.prevent="handleLogin" novalidate>
-        <div class="form-item">
-          <label for="login-username">用户名 / 邮箱</label>
-          <div class="input-wrap">
-            <i class="fa-solid fa-user"></i>
-            <input
-              id="login-username"
-              v-model.trim="loginForm.username"
-              type="text"
-              name="username"
-              placeholder="注册邮箱或管理员用户名"
-              autocomplete="username"
-            />
-          </div>
+        <!-- 登录方式切换：帐密 / 验证码（同一卡片内轻量切换，UI 风格保持不变） -->
+        <div class="login-modes">
+          <button
+            type="button"
+            class="login-mode"
+            :class="{ active: loginMode === 'password' }"
+            @click="switchLoginMode('password')"
+          >
+            <i class="fa-solid fa-key"></i> 帐密登录
+          </button>
+          <button
+            type="button"
+            class="login-mode"
+            :class="{ active: loginMode === 'code' }"
+            @click="switchLoginMode('code')"
+          >
+            <i class="fa-solid fa-envelope-open-text"></i> 验证码登录
+          </button>
         </div>
 
-        <div class="form-item">
-          <label for="login-password">密码</label>
-          <div class="input-wrap">
-            <i class="fa-solid fa-lock"></i>
-            <input
-              id="login-password"
-              v-model="loginForm.password"
-              :type="showLoginPassword ? 'text' : 'password'"
-              name="password"
-              placeholder="请输入密码"
-              autocomplete="current-password"
-            />
-            <button
-              type="button"
-              class="pwd-toggle"
-              :aria-label="showLoginPassword ? '隐藏密码' : '显示密码'"
-              @click="showLoginPassword = !showLoginPassword"
-            >
-              <i
-                class="fa-solid"
-                :class="showLoginPassword ? 'fa-eye-slash' : 'fa-eye'"
-              ></i>
-            </button>
+        <!-- 帐密登录 -->
+        <template v-if="loginMode === 'password'">
+          <div class="form-item">
+            <label for="login-username">用户名 / 邮箱</label>
+            <div class="input-wrap">
+              <i class="fa-solid fa-user"></i>
+              <input
+                id="login-username"
+                v-model.trim="loginForm.username"
+                type="text"
+                name="username"
+                placeholder="注册邮箱或管理员用户名"
+                autocomplete="username"
+              />
+            </div>
           </div>
-        </div>
+
+          <div class="form-item">
+            <label for="login-password">密码</label>
+            <div class="input-wrap">
+              <i class="fa-solid fa-lock"></i>
+              <input
+                id="login-password"
+                v-model="loginForm.password"
+                :type="showLoginPassword ? 'text' : 'password'"
+                name="password"
+                placeholder="请输入密码"
+                autocomplete="current-password"
+              />
+              <button
+                type="button"
+                class="pwd-toggle"
+                :aria-label="showLoginPassword ? '隐藏密码' : '显示密码'"
+                @click="showLoginPassword = !showLoginPassword"
+              >
+                <i
+                  class="fa-solid"
+                  :class="showLoginPassword ? 'fa-eye-slash' : 'fa-eye'"
+                ></i>
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <!-- 验证码登录 -->
+        <template v-else>
+          <div class="form-item">
+            <label for="code-login-email">邮箱</label>
+            <div class="input-wrap">
+              <i class="fa-solid fa-envelope"></i>
+              <input
+                id="code-login-email"
+                v-model.trim="codeLoginForm.email"
+                type="email"
+                name="email"
+                placeholder="注册时使用的邮箱"
+                autocomplete="email"
+              />
+            </div>
+          </div>
+
+          <div class="form-item">
+            <label for="code-login-code">邮箱验证码</label>
+            <div class="input-wrap">
+              <i class="fa-solid fa-shield-halved"></i>
+              <input
+                id="code-login-code"
+                v-model.trim="codeLoginForm.emailCode"
+                type="text"
+                name="emailCode"
+                inputmode="numeric"
+                maxlength="4"
+                placeholder="4 位数字验证码"
+                autocomplete="one-time-code"
+              />
+              <button
+                type="button"
+                class="code-send"
+                :disabled="codeTimers.login > 0 || sendingLoginCode"
+                @click="sendLoginCode"
+              >
+                {{ codeTimers.login > 0 ? codeTimers.login + 's' : (sendingLoginCode ? '发送中' : '获取验证码') }}
+              </button>
+            </div>
+          </div>
+        </template>
 
         <button type="submit" class="btn auth-submit" :disabled="loading">
           {{ loading ? '登录中...' : '登 录' }}
@@ -92,6 +158,31 @@
               placeholder="邮箱将作为您的用户名"
               autocomplete="email"
             />
+          </div>
+        </div>
+
+        <div class="form-item">
+          <label for="reg-email-code">邮箱验证码</label>
+          <div class="input-wrap">
+            <i class="fa-solid fa-shield-halved"></i>
+            <input
+              id="reg-email-code"
+              v-model.trim="registerForm.emailCode"
+              type="text"
+              name="emailCode"
+              inputmode="numeric"
+              maxlength="4"
+              placeholder="4 位数字验证码"
+              autocomplete="one-time-code"
+            />
+            <button
+              type="button"
+              class="code-send"
+              :disabled="codeTimers.register > 0 || sendingRegCode"
+              @click="sendRegisterCode"
+            >
+              {{ codeTimers.register > 0 ? codeTimers.register + 's' : (sendingRegCode ? '发送中' : '获取验证码') }}
+            </button>
           </div>
         </div>
 
@@ -200,6 +291,13 @@ export default {
       loading: false,
       notice: "",
       captchaId: "", // 已通过滑块校验的验证码 ID（由 SliderCaptcha 回传）
+      // 登录方式：password=帐密登录, code=邮箱验证码登录
+      loginMode: "password",
+      // 邮箱验证码发送状态与倒计时（秒）
+      sendingRegCode: false,
+      sendingLoginCode: false,
+      codeTimers: { register: 0, login: 0 },
+      _codeTimers: {},
       // 密码可见性开关（眼睛图标切换 text/password）
       showLoginPassword: false,
       showRegPassword: false,
@@ -208,8 +306,13 @@ export default {
         username: "",
         password: "",
       },
+      codeLoginForm: {
+        email: "",
+        emailCode: "",
+      },
       registerForm: {
         email: "",
+        emailCode: "",
         password: "",
         confirmPassword: "",
       },
@@ -229,6 +332,85 @@ export default {
       this.showRegPassword = false;
       this.showRegConfirmPassword = false;
     },
+    /** 切换登录方式（帐密 / 验证码），清空提示但保留已填内容 */
+    switchLoginMode(mode) {
+      if (this.loginMode === mode) return;
+      this.loginMode = mode;
+      this.notice = "";
+    },
+    /** 60 秒倒计时（复用一个 timer map，切换页面不残留） */
+    startCodeTimer(key) {
+      clearInterval(this._codeTimers[key]);
+      this.codeTimers[key] = 60;
+      this._codeTimers[key] = setInterval(() => {
+        this.codeTimers[key] -= 1;
+        if (this.codeTimers[key] <= 0) {
+          clearInterval(this._codeTimers[key]);
+          this.codeTimers[key] = 0;
+        }
+      }, 1000);
+    },
+    /** 发送注册验证码（先校验邮箱格式） */
+    sendRegisterCode() {
+      const email = this.registerForm.email;
+      if (!EMAIL_RE.test(email)) {
+        this.showNotice("请先填写正确的邮箱");
+        return;
+      }
+      this.sendingRegCode = true;
+      authAPI
+        .sendEmailCode({ email, purpose: "register" })
+        .then((data) => {
+          this.startCodeTimer("register");
+          // 开发模式（后端 MAIL_DEV_MODE=1）不真发邮件，验证码直接回填便于调试
+          if (data && data.devCode) {
+            this.registerForm.emailCode = data.devCode;
+            this.showNotice("开发模式：验证码已自动填入");
+          } else {
+            this.showNotice("验证码已发送到邮箱，请查收");
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          this.sendingRegCode = false;
+        });
+    },
+    /** 发送验证码登录的验证码 */
+    sendLoginCode() {
+      const email = this.codeLoginForm.email;
+      if (!EMAIL_RE.test(email)) {
+        this.showNotice("请先填写注册邮箱");
+        return;
+      }
+      this.sendingLoginCode = true;
+      authAPI
+        .sendEmailCode({ email, purpose: "login" })
+        .then((data) => {
+          this.startCodeTimer("login");
+          if (data && data.devCode) {
+            this.codeLoginForm.emailCode = data.devCode;
+            this.showNotice("开发模式：验证码已自动填入");
+          } else {
+            this.showNotice("验证码已发送到邮箱，请查收");
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          this.sendingLoginCode = false;
+        });
+    },
+    /** 登录成功后统一处理（两种登录方式共用） */
+    afterLogin(data) {
+      setAuth(data.token, {
+        id: data.id,
+        username: data.username,
+        nickname: data.nickname,
+        role: data.role,
+        avatar: data.avatar || "",
+      });
+      const redirect = this.$route.query.redirect || "/";
+      this.$router.push(redirect);
+    },
     /** 滑块验证通过（captchaId 已在后端标记为已验证，注册时消费） */
     onCaptchaSuccess(captchaId) {
       this.captchaId = captchaId;
@@ -237,8 +419,12 @@ export default {
     onCaptchaReset() {
       this.captchaId = "";
     },
-    /** 登录 */
+    /** 登录（按当前登录方式分派） */
     handleLogin() {
+      if (this.loginMode === "code") {
+        this.handleCodeLogin();
+        return;
+      }
       if (!this.loginForm.username) {
         this.showNotice("请输入用户名或邮箱");
         return;
@@ -253,18 +439,7 @@ export default {
           username: this.loginForm.username,
           password: this.loginForm.password,
         })
-        .then((data) => {
-          setAuth(data.token, {
-            id: data.id,
-            username: data.username,
-            nickname: data.nickname,
-            role: data.role,
-            avatar: data.avatar || ""
-          });
-          // 登录成功后返回来源页（401 跳转时带上）或首页
-          const redirect = this.$route.query.redirect || "/";
-          this.$router.push(redirect);
-        })
+        .then((data) => this.afterLogin(data))
         .catch(() => {
           // 错误提示由 axios 拦截器统一弹出
         })
@@ -272,15 +447,39 @@ export default {
           this.loading = false;
         });
     },
+    /** 验证码登录 */
+    handleCodeLogin() {
+      const { email, emailCode } = this.codeLoginForm;
+      if (!EMAIL_RE.test(email)) {
+        this.showNotice("请输入注册邮箱");
+        return;
+      }
+      if (!/^\d{4}$/.test(emailCode)) {
+        this.showNotice("请输入 4 位数字验证码");
+        return;
+      }
+      this.loading = true;
+      authAPI
+        .loginByCode({ email, emailCode })
+        .then((data) => this.afterLogin(data))
+        .catch(() => {})
+        .finally(() => {
+          this.loading = false;
+        });
+    },
     /** 注册 */
     handleRegister() {
-      const { email, password, confirmPassword } = this.registerForm;
+      const { email, emailCode, password, confirmPassword } = this.registerForm;
       if (!email) {
         this.showNotice("请输入邮箱");
         return;
       }
       if (!EMAIL_RE.test(email)) {
         this.showNotice("邮箱格式不正确");
+        return;
+      }
+      if (!/^\d{4}$/.test(emailCode)) {
+        this.showNotice("请输入 4 位邮箱验证码");
         return;
       }
       if (!PASSWORD_RE.test(password)) {
@@ -299,6 +498,7 @@ export default {
       authAPI
         .register({
           email,
+          emailCode,
           password,
           confirmPassword,
           captchaId: this.captchaId,
@@ -307,8 +507,10 @@ export default {
           // 注册成功 → 切换到登录页并预填邮箱
           this.loginForm.username = email;
           this.loginForm.password = "";
+          this.loginMode = "password";
           this.registerForm = {
             email: "",
+            emailCode: "",
             password: "",
             confirmPassword: "",
           };
@@ -403,6 +605,59 @@ export default {
 
 .auth-tab:hover:not(.active) {
   background-color: var(--brand-tint);
+}
+
+/* 登录方式切换（帐密 / 验证码）：与页面像素风一致 */
+.login-modes {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.login-mode {
+  flex: 1;
+  padding: 7px 0;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  background-color: var(--surface);
+  color: var(--text-color);
+  border: 2px solid var(--border-color);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.login-mode.active {
+  background-color: var(--brand-tint);
+  color: var(--primary-color);
+  font-weight: bold;
+  border-color: var(--primary-color);
+}
+
+.login-mode:hover:not(.active) {
+  background-color: var(--brand-tint);
+}
+
+/* 验证码发送按钮（嵌在 input-wrap 内） */
+.code-send {
+  flex-shrink: 0;
+  padding: 5px 9px;
+  font-size: 12px;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  color: var(--primary-color);
+  background-color: var(--brand-tint);
+  border: 2px solid var(--primary-color);
+  transition: opacity 0.2s ease;
+}
+
+.code-send:hover:not(:disabled) {
+  opacity: 0.8;
+}
+
+.code-send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* 成功/轻量提示 */

@@ -202,3 +202,36 @@ KB = KBConfig(
     mcp_call_timeout=_env_float("KB_MCP_CALL_TIMEOUT", 5.0),
     mcp_tool_cache_seconds=_env_float("KB_MCP_TOOL_CACHE_SECONDS", 30.0),
 )
+
+
+@dataclass(frozen=True)
+class MailConfig:
+    """官方邮箱（SMTP）配置：验证码邮件与后台推送共用同一发件通道。
+
+    - host/port/user/password 必配（dev_mode=1 时可留空，仅写日志不发真实邮件）；
+    - dev_mode=1 时验证码只写入后端日志、不发送，便于本地开发/测试；
+    - 修改 .env 后需重启后端进程生效（与 KB 同语义）。
+    """
+
+    dev_mode: bool
+    host: str
+    port: int
+    username: str
+    password: str
+    sender: str
+    sender_name: str
+    use_tls: bool
+    timeout: int
+
+
+MAIL = MailConfig(
+    dev_mode=_env_bool("MAIL_DEV_MODE", False),
+    host=_env_str("MAIL_HOST", "smtp.qq.com"),
+    port=_env_int("MAIL_PORT", 465),
+    username=_env_str("MAIL_USERNAME"),
+    password=_env_str("MAIL_PASSWORD"),
+    sender=_env_str("MAIL_SENDER"),
+    sender_name=_env_str("MAIL_SENDER_NAME", "星穹旅驿官网"),
+    use_tls=_env_bool("MAIL_USE_TLS", True),
+    timeout=_env_int("MAIL_TIMEOUT", 10),
+)

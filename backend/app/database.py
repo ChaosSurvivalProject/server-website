@@ -131,6 +131,8 @@ class User(Base):
     # 头像相对 URL（FLPR-31）：空串 = 未上传，前端回退内置默认头像。
     # 落盘 uploads/avatar/YYYYMM/，对外 URL /api/announcement/uploads/avatar/...（复用公告 StaticFiles 挂载点）。
     avatar: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    # 邮箱是否已通过验证码校验（1=已验证，0=未验证；管理员手工创建/导入的账号为 0）
+    email_verified: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     create_time: Mapped[str] = mapped_column(String(30), nullable=False)
 
 
@@ -143,6 +145,7 @@ _user_extra_migrated = False
 _user_avatar_migrated = False
 _announcement_content_migrated = False
 _user_mute_migrated = False
+_user_email_verified_migrated = False
 _forum_recycle_migrated = False
 _resource_custom_links_migrated = False
 _download_event_counted_migrated = False
@@ -214,6 +217,40 @@ def migrate_user_avatar_column() -> None:
     except Exception as e:
         # 迁移失败不阻断启动（新库 create_all 已含新列，仅存量库需要补）
         logger.warning("users 表 avatar 列迁移检查失败: %s", e)
+
+
+def migrate_user_email_verified_column() -> None:
+    """users 表补 email_verified 列（邮箱验证码模块，幂等）。
+
+    存量注册用户均已绑定邮箱，视作已验证填 1，避免升级后要求老用户重新验证；
+    管理员手工创建且未验证的账号填 0。
+    """
+    global _user_email_verified_migrated
+    if _user_email_verified_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [row[1] for row in con.execute("PRAGMA table_info('users')")]
+            if "email_verified" not in col_names:
+                con.execute(
+                    "ALTER TABLE users ADD COLUMN email_verified INTEGER "
+                    "NOT NULL DEFAULT 0"
+                )
+                # 已有邮箱的存量账号视作已验证
+                con.execute(
+                    "UPDATE users SET email_verified = 1 "
+                    "WHERE email IS NOT NULL AND email != ''"
+                )
+                con.commit()
+                logger.info("已为 users 表补充 email_verified 列（存量有邮箱账号视作已验证）")
+        finally:
+            con.close()
+        _user_email_verified_migrated = True
+    except Exception as e:
+        logger.warning("users 表 email_verified 列迁移检查失败: %s", e)
 
 
 def migrate_announcement_content_columns() -> None:
@@ -831,6 +868,40 @@ class WikiDocument(Base):
     update_time: Mapped[str] = mapped_column(String(30), nullable=False)
 
 
+# ── 邮箱验证 / 官方推送模块 ────────────────────────────────────────
+class EmailCode(Base):
+    """邮箱验证码：注册验证与验证码登录共用；一次性消费，5 分钟有效。"""
+
+    __tablename__ = "email_codes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    code_hash: Mapped[str] = mapped_column(String(255), nullable=False)  # bcrypt 哈希，不明文落库
+    purpose: Mapped[str] = mapped_column(String(20), nullable=False, default="register")  # register / login
+    expires_at: Mapped[str] = mapped_column(String(30), nullable=False)  # 北京时间 ISO
+    used: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 校验失败次数，>5 作废
+    ip: Mapped[str] = mapped_column(String(64), nullable=False, default="")  # 发送来源，限流用
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
+class MailLog(Base):
+    """官方邮件推送记录：后台按收件人发送，保留主题/正文/回执状态供追溯。"""
+
+    __tablename__ = "mail_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    username: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    subject: Mapped[str] = mapped_column(String(255), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="success")  # success / failed
+    error: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    admin_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    admin_name: Mapped[str] = mapped_column(String(100), nullable=False, default="")
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
 # ── 站内信模块（docs/站内信/站内信功能PRD.md） ──────────────────────
 # messages：消息主表；user_messages：用户消息状态表；tasks：通用任务表。
 
@@ -1393,6 +1464,7 @@ async def init_db():
     migrate_user_extra_columns()
     migrate_user_avatar_column()
     migrate_user_mute_column()
+    migrate_user_email_verified_column()
     migrate_forum_article_recycle_columns()
     migrate_forum_title_displayed_column()
     # 资源中心：预置字典种子（幂等，按 type+key 判存，不覆盖后台改过的值）

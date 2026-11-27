@@ -80,13 +80,21 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., max_length=72, description="密码")
     confirmPassword: str = Field(..., max_length=72, description="确认密码")
     captchaId: str = Field(..., description="已通过滑块校验的验证码 ID")
+    emailCode: str = Field(..., min_length=4, max_length=4, description="邮箱 4 位验证码")
 
 
 class LoginRequest(BaseModel):
-    """POST /auth/login 请求体。"""
+    """POST /auth/login 请求体（账号密码登录）。"""
 
     username: str = Field(..., max_length=100, description="用户名（普通用户为注册邮箱）")
     password: str = Field(..., max_length=72, description="密码")
+
+
+class CodeLoginRequest(BaseModel):
+    """POST /auth/login/code 请求体（邮箱验证码登录）。"""
+
+    email: str = Field(..., max_length=255, description="注册邮箱")
+    emailCode: str = Field(..., min_length=4, max_length=4, description="邮箱 4 位验证码")
 
 
 class LoginResponseData(BaseModel):

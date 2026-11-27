@@ -4,7 +4,9 @@
 Endpoints:
   GET  /health                       健康检查
   /api/messages/*                    站内信（前台 + 管理员；/messages/stream 为 SSE 包络例外）
-  /api/auth/*                        认证（验证码 / 注册 / 登录 / 当前用户 / 管理员用户管理）
+  /api/auth/*                        认证（滑块+邮箱验证码 / 注册 / 帐密登录 / 验证码登录 / 当前用户 / 管理员用户管理）
+  /api/email/*                       邮箱验证码发送（注册 / 验证码登录）
+  /api/admin/mail/*                  官方邮箱推送（管理员：群发/单发 + 记录 + 收件人）
   /api/faction-beta/*                阵营对战玩法内测资格申请
   /api/kb/*                          智能客服（/api/kb/chat SSE 包络例外之一）
   /api/staff/*                       工作人员名片（公开 + 管理员）
@@ -34,6 +36,8 @@ from .auth import bootstrap
 from .auth.deps import require_admin
 from .auth.router import router as auth_router
 from .auth.users_admin import router as auth_admin_users_router
+from .email_auth import router as email_router
+from .mail_push import router as mail_push_router
 from .faction_beta import router as faction_beta_router
 from .site_config import router as site_config_router
 from .wiki import router as wiki_router
@@ -66,11 +70,17 @@ api_router = APIRouter(prefix="/api")
 # 服务器监控（最小 TCP 探测实现）
 app.include_router(monitor_router, prefix="/api")
 
-# 认证（验证码 / 注册 / 登录 / 当前用户）
+# 认证（滑块+邮箱验证码 / 注册 / 帐密登录 / 验证码登录 / 当前用户）
 app.include_router(auth_router, prefix="/api")
+
+# 邮箱验证码发送（注册 / 验证码登录）
+app.include_router(email_router, prefix="/api")
 
 # 管理员用户管理（新增 / 编辑 / 启停 / 软删除 / 分页）
 app.include_router(auth_admin_users_router, prefix="/api")
+
+# 官方邮箱推送（管理员：群发/单发 + 记录 + 收件人）
+app.include_router(mail_push_router, prefix="/api")
 
 # 阵营对战玩法内测资格申请
 app.include_router(faction_beta_router, prefix="/api")

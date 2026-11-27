@@ -25,11 +25,14 @@
 |------|------|------|
 | GET | `/api/auth/captcha` | 获取注册用滑块拼图验证码（返回 `{captchaId, backgroundImage, pieceImage, sliderY}`，5 分钟有效；横向答案不下发仅存服务端） |
 | POST | `/api/auth/captcha/verify` | 校验滑块位置（body: `{captchaId, x}`，误差 ≤5px 通过并标记该 captchaId；失败即作废，一次性防爆破） |
-| POST | `/api/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId}`，captchaId 须已通过滑块校验，注册时消费；邮箱作为账号，昵称默认取邮箱前缀，角色为普通用户） |
-| POST | `/api/auth/login` | 登录（body: `{username, password}`，成功返回 `{token, id, username, nickname, role, avatar}`；禁用/已删除用户无法登录） |
-| GET | `/api/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{id, username, nickname, email, role, avatar}`；禁用/已删除用户的旧 token 一律失效） |
+| POST | `/api/auth/register` | 注册（body: `{email, password, confirmPassword, captchaId, emailCode}`，须滑块验证 **+ 邮箱 4 位验证码**双重校验；captchaId 与 emailCode 均一次性消费；邮箱作为账号，昵称默认取邮箱前缀，角色为普通用户，`emailVerified=1`） |
+| POST | `/api/auth/login` | 帐密登录（body: `{username, password}`，成功返回 `{token, id, username, nickname, role, email, emailVerified, avatar}`；禁用/已删除用户无法登录） |
+| POST | `/api/auth/login/code` | 邮箱验证码登录（body: `{email, emailCode}`，无需密码，验证码一次性消费；成功返回与帐密登录相同的 JWT 与用户信息；禁用/已删除用户无法登录） |
+| GET | `/api/auth/me` | 当前登录用户信息（Header: `Authorization: Bearer <token>`，返回 `{id, username, nickname, email, emailVerified, role, avatar}`；禁用/已删除用户的旧 token 一律失效） |
 | POST | `/api/auth/avatar` | 上传头像（**登录用户**；`FormData` 字段 `file`，须显式 `Content-Type: multipart/form-data` 否则 422；仅 jpg/png/webp ≤2MB，后端中心裁剪 256×256，文件名含用户 id，覆盖上传自动删除旧文件；返回 `{url}`，落盘 `uploads/avatar/YYYYMM/`，URL 为 `/api/announcement/uploads/avatar/...`；头像非发言，**不受禁言限制**） |
+| POST | `/api/email/send-code` | 发送邮箱验证码（body: `{email, purpose}`，purpose=`register`/`login`；4 位数字 5 分钟有效，同邮箱同用途 60 秒内限发、单 IP 10 分钟 20 次限流；返回 `{sent, expiresIn, devCode?}`，`devCode` 仅 `MAIL_DEV_MODE=1` 时回传用于本地调试） |
 
+- 邮箱验证码：`bcrypt` 哈希落库不明文存储，一次性消费，连续失败 5 次作废；官方邮箱走 SMTP（`backend/.env` 的 `MAIL_*`，dev_mode=1 时不真发只写日志）。
 - JWT 默认 24 小时有效，环境变量 `JWT_EXPIRE_HOURS` 可调；签名密钥取环境变量 `JWT_SECRET`，未设置时自动生成并持久化到数据目录。
 - 系统管理员 `xqly-admin` 在后端首次启动时自动初始化，随机强密码写入数据目录 `admin_initial_password.txt`（仅首次初始化时写入，请妥善保管并及时删除）。
 
@@ -45,11 +48,24 @@
 | POST | `/api/auth/admin/users/{id}/avatar/reset` | 重置头像为默认（清空 `avatar` 列并删除头像文件；前台回退默认头像，返回更新后的用户对象） |
 
 - 所有接口需 `Authorization: Bearer <JWT>` 且角色为 `admin`，无 token 返回 401，普通用户返回 403。
+- 用户对象含 `emailVerified`（邮箱是否已通过验证码验证）；后台用户列表按「已验证 / 未验证」标签展示。
 - 用户 `status` 三态：`1=正常`、`0=禁用`（无法登录，可重新启用）、`2=已删除`（软删除，无法登录，数据保留可恢复）。
 - 用户表 `username`（账号）为登录标识，创建后不可修改；`nickname`（昵称）为展示名，可随时修改。
 - 用户列表 / 详情（含 `/api/auth/admin/users` 的 `items`）下发 `avatar`（头像相对 URL，空串 = 未上传）。
-- 存量数据库首次启动自动补 `users.status` / `users.nickname` 列（status 默认 1=正常，nickname 默认为空）与 `users.avatar` 列（默认空串 = 未上传头像）。
+- 存量数据库首次启动自动补 `users.status` / `users.nickname` 列（status 默认 1=正常，nickname 默认为空）与 `users.avatar` 列（默认空串 = 未上传头像）与 `users.email_verified` 列（存量有邮箱的账号视作已验证=1）。
 - 作者简卡（`_author_brief()`，文章 / 评论 / 消息各处下发）的 `avatar` 读 `users.avatar`：空串下发 `null`，前端回退内置默认图；站内信里已存的消息是**下发时点快照**，不回溯改历史消息。
+
+## 官方邮箱推送（管理员）
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/admin/mail/recipients` | 可收件玩家列表（参数: q 模糊搜索邮箱/账号/昵称, limit；已绑定邮箱且未软删除；含 `emailVerified`） |
+| POST | `/api/admin/mail/send` | 发送推送（body: `{subject, content, userIds?, onlyVerified?}`；`userIds` 为空=群发全部玩家，`onlyVerified=true` 时群发仅发已验证邮箱；返回 `{total, success, failed, devMode}`；逐个记录回执，单个失败不影响其他收件人） |
+| GET | `/api/admin/mail/logs` | 推送记录分页（参数: page, pageSize, status=success/failed；返回 `{items, total, page, pageSize, totalPages, ...}`；含收件人/主题/正文/状态/失败原因/操作人/时间） |
+
+- 均需管理员权限；后台入口：内容运营 → 邮箱推送。
+- 发送通道与验证码共用 `MAIL_*` 配置；`MAIL_DEV_MODE=1` 时只写日志不真发，返回 `devMode=true` 提示。
+- 推送记录落 `mail_logs` 表，永久保留供追溯；失败回执的 `error` 仅记录异常类型，不含邮箱凭据。
 
 ## 阵营对战内测申请
 

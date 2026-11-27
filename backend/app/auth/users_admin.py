@@ -46,6 +46,7 @@ def _dump_user(obj: User) -> dict:
         "username": obj.username,
         "nickname": obj.nickname,
         "email": obj.email,
+        "emailVerified": bool(obj.email_verified),
         "role": obj.role,
         "status": obj.status,
         "muteUntil": obj.mute_until or "",

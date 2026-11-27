@@ -24,8 +24,17 @@ export const authAPI = {
   },
 
   /**
-   * 注册（邮箱作为初始用户名，注册后角色为普通用户；captchaId 须已通过滑块校验）
-   * @param {{email: string, password: string, confirmPassword: string, captchaId: string}} payload
+   * 发送邮箱验证码（注册 / 验证码登录共用，4 位数字 5 分钟有效）
+   * @param {{email: string, purpose: 'register'|'login'}} payload
+   * @returns {Promise} - data: {sent, expiresIn, devCode?} devCode 仅开发模式返回
+   */
+  sendEmailCode: (payload) => {
+    return axiosInstance.post('/api/email/send-code', payload);
+  },
+
+  /**
+   * 注册（邮箱作为初始用户名；需邮箱验证码 + 滑块双重校验）
+   * @param {{email: string, password: string, confirmPassword: string, captchaId: string, emailCode: string}} payload
    * @returns {Promise} - data: {username, role}
    */
   register: (payload) => {
@@ -33,12 +42,21 @@ export const authAPI = {
   },
 
   /**
-   * 登录
+   * 帐号密码登录
    * @param {{username: string, password: string}} payload
    * @returns {Promise} - data: {token, id, username, nickname, role, avatar}
    */
   login: (payload) => {
     return axiosInstance.post('/api/auth/login', payload);
+  },
+
+  /**
+   * 邮箱验证码登录（无需密码）
+   * @param {{email: string, emailCode: string}} payload
+   * @returns {Promise} - data: 同 login
+   */
+  loginByCode: (payload) => {
+    return axiosInstance.post('/api/auth/login/code', payload);
   },
 
   /**

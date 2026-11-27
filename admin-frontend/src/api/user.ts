@@ -12,6 +12,7 @@ export type UserInfo = {
   username: string;
   nickname: string | null;
   email: string | null;
+  emailVerified: boolean;
   role: string;
 };
 
@@ -34,6 +35,8 @@ export type UserItem = {
   username: string;
   nickname: string | null;
   email: string | null;
+  /** 邮箱是否已通过验证码验证 */
+  emailVerified: boolean;
   role: string;
   status: UserStatus;
   /** 禁言到期时间（北京时间 ISO 字符串）；空串 = 未禁言（论坛模块，PRD §4.8） */

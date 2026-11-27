@@ -89,6 +89,17 @@ export default [
           icon: "ep/folder",
           showLink: true
         }
+      },
+      // 官方邮箱推送：并入「内容运营」模块，不新增一级菜单
+      {
+        path: "/mail/push",
+        name: "MailPush",
+        component: () => import("@/views/mail/push.vue"),
+        meta: {
+          title: "邮箱推送",
+          icon: "ep/message-box",
+          showLink: true
+        }
       }
     ]
   },

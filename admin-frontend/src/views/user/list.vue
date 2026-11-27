@@ -617,10 +617,18 @@ onMounted(() => {
       <el-table-column
         prop="email"
         label="邮箱"
-        min-width="170"
+        min-width="210"
         show-overflow-tooltip
       >
-        <template #default="{ row }">{{ row.email || "-" }}</template>
+        <template #default="{ row }">
+          <div v-if="row.email" class="email-cell">
+            <span>{{ row.email }}</span>
+            <el-tag :type="row.emailVerified ? 'success' : 'warning'" size="small">
+              {{ row.emailVerified ? "已验证" : "未验证" }}
+            </el-tag>
+          </div>
+          <span v-else>-</span>
+        </template>
       </el-table-column>
       <el-table-column prop="role" label="角色" width="100">
         <template #default="{ row }">
@@ -1030,6 +1038,16 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.email-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.email-cell > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .user-list {
   padding: 20px;
 }
