@@ -23,21 +23,18 @@ const fetchFiles = async () => {
   }
 };
 
-// el-upload 的 on-change 回调对象是 UploadFile，文件在 raw 字段（不是 file）。
-// 且 auto-upload=false 时 before-upload 不会触发，大小校验必须在这里兜底。
-const upload = async (uploadFile: { raw?: File }) => {
-  const file = uploadFile.raw;
-  if (!file) {
-    ElMessage.error("无法读取所选文件，请重新选择");
-    return;
-  }
+const beforeUpload = (file: { name: string; size: number }) => {
   if (file.size > 20 * 1024 * 1024) {
     ElMessage.error("单个文件不能超过 20MB");
-    return;
+    return false;
   }
+  return true;
+};
+
+const upload = async (uploadFile: { file: File }) => {
   uploading.value = true;
   try {
-    const res = await uploadWikiFile(file);
+    const res = await uploadWikiFile(uploadFile.file);
     ElMessage.success(`上传成功：${res.name}`);
     await fetchFiles();
   } catch (e: any) {
@@ -87,6 +84,7 @@ onMounted(fetchFiles);
       drag
       :show-file-list="false"
       :auto-upload="false"
+      :before-upload="beforeUpload"
       :on-change="upload"
       accept="image/*,.pdf,.md,.txt,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.tar,.gz,.json"
     >
