@@ -167,9 +167,18 @@ const onUploadImg = async (
 };
 
 /** 附件上传：非图片文件插入下载链接；图片同样插入图片语法。 */
-const onAttachment = async (uploadFile: { file: File }) => {
+const onAttachment = async (uploadFile: { raw?: File }) => {
+  const file = uploadFile.raw;
+  if (!file) {
+    ElMessage.error("无法读取所选文件，请重新选择");
+    return;
+  }
+  if (file.size > 20 * 1024 * 1024) {
+    ElMessage.error("单个文件不能超过 20MB");
+    return;
+  }
   try {
-    const res = await uploadWikiFile(uploadFile.file);
+    const res = await uploadWikiFile(file);
     const isImage = res.contentType.startsWith("image/");
     editorContent.value = `${mdBuffer.value}\n${isImage ? "!" : ""}[${res.name}](${res.url})\n`;
     ElMessage.success("附件已插入正文");
