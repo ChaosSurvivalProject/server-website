@@ -10,7 +10,7 @@
 管理接口（require_admin，包络正常）：
   GET    /kb/admin/documents              分页列表（page/pageSize/sourceType）
   POST   /kb/admin/documents              手动新增（同步切片 + Embedding）
-  POST   /kb/admin/documents/upload       文档上传（PDF / DOCX / MD / TXT → Markdown 入库 + 原件留存）
+  POST   /kb/admin/documents/upload       文档上传（PDF / DOCX / PPTX / MD / TXT → Markdown 入库 + 原件留存）
   GET    /kb/admin/documents/{id}/download 下载上传的原始文件（wiki 来源拒绝）
   DELETE /kb/admin/documents/{id}         删除（wiki 来源拒绝，走同步脚本）
   GET    /kb/admin/documents/{id}/chunks  切片预览
@@ -785,7 +785,7 @@ async def admin_create_document(
 
 
 # ── 文档上传 / 原件下载（FLPR-67） ────────────────────────────────
-# 支持 PDF / DOCX / Markdown / TXT：先按后缀 + 魔数校验、限单文件大小，
+# 支持 PDF / DOCX / PPTX / Markdown / TXT：先按后缀 + 魔数校验、限单文件大小，
 # 再解析成 Markdown 文本，复用 _ingest_document 既有管线入库（manual 来源、
 # index_version 自增热更新，服务端无需重启）。原始文件单独落盘，与入库文本分开；
 # 拒绝时（类型不符 / 超限 / 解析失败）在落盘前抛错，不产生孤儿文件。
@@ -793,6 +793,7 @@ async def admin_create_document(
 _DOC_TYPE_BY_EXT = {
     ".pdf": "pdf",
     ".docx": "docx",
+    ".pptx": "pptx",
     ".md": "markdown",
     ".markdown": "markdown",
     ".txt": "txt",
@@ -800,6 +801,7 @@ _DOC_TYPE_BY_EXT = {
 _DOC_MIME_BY_EXT = {
     ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".md": "text/markdown; charset=utf-8",
     ".markdown": "text/markdown; charset=utf-8",
     ".txt": "text/plain; charset=utf-8",
@@ -836,7 +838,7 @@ async def _read_upload_file(
     ext = Path(filename).suffix.lower()
     if ext not in _DOC_TYPE_BY_EXT:
         raise HTTPException(
-            status_code=400, detail="仅支持 PDF / DOCX / Markdown / TXT 文档"
+            status_code=400, detail="仅支持 PDF / DOCX / PPTX / Markdown / TXT 文档"
         )
     size_label = f"{max_bytes // (1024 * 1024)}MB"
     declared = (file.headers or {}).get("content-length")
@@ -863,6 +865,10 @@ async def _read_upload_file(
         # DOCX 是 ZIP 容器：PK 头 + word/document.xml 条目，挡住"改后缀"文件
         if not data.startswith(b"PK\x03\x04") or b"word/document.xml" not in data:
             raise HTTPException(status_code=400, detail="文件内容与 DOCX 扩展名不符")
+    elif ext == ".pptx":
+        # PPTX 同为 ZIP 容器：PK 头 + ppt/presentation.xml 条目，挡住"改后缀"文件
+        if not data.startswith(b"PK\x03\x04") or b"ppt/presentation.xml" not in data:
+            raise HTTPException(status_code=400, detail="文件内容与 PPTX 扩展名不符")
     else:
         text = _decode_document_text(data)
     return data, filename, ext, text
@@ -932,6 +938,62 @@ def _parse_docx(data: bytes) -> str:
     return content
 
 
+def _parse_pptx(data: bytes) -> str:
+    """PPTX → Markdown（逐页标题 + 文本框 + 表格 + 演讲者备注）。"""
+    try:
+        from pptx import Presentation
+    except ImportError as e:
+        raise HTTPException(
+            status_code=503,
+            detail="缺少 PPTX 解析依赖，请在 backend 执行 pip install -r requirements.txt",
+        ) from e
+    try:
+        prs = Presentation(io.BytesIO(data))
+        blocks: list[str] = []
+        for idx, slide in enumerate(prs.slides, start=1):
+            lines: list[str] = []
+            for shape in slide.shapes:
+                if shape.has_text_frame:
+                    text = "\n".join(
+                        p.text.strip()
+                        for p in shape.text_frame.paragraphs
+                        if p.text.strip()
+                    )
+                    if text:
+                        lines.append(text)
+                if getattr(shape, "has_table", False):
+                    rows = [
+                        [
+                            c.text.strip().replace("\n", " ").replace("|", "\\|")
+                            for c in row.cells
+                        ]
+                        for row in shape.table.rows
+                    ]
+                    if rows:
+                        width = len(rows[0])
+                        lines.extend(
+                            [
+                                "| " + " | ".join(rows[0]) + " |",
+                                "| " + " | ".join(["---"] * width) + " |",
+                            ]
+                        )
+                        lines.extend("| " + " | ".join(r) + " |" for r in rows[1:])
+            notes = ""
+            if slide.has_notes_slide and slide.notes_slide.notes_text_frame:
+                notes = slide.notes_slide.notes_text_frame.text.strip()
+            page = [f"## 幻灯片 {idx}"]
+            page.extend(lines)
+            if notes:
+                page.append("备注：" + notes)
+            blocks.append("\n".join(page))
+        content = "\n\n".join(blocks)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"PPTX 解析失败：{e}") from e
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="PPTX 未提取到可索引文本")
+    return content
+
+
 def _delete_original_file(doc: KBDocument) -> None:
     """删除上传原件（幂等；只处理 KB.upload_dir 下的相对路径，防越权删除）。"""
     if not doc.original_path:
@@ -969,6 +1031,8 @@ async def admin_upload_document(
         markdown = _parse_pdf(data)
     elif ext == ".docx":
         markdown = _parse_docx(data)
+    elif ext == ".pptx":
+        markdown = _parse_pptx(data)
     else:
         markdown = text
 

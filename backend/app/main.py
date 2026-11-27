@@ -12,7 +12,6 @@ Endpoints:
   /api/staff/*                       工作人员名片（公开 + 管理员）
   /api/forum/*                       社区论坛（公开 + 登录用户 + 管理员）
   /api/resources/*                   资源中心（公开只读 + 管理员 CRUD/统计）
-  /api/wiki/*                        Wiki 动态文档（公开只读 + 管理员 CRUD/文件上传）
   /download/asset/{id}               下载跳转端点（记录事件后 302 到 GitHub Release 资产）
 """
 import logging
@@ -40,7 +39,6 @@ from .email_auth import router as email_router
 from .mail_push import router as mail_push_router
 from .faction_beta import router as faction_beta_router
 from .site_config import router as site_config_router
-from .wiki import router as wiki_router
 from .uploads import UPLOAD_DIR, save_image
 
 logger = logging.getLogger("uvicorn.error")
@@ -105,9 +103,6 @@ app.include_router(resource_center_module.download_router)
 
 # 站点配置（系统管理-网站配置；首页个性化元素可配置化，/api/site-config 公开 + 管理端）
 app.include_router(site_config_router, prefix="/api")
-
-# Wiki 动态文档（/api/wiki/documents* 公开；/api/wiki/admin/* 管理员）
-app.include_router(wiki_router, prefix="/api")
 
 
 # 通用图片上传（管理员）：资源图标/封面、员工头像、论坛 Banner/封面等后台模块共用。

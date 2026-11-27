@@ -121,7 +121,7 @@
 | POST | `/api/kb/chat` | **SSE 流式问答**（body: `{message, history?}`；`text/event-stream`，**两个不走 `{code, message, data}` 包络的接口之一**，另一个是 `/api/messages/stream`；帧协议见下方） |
 | GET | `/api/kb/admin/documents` | 文档分页列表（**需管理员**；参数: page, pageSize, sourceType 可选；返回每条 `docType` 与 `originalFilename`） |
 | POST | `/api/kb/admin/documents` | 手动新增知识（**需管理员**；body: `{title, content}`，同步切片 + Embedding；`docType=markdown`） |
-| POST | `/api/kb/admin/documents/upload` | 上传文档（**需管理员**；`multipart/form-data`，`file` 必填 + `title` 可选；支持 PDF / DOCX / MD / TXT，后缀+魔数校验、单文件 ≤ `KB_UPLOAD_MAX_MB`(默认 20MB)；解析成 Markdown 入 manual 库并返回文档对象） |
+| POST | `/api/kb/admin/documents/upload` | 上传文档（**需管理员**；`multipart/form-data`，`file` 必填 + `title` 可选；支持 PDF / DOCX / PPTX / MD / TXT，后缀+魔数校验、单文件 ≤ `KB_UPLOAD_MAX_MB`(默认 20MB)；解析成 Markdown 入 manual 库并返回文档对象） |
 | GET | `/api/kb/admin/documents/{id}/download` | 下载上传原件（**需管理员**；按 id 关联，`Content-Disposition` 带原始文件名；`wiki` 来源或未上传原件返回 400/404） |
 | DELETE | `/api/kb/admin/documents/{id}` | 删除文档（**需管理员**；`wiki` 来源返回 400，提示走同步脚本；同时清理上传原件） |
 | GET | `/api/kb/admin/documents/{id}/chunks` | 切片预览（**需管理员**） |
@@ -391,26 +391,6 @@ python3 staff_expire.py --dry-run   # 只统计，不写库
 - **GitHub 双轨同步口径**（`resource_sync_core.py`，唯一权威）：**批量=只增不改**（Tag 是唯一匹配键，重复执行幂等；新增版本默认 `visible`，**最新 Release** 是 stable 渠道时自动设最新稳定版——2026-11-14 调整，覆盖原「默认 hidden」口径）；**单版本=精准覆盖**（覆盖白名单仅 `version/channel/published_at/changelog_md/资产`，`status/is_latest_stable/game_versions/platforms/side/release_tag` 红线不碰）。版本与资产带 `source`（`manual`/`github`）与 `github_synced_at` 标记列（存量库幂等补列）。鉴权走 `.env` 的 `GITHUB_PAT`（留空=未认证 60 次/h；注入 `Authorization: Bearer` + `Accept: application/vnd.github+json` + `X-GitHub-Api-Version: 2022-11-28`；**Token 绝不进响应/日志/堆栈**）。请求 10s 超时、网络错误最多重试 2 次。资源 `githubRepoUrl` 保存时校验（`https://github.com/{owner}/{repo}`）。定时批量 `backend/github_sync.py`（03:30 遍历已发布且有合法仓库地址的资源，crontab 进镜像）。
 - **字典表**：预置 24 项种子（类型/平台/游戏版本/侧别/渠道，幂等按 `type+key` 判存，不覆盖后台改过的值）；tag 无预置项由后台自建；停用用 `enabled=0`（MVP 无删除入口）。
 - 端到端回归脚本：`cd backend && python3 resource_center_smoke_test.py`（临时库 + `TestClient`，66 项断言：CRUD/唯一性/可见性/302 与事件/防重定向/限速/筛选排序/软删/统计）。
-
-## Wiki 动态文档（后台内容运营）
-
-静态 VitePress 目录仍是知识库 `kb_sync.py` 的单一数据源；本节接口只管理「动态文档」——在后台「内容运营 → Wiki 文档/附件」维护，保存后 Wiki 站点的 `/wiki/dynamic-docs/` 立即可见，不需要重新构建静态站或重启后端。实现见 `backend/app/wiki.py`，表名 `wiki_documents`。
-
-| 方法 | 路径 | 权限 | 说明 |
-|------|------|------|------|
-| GET | `/api/wiki/documents` | 公开 | 已发布文档列表（`category` 可选；列表项不含正文） |
-| GET | `/api/wiki/documents/{id}` | 公开 | 已发布文档详情（含 Markdown 正文） |
-| GET | `/api/wiki/admin/documents` | 管理员 | 分页列表（`page/pageSize/keyword/category/published`） |
-| GET | `/api/wiki/admin/documents/{id}` | 管理员 | 编辑回填（含正文） |
-| POST | `/api/wiki/admin/documents` | 管理员 | 新建（`title/slug/category/summary/content/author/isPublished`；`slug` 唯一） |
-| PUT | `/api/wiki/admin/documents/{id}` | 管理员 | 编辑（同上，`slug` 唯一性校验排除自身） |
-| DELETE | `/api/wiki/admin/documents/{id}` | 管理员 | 删除 |
-| POST | `/api/wiki/admin/upload` | 管理员 | 附件上传（`multipart/form-data`，字段名 `file`；≤20MB） |
-| GET | `/api/wiki/admin/files` | 管理员 | 已上传附件列表 |
-| DELETE | `/api/wiki/admin/files?path=` | 管理员 | 删除附件（仅允许 `wiki/YYYYMM/<name>` 相对路径） |
-| GET | `/api/wiki/admin/categories` | 管理员 | 分类字典（与 Wiki 侧边栏分区对齐） |
-
-附件落盘在 `uploads/wiki/YYYYMM/`，对外 URL 是 `/api/announcement/uploads/wiki/YYYYMM/<name>`，**复用现有静态挂载点、零 nginx 改动**。白名单：图片（png/jpg/jpeg/gif/webp，带魔数校验）+ PDF / Markdown / txt / Office / 压缩包 / JSON；不放行 SVG（同域托管可形成存储型 XSS）。`isPublished` 用 int（0=草稿，1=已发布），时间为北京时间 naive ISO 字符串，全部接口遵循 `{code, message, data}` 包络。
 
 ## 其他
 

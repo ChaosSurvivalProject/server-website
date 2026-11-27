@@ -69,27 +69,6 @@ export default [
           showLink: true
         }
       },
-      // Wiki 动态文档后台：并入「内容运营」模块，不新增一级菜单
-      {
-        path: "/wiki/documents",
-        name: "WikiDocuments",
-        component: () => import("@/views/wiki/documents.vue"),
-        meta: {
-          title: "Wiki 文档",
-          icon: "ep/document",
-          showLink: true
-        }
-      },
-      {
-        path: "/wiki/files",
-        name: "WikiFiles",
-        component: () => import("@/views/wiki/files.vue"),
-        meta: {
-          title: "Wiki 附件",
-          icon: "ep/folder",
-          showLink: true
-        }
-      },
       // 官方邮箱推送：并入「内容运营」模块，不新增一级菜单
       {
         path: "/mail/push",
