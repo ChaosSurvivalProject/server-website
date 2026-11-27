@@ -74,7 +74,7 @@ export const deleteKBDocument = (id: number) => {
   return http.request("delete", `/api/kb/admin/documents/${id}`);
 };
 
-/** 上传文档（PDF / DOCX / MD / TXT）：解析成 Markdown 入 manual 库并留存原始文件。
+/** 上传文档（PDF / DOCX / PPTX / MD / TXT）：解析成 Markdown 入 manual 库并留存原始文件。
  * ⚠️ FormData 必须显式声明 multipart/form-data，否则 http 默认 application/json 会 422。
  * http 层已解包 {code,message,data}，拿到的直接是文档对象。 */
 export const uploadKBDocument = (file: File, title?: string): Promise<KBDocumentItem> => {

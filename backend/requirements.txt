@@ -28,7 +28,8 @@ langchain>=1.0,<2.0
 # 工具直接转 LangChain BaseTool），依赖 mcp SDK（官方 Python MCP）
 langchain-mcp-adapters>=0.1,<1.0
 mcp>=1.10,<2.0
-# ── FLPR-67：后台文档上传解析（PDF / DOCX；MD / TXT 用 stdlib 解码，无需额外依赖） ──
+# ── FLPR-67：后台文档上传解析（PDF / DOCX / PPTX；MD / TXT 用 stdlib 解码，无需额外依赖） ──
 # 只引解析库本身，不引入 langchain-community（项目硬性规约）
 pypdf>=5.0,<7.0
 python-docx>=1.1,<2.0
+python-pptx>=1.0,<2.0

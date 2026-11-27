@@ -113,7 +113,7 @@ onMounted(() => {
 onUnmounted(() => mq.removeEventListener("change", onMediaChange));
 
 // ── 上传文档（FLPR-67） ─────────────────────────────────────────
-const DOC_ACCEPT = ".pdf,.docx,.md,.markdown,.txt";
+const DOC_ACCEPT = ".pdf,.docx,.pptx,.md,.markdown,.txt";
 const MAX_UPLOAD_MB = 20;
 const uploadVisible = ref(false);
 const uploading = ref(false);
@@ -133,8 +133,8 @@ const onUploadChange: UploadProps["onChange"] = raw => {
   const f = raw as UploadFile;
   uploadFile.value = null;
   const name = f.name.toLowerCase();
-  if (!/\.(pdf|docx|md|markdown|txt)$/.test(name)) {
-    ElMessage.error("仅支持 PDF / DOCX / Markdown / TXT 文档");
+  if (!/\.(pdf|docx|pptx|md|markdown|txt)$/.test(name)) {
+    ElMessage.error("仅支持 PDF / DOCX / PPTX / Markdown / TXT 文档");
     uploadRef.value?.clearFiles();
     return;
   }
@@ -420,7 +420,7 @@ onMounted(() => {
         class="kb-upload-tip"
         type="info"
         :closable="false"
-        title="支持 PDF / DOCX / Markdown / TXT，单个文件不超过 20MB；解析后统一转 Markdown 入知识库，原始文件可在列表下载。"
+        title="支持 PDF / DOCX / PPTX / Markdown / TXT，单个文件不超过 20MB；解析后统一转 Markdown 入知识库，原始文件可在列表下载。"
       />
       <el-form label-width="76px">
         <el-form-item label="文档标题">
@@ -443,7 +443,7 @@ onMounted(() => {
             <el-icon class="el-icon--upload"><UploadFilled /></el-icon>
             <div class="el-upload__text">将文件拖到此处，或<em>点击选择</em></div>
             <template #tip>
-              <div class="el-upload__tip">PDF / DOCX / MD / TXT · ≤ 20MB</div>
+              <div class="el-upload__tip">PDF / DOCX / PPTX / MD / TXT · ≤ 20MB</div>
             </template>
           </el-upload>
         </el-form-item>
