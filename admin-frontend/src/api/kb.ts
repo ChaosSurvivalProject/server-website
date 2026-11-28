@@ -4,12 +4,16 @@ import { http } from "@/utils/http";
 export type KBDocumentItem = {
   id: number;
   title: string;
+  /** FLPR-76：正文归属的文档树节点；独立文档为 null */
+  nodeId: number | null;
   sourceType: "wiki" | "manual";
   sourcePath: string;
   contentHash: string;
+  /** FLPR-76：SSR 用的原始 Markdown，供后台编辑器回显 */
+  contentMd: string;
   /** 文档类型（默认 markdown；上传时按后缀落 pdf / docx / md / txt 等） */
   docType: string;
-  /** 上传原件文件名；wiki / 手动粘贴为空，空即无可下载原件 */
+  /** 上传原件文件名；手动粘贴为空，空即无可下载原件 */
   originalFilename: string;
   status: "ready" | "failed";
   errorMessage: string;
@@ -65,23 +69,50 @@ export const getKBDocuments = (params: {
   return http.request<KBDocumentPage>("get", "/api/kb/admin/documents", { params });
 };
 
-/** 手动新增知识（粘贴 Markdown，同步切片 + Embedding，1-3s） */
-export const createKBDocument = (data: { title: string; content: string }) => {
+/** FLPR-76 正文写入入参：节点挂接 + 判重跳过 Embedding。
+ * publish=false 表示仅入库不公开（草稿），true 表示上传即上线可视化页面。 */
+export type KBDocumentWrite = {
+  nodeId?: number | null;
+  title: string;
+  content: string;
+  slug?: string;
+  description?: string;
+  publish?: boolean;
+  revision?: number;
+};
+
+/** 新增 / 编辑正文（同步切片 + Embedding；hash 未变时后端零调用） */
+export const createKBDocument = (data: KBDocumentWrite) => {
   return http.request<KBDocumentItem>("post", "/api/kb/admin/documents", { data });
 };
 
-/** 删除文档（wiki 来源会被后端 400 拒绝；同时清理上传原件） */
+/** 删除独立文档（归属文档树的文档请走 deleteKBNode；同时清理上传原件） */
 export const deleteKBDocument = (id: number) => {
   return http.request("delete", `/api/kb/admin/documents/${id}`);
 };
 
-/** 上传文档（PDF / DOCX / PPTX / MD / TXT）：解析成 Markdown 入 manual 库并留存原始文件。
+/** 上传文档（PDF / DOCX / PPTX / MD / TXT）：解析成 Markdown 后走同一正文入口挂节点。
  * ⚠️ FormData 必须显式声明 multipart/form-data，否则 http 默认 application/json 会 422。
  * http 层已解包 {code,message,data}，拿到的直接是文档对象。 */
-export const uploadKBDocument = (file: File, title?: string): Promise<KBDocumentItem> => {
+export const uploadKBDocument = (
+  file: File,
+  data: {
+    title?: string;
+    nodeId?: number | null;
+    slug?: string;
+    description?: string;
+    publish?: boolean;
+    revision?: number;
+  } = {}
+): Promise<KBDocumentItem> => {
   const fd = new FormData();
   fd.append("file", file);
-  if (title) fd.append("title", title);
+  if (data.title) fd.append("title", data.title);
+  if (data.nodeId != null) fd.append("nodeId", String(data.nodeId));
+  if (data.slug) fd.append("slug", data.slug);
+  if (data.description) fd.append("description", data.description);
+  if (data.publish != null) fd.append("publish", String(data.publish));
+  if (data.revision != null) fd.append("revision", String(data.revision));
   return http.request<KBDocumentItem>("post", "/api/kb/admin/documents/upload", {
     data: fd,
     timeout: 120000,
@@ -89,7 +120,7 @@ export const uploadKBDocument = (file: File, title?: string): Promise<KBDocument
   });
 };
 
-/** 下载上传的原始文件（wiki 来源 400；需带 token，走 blob 由调用方触发保存）。 */
+/** 下载上传的原始文件（无原件 404；需带 token，走 blob 由调用方触发保存）。 */
 export const downloadKBDocument = (id: number): Promise<Blob> => {
   return http.request<Blob>("get", `/api/kb/admin/documents/${id}/download`, {
     responseType: "blob"
@@ -101,7 +132,7 @@ export const getKBChunks = (id: number) => {
   return http.request<KBChunkItem[]>("get", `/api/kb/admin/documents/${id}/chunks`);
 };
 
-/** 重建（幂等：wiki 来源整篇重建，manual 来源重嵌入现有切片） */
+/** 重建（幂等：有 content_md 时整篇重建，否则重嵌入现有切片） */
 export const reindexKBDocument = (id: number) => {
   return http.request<KBDocumentItem>(
     "post",

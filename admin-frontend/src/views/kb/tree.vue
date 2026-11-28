@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onUnmounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { MdEditor } from "md-editor-v3";
+import "md-editor-v3/lib/style.css";
 import {
   ArrowDown,
   ArrowRight,
@@ -25,6 +27,8 @@ import {
   getKBNodeTree,
   createKBNode,
   updateKBNode,
+  createKBDocument,
+  uploadKBDocument,
   moveKBNode,
   sortKBNode,
   publishKBNode,
@@ -350,7 +354,7 @@ const openCreate = (nodeType: KBNodeType) => {
     selectedNode.value?.nodeType === "folder" ? selectedNode.value.id : null;
   createForm.title = "";
   createForm.slug = "";
-  // 文档默认草稿，避免新建出空白公开页；FLPR-76 接入正文编辑后再发布
+  // 文档默认草稿，避免新建出空白公开页；编辑正文时可一键发布
   createForm.published = nodeType === "doc" ? 0 : 1;
   slugTouched.value = false;
   createVisible.value = true;
@@ -692,6 +696,112 @@ const copyText = async (text: string) => {
   }
 };
 
+// ── 正文编辑（FLPR-76）：新增 / 编辑 / 上传共用统一写入入口 ──────────
+// 层级仍由文档树 API 维护（零 Embedding）；这里只负责正文，hash 未变后端不重算向量。
+const editorVisible = ref(false);
+const editorSaving = ref(false);
+const editorUploading = ref(false);
+const editorNode = ref<KBNodeItem | null>(null);
+const editorForm = reactive({
+  title: "",
+  slug: "",
+  description: "",
+  content: "",
+  publish: true
+});
+const editorRevision = ref(0);
+/** md-editor-v3 按 id 缓存内部状态：换节点必须换 id，否则残留上一篇正文 */
+const editorId = ref("kb-doc-editor");
+/** 后台深色模式是 pure-admin 切 <html class="dark">，跟随切换、无需刷新 */
+const editorTheme = ref<"light" | "dark">(
+  document.documentElement.classList.contains("dark") ? "dark" : "light"
+);
+let editorThemeObserver: MutationObserver | null = null;
+
+const openEditor = async (node: KBNodeItem) => {
+  closeMenu();
+  editorNode.value = node;
+  editorForm.title = node.title;
+  editorForm.slug = node.slug;
+  editorForm.description = node.description || "";
+  editorForm.content = "";
+  editorForm.publish = node.published === 1;
+  editorRevision.value = node.revision;
+  editorId.value = `kb-doc-editor-${node.id}-${Date.now()}`;
+  editorVisible.value = true;
+  if (node.documentId) {
+    try {
+      const detail = await getKBDocumentDetail(node.documentId);
+      editorForm.content = detail.contentMd || "";
+      editorForm.title = detail.title || node.title;
+    } catch (e: any) {
+      ElMessage.error(e.message || "读取正文失败");
+    }
+  }
+};
+
+const submitEditor = async () => {
+  const node = editorNode.value;
+  if (!node) return;
+  if (!editorForm.title.trim()) {
+    ElMessage.warning("请输入标题");
+    return;
+  }
+  if (!editorForm.content.trim()) {
+    ElMessage.warning("请输入正文内容");
+    return;
+  }
+  editorSaving.value = true;
+  try {
+    await createKBDocument({
+      nodeId: node.id,
+      title: editorForm.title.trim(),
+      content: editorForm.content,
+      slug: editorForm.slug.trim(),
+      description: editorForm.description,
+      publish: editorForm.publish,
+      revision: editorRevision.value
+    });
+    ElMessage.success(
+      editorForm.publish ? "已保存并发布，页面即刻可访问" : "已保存为草稿（仅入库不公开）"
+    );
+    editorVisible.value = false;
+    await loadTree();
+    selectedId.value = node.id;
+  } catch (e: any) {
+    ElMessage.error(e.message || "保存正文失败");
+  } finally {
+    editorSaving.value = false;
+  }
+};
+
+/** Office/MD/TXT 上传解析成 Markdown 后走同一入口；publish 可设仅入库不公开 */
+const onEditorUpload = async (uploadFile: { file: File }) => {
+  const node = editorNode.value;
+  if (!node) return;
+  editorUploading.value = true;
+  try {
+    const doc = await uploadKBDocument(uploadFile.file, {
+      nodeId: node.id,
+      title: editorForm.title.trim() || undefined,
+      slug: editorForm.slug.trim() || undefined,
+      description: editorForm.description,
+      publish: editorForm.publish,
+      revision: editorRevision.value
+    });
+    editorForm.content = doc.contentMd || editorForm.content;
+    if (doc.title) editorForm.title = doc.title;
+    ElMessage.success("上传解析完成，已走同一入口入库");
+    await loadTree();
+    const fresh = nodeById.value.get(node.id);
+    if (fresh) editorRevision.value = fresh.revision;
+  } catch (e: any) {
+    ElMessage.error(e.message || "上传失败");
+  } finally {
+    editorUploading.value = false;
+  }
+};
+
 onMounted(() => {
   onNarrow(mqNarrow);
   onPhone(mqPhone);
@@ -699,6 +809,13 @@ onMounted(() => {
   mqPhone.addEventListener("change", onPhone);
   document.addEventListener("click", closeMenu);
   window.addEventListener("wheel", closeMenu, { passive: true });
+  editorThemeObserver = new MutationObserver(() => {
+    editorTheme.value = document.documentElement.classList.contains("dark") ? "dark" : "light";
+  });
+  editorThemeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["class"]
+  });
   loadTree();
 });
 
@@ -707,6 +824,7 @@ onUnmounted(() => {
   mqPhone.removeEventListener("change", onPhone);
   document.removeEventListener("click", closeMenu);
   window.removeEventListener("wheel", closeMenu);
+  editorThemeObserver?.disconnect();
   clearLongPress();
 });
 </script>
@@ -985,6 +1103,9 @@ onUnmounted(() => {
               </div>
 
               <div class="kb-prop-actions">
+                <el-button size="small" type="primary" plain @click="openEditor(selectedNode)">
+                  <el-icon><Edit /></el-icon> 编辑正文
+                </el-button>
                 <el-button size="small" @click="showChunks(selectedNode)">
                   <el-icon><Search /></el-icon> 切片预览
                 </el-button>
@@ -1046,6 +1167,13 @@ onUnmounted(() => {
       </button>
       <button class="kb-ctx-item" @click="actionCopy(menuNode)">
         <el-icon><CopyDocument /></el-icon> 复制到
+      </button>
+      <button
+        v-if="menuNode.nodeType === 'doc'"
+        class="kb-ctx-item"
+        @click="openEditor(menuNode)"
+      >
+        <el-icon><Edit /></el-icon> 编辑正文
       </button>
       <button
         v-if="menuNode.nodeType === 'doc'"
@@ -1119,7 +1247,7 @@ onUnmounted(() => {
         </el-form-item>
       </el-form>
       <p class="kb-dialog-tip">
-        slug 全局唯一且与树位置解耦；文档正文编辑将在下一工单接入，当前新建为草稿。
+        slug 全局唯一且与树位置解耦；新建后点击「编辑正文」录入 Markdown 或上传文件，发布即上线。
       </p>
       <template #footer>
         <el-button @click="createVisible = false">取消</el-button>
@@ -1184,6 +1312,74 @@ onUnmounted(() => {
         </div>
         <el-empty v-if="!chunksLoading && !chunks.length" description="无切片" />
       </div>
+    </el-drawer>
+
+    <!-- 正文编辑（FLPR-76）：Markdown 编辑 + 预览 + 上传，发布开关 -->
+    <el-drawer
+      v-model="editorVisible"
+      :title="`编辑正文：${editorForm.title || ''}`"
+      :size="isNarrow ? '100%' : '68%'"
+      :close-on-click-modal="false"
+      class="kb-editor-drawer"
+    >
+      <div v-if="editorNode" class="kb-editor">
+        <el-form label-width="82px" class="kb-editor-form">
+          <el-form-item label="标题">
+            <el-input v-model="editorForm.title" maxlength="255" placeholder="显示名称" />
+          </el-form-item>
+          <el-form-item label="slug">
+            <el-input
+              v-model="editorForm.slug"
+              maxlength="512"
+              placeholder="完整 URL 路径，可手动修改"
+            />
+          </el-form-item>
+          <el-form-item label="SEO 描述">
+            <el-input
+              v-model="editorForm.description"
+              maxlength="500"
+              placeholder="可选，用于页面 description / OG"
+            />
+          </el-form-item>
+          <el-form-item label="发布">
+            <el-switch
+              v-model="editorForm.publish"
+              active-text="已发布（上线）"
+              inactive-text="草稿（仅入库）"
+            />
+          </el-form-item>
+          <el-form-item label="上传解析">
+            <el-upload
+              :auto-upload="false"
+              :show-file-list="false"
+              accept=".pdf,.docx,.pptx,.md,.markdown,.txt"
+              :on-change="onEditorUpload"
+            >
+              <el-button size="small" :loading="editorUploading">
+                <el-icon><Promotion /></el-icon> 上传文件并解析为 Markdown
+              </el-button>
+            </el-upload>
+          </el-form-item>
+        </el-form>
+        <div class="kb-editor-md">
+          <MdEditor
+            :id="editorId"
+            v-model="editorForm.content"
+            :theme="editorTheme"
+            language="zh-CN"
+            preview-theme="github"
+            code-theme="github"
+            placeholder="在此粘贴 / 编辑 Markdown 正文；正文变化时才会重算 Embedding"
+          />
+        </div>
+        <p class="kb-dialog-tip">
+          正文 hash 未变时零 Embedding 调用；发布切换、重命名、拖拽只写文档树，不影响向量。
+        </p>
+      </div>
+      <template #footer>
+        <el-button @click="editorVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editorSaving" @click="submitEditor">保存</el-button>
+      </template>
     </el-drawer>
   </div>
 </template>
@@ -1609,6 +1805,26 @@ onUnmounted(() => {
   }
   .kb-kv-row dd {
     padding-left: 0;
+  }
+}
+
+/* FLPR-76 正文编辑器：全部走 Element 令牌，浅/深主题同时生效 */
+.kb-editor-form {
+  padding-bottom: 4px;
+}
+.kb-editor-md {
+  margin-top: 8px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--el-bg-color);
+}
+.kb-editor-md :deep(.md-editor) {
+  min-height: 460px;
+}
+@media (max-width: 768px) {
+  .kb-editor-md :deep(.md-editor) {
+    min-height: 380px;
   }
 }
 </style>
