@@ -17,7 +17,7 @@ cd admin-frontend && pnpm install && pnpm dev                      # 后台管�
 
 ## API 契约规约
 
-完整规约见 [docs/agents/api-conventions.md](docs/agents/api-conventions.md)。硬性禁区：接口统一挂 `/api` 前缀；响应包络 `{code, message, data}`（`code=0` 成功，前端组件不得再判 `code`；`POST /api/kb/chat` 与 `GET /api/messages/stream` 两个 SSE 是全项目仅有的包络例外）；DB snake_case / 对外 JSON camelCase（新增字段必须同步补 Pydantic alias）；**新增或修改后端接口必须同步契约参照 `frontend/src/api/api.js` 与 `admin-frontend/src/api/`**；时间统一存北京时间 naive ISO `YYYY-MM-DDTHH:MM:SS`；布尔语义用 int（`isPublished` 0=草稿/1=已发布）；上传 `FormData` 必须显式加 `Content-Type: multipart/form-data`（否则 422）。
+完整规约见 [docs/agents/api-conventions.md](docs/agents/api-conventions.md)。硬性禁区：接口统一挂 `/api` 前缀；响应包络 `{code, message, data}`（`code=0` 成功，前端组件不得再判 `code`；`POST /api/kb/chat` 与 `GET /api/messages/stream` 两个 SSE 是全项目仅有的包络例外）；DB snake_case / 对外 JSON camelCase（新增字段必须同步补 Pydantic alias）；**新增或修改后端接口必须同步契约参照 `frontend/src/api/api.js` 与 `admin-frontend/src/api/`**；时间统一存北京时间 naive ISO `YYYY-MM-DDTHH:MM:SS`；布尔语义用 int（`isPublished` 0=草稿/1=已发布）；上传 `FormData` 必须显式加 `Content-Type: multipart/form-data`（否则 422）；**Element Plus `el-upload` 的 `:on-change` 首参是 `UploadFile` 对象（原生 File 在 `.raw`，没有 `.file`，也不是 input event），必须 `const raw = file?.raw` 判空后再 append/上传；写 `file.file` 会把 `undefined` 序列化成字符串 `"undefined"`，FastAPI `UploadFile` 校验必然 422，且 API 层直调测试发现不了，上传 UI 改动必须在浏览器实测（E2E）。正例 `admin-frontend/src/views/site/config.vue` 的 `triggerImportFile`，反例 FLPR-76 `tree.vue` 的 `onEditorUpload`**。
 
 ## 主题适配规约（全局）
 

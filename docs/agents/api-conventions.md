@@ -8,6 +8,18 @@
 1. **响应包络**：所有接口返回 `{code, message, data}`，`code=0` 表示成功。前端 `axiosInstance` 响应拦截器已统一解包（直接返回 `data`），组件代码拿到的就是裸数据——**不要在前端组件里再判断 `code`**。
 2. **字段命名**：数据库/后端内部用 snake_case，对外 JSON 用 camelCase（`publishTime` / `isPublished` / `readCount` / `createTime` / `updateTime`）。Pydantic 模型通过 `alias` + `populate_by_name=True` 映射（见 `backend/app/schemas.py`），新增字段必须同时补别名。
 3. **契约参照实现**：`frontend/src/api/api.js` 是前后端契约的参照。**新增或修改后端接口时必须同步该文件**，保持两侧一致。后台管理前端 `admin-frontend/src/api/` 同步维护；其 HTTP 层（`admin-frontend/src/utils/http/`）已统一解包 `{code, message, data}`，并把 HTTP 错误体（FastAPI `detail` / 包络 `message`）提取到 `error.message`，页面 catch 里直接 `ElMessage.error(e.message)` 弹提示，**不要在页面里重复解析错误体**。传 `FormData`（文件上传）时必须显式加 `Content-Type: multipart/form-data` 请求头：实例默认 `application/json` 会让 axios 把 `FormData` 序列化成 JSON，后端解析不到字段直接 422。
+
+   **上传控件取文件的正确姿势（FLPR-76 血泪教训，同类 422 已多次出现）**：Element Plus `el-upload` 的 `:on-change` 回调首参是 `UploadFile` 对象，原生文件在 `.raw`（类型 `UploadRawFile`，继承自 `File`），**没有 `.file` 属性，也不是原生 input event（不存在 `event.target.files[0]`）**。回调里必须写成：
+
+   ```ts
+   const onUpload = async (file: { raw?: File }) => {
+     const raw = file?.raw;
+     if (!raw) { ElMessage.warning("未读取到文件，请重新选择"); return; }
+     await uploadSomething(raw, ...); // 或 fd.append("file", raw)
+   };
+   ```
+
+   **禁止**写 `file.file`（`undefined` 会被 `FormData.append` 序列化成字符串 `"undefined"`，FastAPI `UploadFile` 参数校验直接 422： `"Value error, Expected UploadFile, received: <class 'str'>"`）。这类缺陷 API 层用真实 multipart 直调 39/39 也照样通过——因为坏的是 UI 调用点，**只有浏览器里真实点击上传才能复现**。因此上传类 UI 改动提交前必须补一条 Playwright E2E（点击上传按钮 → 断言回填/入库 + 无 422 响应），不能只跑接口测试。正例见 `admin-frontend/src/views/site/config.vue` 的 `triggerImportFile`；反例是 FLPR-76 `admin-frontend/src/views/kb/tree.vue` 的 `onEditorUpload`（曾取 `.file`，导致后台编辑器上传 100% 422）。
 4. **时间格式**：统一存 ISO 字符串 `YYYY-MM-DDTHH:MM:SS`（SQLite 中为 `String(30)` 列，不用 datetime 类型）。
 5. **布尔语义用 int**：如 `isPublished`，`0=草稿, 1=已发布`，不要改成 bool。
 6. **监控接口**：`GET /api/monitor/server-info/{id}` 目前是 TCP 探测的最小实现（`online/offline` + 占位字段），响应结构被首页 `OnlineCounter` 组件依赖，扩展时不能破坏现有字段。
