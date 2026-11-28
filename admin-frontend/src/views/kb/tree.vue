@@ -39,7 +39,7 @@ import {
 import type { KBNodeItem, KBNodeType, KBDocumentItem, KBChunkItem } from "@/api/kb";
 import TreePicker from "./components/TreePicker.vue";
 
-// 后台文件树（FLPR-75）：左树 / 右属性面板，单库「默认知识库」。
+// 后台文件树（FLPR-75）：左树 / 右属性面板，单库「知识库」。
 // 层级与正文分表——树操作只写 kb_nodes、零 Embedding；只有回收站恢复会重新摄入。
 
 const loading = ref(false);
@@ -142,7 +142,7 @@ const isDescendant = (candidateId: number, ancestorId: number) => {
 };
 
 const parentTitle = (node: KBNodeItem) => {
-  if (node.parentId == null) return "默认知识库";
+  if (node.parentId == null) return "知识库";
   return nodeById.value.get(node.parentId)?.title || "（父节点不存在）";
 };
 
@@ -716,7 +716,7 @@ onUnmounted(() => {
     <header class="kb-page-head">
       <div class="kb-crumb">
         <el-icon><FolderOpened /></el-icon>
-        <span>默认知识库</span>
+        <span>知识库</span>
         <span class="kb-crumb-hint">文档树</span>
       </div>
       <div class="kb-head-actions">
