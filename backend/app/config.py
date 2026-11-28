@@ -144,6 +144,9 @@ class KBConfig:
     # 文档上传（FLPR-67）
     upload_dir: Path           # 上传原始文件落盘目录（与入库 Markdown 分开存放）
     upload_max_mb: int         # 单文件大小上限（MiB）
+    # 知识库静态资源（FLPR-72）：wiki/public/doc-image/*.png 迁移到这里，
+    # URL 仍为 /doc-image/xxx.png，由 web nginx alias 直接对外服务。
+    asset_dir: Path
     # 知识源与文案
     wiki_dir: Path
     wiki_exclude: tuple
@@ -189,6 +192,8 @@ KB = KBConfig(
     # 文档上传：默认落 backend/data/kb_uploads（已 gitignore），20MB 上限
     upload_dir=Path(_env_str("KB_UPLOAD_DIR") or str(BASE_DIR / "data" / "kb_uploads")),
     upload_max_mb=_env_int("KB_UPLOAD_MAX_MB", 20),
+    # Docker 由 compose 注入 /app/data/kb-assets；本地默认 backend/data/kb-assets
+    asset_dir=Path(_env_str("KB_ASSET_DIR") or str(BASE_DIR / "data" / "kb-assets")),
     wiki_dir=Path(_env_str("KB_WIKI_DIR", "../wiki")),
     wiki_exclude=tuple(
         s.strip() for s in _env_str("KB_WIKI_EXCLUDE", "node_modules,.vitepress,dist").split(",") if s.strip()

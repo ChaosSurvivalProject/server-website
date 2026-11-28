@@ -34,6 +34,74 @@ logger = logging.getLogger("uvicorn.error")
 vector_available = True
 
 
+async def vector_problems(db: AsyncSession) -> list[str]:
+    """库内配置 + 全库实际切片维度体检；空列表表示向量检索可以安全启用。
+
+    与 kb_migrate.chunk_dim_report 同口径：BLOB 为 float32 小端，
+    维度 = length(embedding) // 4。缺设置 / 脏维度 / 缺向量都必须显式暴露，
+    不允许“静默丢弃脏向量”造成检索缺口。空库（无切片）不因缺设置而报警。
+    """
+    problems: list[str] = []
+    total = int((await db.execute(text("SELECT COUNT(*) FROM kb_chunks"))).scalar_one())
+    dim_row = (
+        await db.execute(text("SELECT value FROM kb_settings WHERE key='embed_dim'"))
+    ).first()
+    model_row = (
+        await db.execute(text("SELECT value FROM kb_settings WHERE key='embed_model'"))
+    ).first()
+    dim = str(dim_row[0]) if dim_row else ""
+    model = str(model_row[0]) if model_row else ""
+    if not total:
+        return problems
+    if dim != str(KB.embed_dim):
+        problems.append(f"库内 embed_dim={dim or '(空)'}，当前 KB_EMBED_DIM={KB.embed_dim}")
+    if model != KB.embed_model:
+        problems.append(f"库内 embed_model={model or '(空)'}，当前 KB_EMBED_MODEL={KB.embed_model}")
+    rows = (
+        await db.execute(
+            text(
+                "SELECT length(embedding), COUNT(*) FROM kb_chunks "
+                "WHERE embedding IS NOT NULL GROUP BY length(embedding)"
+            )
+        )
+    ).fetchall()
+    bad: list[tuple[int, int]] = []
+    for nbytes, count in rows:
+        n = int(nbytes)
+        d = -1 if n % 4 else n // 4
+        if d != KB.embed_dim:
+            bad.append((d, int(count)))
+    if bad:
+        detail = "、".join(f"{d}维×{c}条" for d, c in sorted(bad))
+        problems.append(f"实际切片维度异常：{detail}（目标 {KB.embed_dim} 维）")
+    nulls = int(
+        (
+            await db.execute(text("SELECT COUNT(*) FROM kb_chunks WHERE embedding IS NULL"))
+        ).scalar_one()
+    )
+    if nulls:
+        problems.append(f"{nulls} 条切片缺少向量")
+    return problems
+
+
+async def refresh_vector_available(db: AsyncSession) -> list[str]:
+    """运行时复核向量可用性，返回问题清单。
+
+    startup_check 发现不一致时会把开关置 False；迁移脚本是独立进程，无法翻转
+    运行中服务的内存开关。这里在每次检索 / 统计请求（开关关闭时）重新读库，
+    kb_settings 与实际维度恢复一致后立即自愈，**无需重启后端**。
+    """
+    global vector_available
+    problems = await vector_problems(db)
+    if problems and vector_available:
+        vector_available = False
+        logger.error("知识库向量检索已关闭（仅 FTS）：%s", "；".join(problems))
+    elif not problems and not vector_available:
+        vector_available = True
+        logger.info("知识库向量检索已在运行时恢复（迁移重建已写回一致配置）")
+    return problems
+
+
 class StdlibCosineVectorStore(VectorStore):
     """LangChain ``VectorStore`` 的极简实现：纯 stdlib 点积（向量已 L2 归一化）。
 
@@ -133,6 +201,7 @@ class VectorIndex:
         self.ids: list[int] = []
         self.dim: int = 0
         self.version: str | None = None  # 对应 kb_settings.index_version
+        self.dim_mismatch_count: int = 0  # 实际维度与配置不符的切片数（不允许静默丢弃）
         self._store: StdlibCosineVectorStore | None = None
         self._lock = asyncio.Lock()
 
@@ -191,9 +260,17 @@ class VectorIndex:
 
         if len(ids) >= KB.max_chunks:
             logger.warning("知识库向量数已达 KB_MAX_CHUNKS=%d 上限，仅加载最新部分", KB.max_chunks)
+        self.dim_mismatch_count = dim_mismatch
         if dim_mismatch:
-            logger.warning("知识库有 %d 条向量维度与 KB_EMBED_DIM 不符，已跳过", dim_mismatch)
+            # 脏维度向量不能被静默跳过：下面的 refresh_vector_available 会关闭整路
+            # 向量检索（降级为 FTS），等全量重嵌后自愈，避免留下检索缺口。
+            logger.error(
+                "知识库有 %d 条向量维度与 KB_EMBED_DIM 不符，已关闭向量检索（避免检索缺口），"
+                "请执行 python backend/kb_migrate.py --rebuild 做全量重嵌",
+                dim_mismatch,
+            )
         self.ids, self.dim, self.version, self._store = [int(i) for i in ids], KB.embed_dim, version, store
+        await refresh_vector_available(db)
         logger.info("知识库向量索引已加载：%d 条切片（index_version=%s）", len(ids), version)
 
     def top_k(self, qv: list[float], k: int) -> list[tuple[int, float]]:
