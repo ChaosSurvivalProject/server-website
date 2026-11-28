@@ -152,6 +152,7 @@ _download_event_counted_migrated = False
 _resource_version_sync_migrated = False
 _kb_mcp_auth_migrated = False
 _kb_document_upload_migrated = False
+_kb_node_migrated = False
 
 
 def migrate_user_extra_columns() -> None:
@@ -477,6 +478,40 @@ def migrate_kb_document_upload_columns() -> None:
         logger.warning("kb_documents 表上传列迁移检查失败: %s", e)
 
 
+def migrate_kb_document_node_columns() -> None:
+    """kb_documents 补 node_id / content_md 两列（FLPR-71，幂等）。
+
+    存量库只有旧的知识库表（source_type/source_path 等），新增两列全部允许 NULL /
+    空串：node_id 由一次性迁移脚本 FLPR-72 回填，content_md 由迁移脚本把正文写入。
+    新库 create_all 已含这两列，这里直接跳过；迁移失败只记 warning 不阻断启动。
+    """
+    global _kb_node_migrated
+    if _kb_node_migrated:
+        return
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(str(DB_FILE))
+        try:
+            col_names = [
+                row[1] for row in con.execute("PRAGMA table_info('kb_documents')")
+            ]
+            if "node_id" not in col_names:
+                con.execute("ALTER TABLE kb_documents ADD COLUMN node_id INTEGER")
+            if "content_md" not in col_names:
+                con.execute(
+                    "ALTER TABLE kb_documents ADD COLUMN content_md TEXT "
+                    "NOT NULL DEFAULT ''"
+                )
+            con.commit()
+            logger.info("已为 kb_documents 补 node_id / content_md 列（FLPR-71）")
+        finally:
+            con.close()
+        _kb_node_migrated = True
+    except Exception as e:
+        logger.warning("kb_documents 表节点列迁移检查失败: %s", e)
+
+
 def migrate_user_mute_column() -> None:
     """users 表补 mute_until 列（论坛禁言功能引入；幂等）。
     空串/None = 未禁言；now < mute_until 视为禁言中。禁言与 status 三态正交：
@@ -610,6 +645,34 @@ async def get_db():
         yield session
 
 
+# ── 知识库文档树（FLPR-71，本期单树，无多库标识列 / 不建知识库表）──────
+# 层级与正文分表：树操作只写 kb_nodes（零 Embedding），正文编辑才动 kb_documents。
+# 设计见 docs/知识库/wiki与知识库打通改造方案.md §5.3；slug 为完整 URL 路径、
+# 全局唯一且与树位置解耦（移动节点不改 URL）。递归查询统一限深 ≤5 层。
+
+
+class KBNode(Base):
+    """知识库节点：目录（folder）/ 文档（doc），单树，parent_id NULL = 根。"""
+
+    __tablename__ = "kb_nodes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    parent_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    node_type: Mapped[str] = mapped_column(String(16), nullable=False, default="folder")
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 完整 URL 路径（含祖先段），如 for-new/join-server/for-java-client；全局唯一。
+    slug: Mapped[str] = mapped_column(String(512), nullable=False, unique=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    document_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    published: Mapped[int] = mapped_column(Integer, nullable=False, default=1)  # 0=草稿 1=已发布
+    description: Mapped[str] = mapped_column(String(500), nullable=False, default="")
+    faq_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    deleted_at: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)  # 整支软删除
+    revision: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 乐观锁
+    create_time: Mapped[str] = mapped_column(String(30), nullable=False)
+    update_time: Mapped[str] = mapped_column(String(30), nullable=False)
+
+
 # ── 知识库（智能客服 P0） ──────────────────────────────────────────
 # 设计见 docs/智能客服/智能客服P0落地方案.md §3。与 Announcement/User 并列，不新建包。
 
@@ -621,6 +684,12 @@ class KBDocument(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    # FLPR-71：归属文档树节点 + SSR 用的原始 Markdown（清洗前）。
+    # source_type / source_path 仅作为存量兼容列保留，改造后不再读写。
+    node_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
+    content_md: Mapped[str] = mapped_column(
+        Text, nullable=False, default="", server_default=""
+    )
     source_type: Mapped[str] = mapped_column(String(16), nullable=False)  # 'wiki' | 'manual'
     source_path: Mapped[str] = mapped_column(String(512), nullable=False, default="")  # wiki 相对路径
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, default="")  # 内容 MD5
@@ -1461,6 +1530,8 @@ async def init_db():
     migrate_kb_mcp_auth_columns()
     # 智能客服：文档上传列（FLPR-67，幂等；存量行默认 markdown / 无原始文件）
     migrate_kb_document_upload_columns()
+    # 知识库文档树（FLPR-71，幂等；存量行 node_id 留空由迁移脚本回填）
+    migrate_kb_document_node_columns()
     # 站内信：announcements 表迁移到 messages 表（仅对存量库执行，新库跳过）
     await migrate_announcements_to_messages()
 

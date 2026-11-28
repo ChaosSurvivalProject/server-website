@@ -138,6 +138,9 @@ class KBConfig:
     rate_limit_per_hour: int
     rate_limit_global_per_min: int
     rate_limit_concurrent_per_ip: int
+    # 知识库 SSR（FLPR-71）：canonical / og:url 的站点前缀，不含尾斜杠。
+    # 默认与 VitePress config.mts transformHead 生成的 URL 一致，保证旧链接不变。
+    site_url: str
     # 文档上传（FLPR-67）
     upload_dir: Path           # 上传原始文件落盘目录（与入库 Markdown 分开存放）
     upload_max_mb: int         # 单文件大小上限（MiB）
@@ -181,6 +184,8 @@ KB = KBConfig(
     rate_limit_per_hour=_env_int("KB_RATE_LIMIT_PER_HOUR", 20),
     rate_limit_global_per_min=_env_int("KB_RATE_LIMIT_GLOBAL_PER_MIN", 5),
     rate_limit_concurrent_per_ip=_env_int("KB_RATE_LIMIT_CONCURRENT_PER_IP", 1),
+    # 知识库 SSR（FLPR-71）
+    site_url=_env_str("KB_SITE_URL", "https://xqly.xt91tv.shop").rstrip("/"),
     # 文档上传：默认落 backend/data/kb_uploads（已 gitignore），20MB 上限
     upload_dir=Path(_env_str("KB_UPLOAD_DIR") or str(BASE_DIR / "data" / "kb_uploads")),
     upload_max_mb=_env_int("KB_UPLOAD_MAX_MB", 20),

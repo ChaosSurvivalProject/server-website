@@ -128,6 +128,37 @@
 | POST | `/api/kb/admin/documents/{id}/reindex` | 重建（**需管理员**；幂等：wiki 来源读源文件整篇重建，manual 来源重嵌入现有切片） |
 | GET | `/api/kb/admin/stats` | 统计（**需管理员**；文档数 / 切片数 / 索引版本 / 维度一致性 / 总字符数） |
 
+### 知识库文档树与 SSR 展示（FLPR-71，P0 影子验证）
+
+本期只有一个知识库「默认知识库」：`kb_nodes` 单树，**无 `kb_id`、无知识库切换/多库隔离**。层级与正文分表——树操作只写 `kb_nodes`，零 Embedding；只有回收站恢复从 `content_md` 重新摄入。设计见 `docs/知识库/wiki与知识库打通改造方案.md` §5.3/§5.4/§5.7/§5.8。
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/api/kb/nav` | 公开导航树（递归 CTE，深度 ≤5；过滤 `deleted_at` 整支与所有祖先，只含已发布文档） |
+| GET | `/api/kb/search` | 站内搜索（参数 `q`, `limit`≤50；走 `kb_chunks_fts` trigram，与客服同索引；结果按节点 slug 回拼 `/wiki/<slug>/`） |
+| GET | `/api/kb/admin/nodes/tree` | 整树 JSON（**需管理员**；`includeDeleted=1` 含回收站） |
+| POST | `/api/kb/admin/nodes` | 新建目录/文档（**需管理员**；body `{parentId?, nodeType:folder\|doc, title, slug, sortOrder?, documentId?, description?, faqJson?, published?}`；`slug` 全局唯一且与树位置解耦） |
+| GET | `/api/kb/admin/nodes/{id}` | 节点详情（**需管理员**） |
+| PUT | `/api/kb/admin/nodes/{id}` | 改标题/slug/SEO 描述/FAQ JSON/发布态（**需管理员**；可选 `revision` 乐观锁，不一致 409） |
+| PUT | `/api/kb/admin/nodes/{id}/move` | 移动到目标目录（**需管理员**；body `{parentId?, sortOrder, revision?}`；禁止选自己及后代，URL 不变） |
+| PUT | `/api/kb/admin/nodes/{id}/sort` | 同级排序（**需管理员**；body `{sortOrder, revision?}`） |
+| PUT | `/api/kb/admin/nodes/{id}/publish` | 发布/草稿切换（**需管理员**；body `{published, revision?}`） |
+| DELETE | `/api/kb/admin/nodes/{id}` | 整支软删除进回收站（**需管理员**；同时清切片/FTS 并 bump `index_version`，RAG 立即不命中） |
+| POST | `/api/kb/admin/nodes/{id}/restore` | 从回收站恢复整支（**需管理员**；文档从 `content_md` 重新摄入，产生一次 Embedding） |
+| POST | `/api/kb/admin/nodes/{id}/copy` | 复制到目标目录（**需管理员**；body `{targetParentId?, slug?}`；整棵子树 + 切片/向量/FTS 直接复制，**不调 Embedding API**） |
+
+SSR 展示路由（非 `/api` 前缀，直出完整 HTML、不依赖 JS）：
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| GET | `/wiki/` | 首页（从导航树渲染目录入口） |
+| GET | `/wiki/{path:path}` | 文档页（按完整 slug 查已发布节点；markdown-it-py 渲染 tables/heading 锚点/TOC/`:::` 容器/站内链接改写 `/xxx/`→`/wiki/xxx/`；head 注入 canonical/OG/description/FAQPage JSON-LD + 双主题脚本；未命中返回后端 404 HTML） |
+| GET | `/wiki/sitemap.xml` | 站点地图（覆盖全部已发布文档节点，替代 VitePress 构建期产物） |
+
+- 页面级缓存 key = `path + content_hash + index_version + revision`，`index_version` 热更新不重启即生效；SEO head 与旧 VitePress `config.mts` 的 `transformHead` 对齐（canonical/OG/FAQ 逐页一致）。
+- 新增环境变量 `KB_SITE_URL`（默认 `https://xqly.xt91tv.shop`）用于生成 canonical/og:url；`backend/requirements.txt` 新增 `jinja2` / `markdown-it-py` / `mdit-py-plugins`。
+- `kb_documents` 新增 `node_id` / `content_md`；`source_type` / `source_path` 仅作为存量兼容列保留，不再读写。
+
 ### MCP 扩展（P1：Agentic RAG + MCP）
 
 默认 **Agentic RAG**：知识库检索是内置 Function Calling 工具（`create_agent` 工具调用循环，LangChain 1.x），MCP 经官方适配器 `langchain-mcp-adapters` 动态接入（stdio / SSE / Streamable HTTP）。`KB_AGENT_ENABLED=0` 回退 P0 单轮流式；`KB_MCP_ENABLED=0` 只关 MCP（内置 RAG 保留）。以下全部 **需管理员** + 包络：

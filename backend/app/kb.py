@@ -30,6 +30,7 @@ import io
 import json
 import logging
 import re
+import shutil
 import time
 import uuid
 from collections import defaultdict, deque
@@ -51,6 +52,7 @@ from .crud import _TZ as BEIJING_TZ
 from .database import (
     KBChunk,
     KBDocument,
+    KBNode,
     KBMcpServer,
     KBMcpTool,
     KBToolConfig,
@@ -2214,6 +2216,632 @@ def _safe_json(raw: str):
         return json.loads(raw) if raw else {}
     except json.JSONDecodeError:
         return raw
+
+
+# ── 知识库文档树 / 导航 / 搜索（FLPR-71，§5.3 / §5.4 / §5.8）────────
+# 本期单树：不出现 多库标识列 / 知识库切换 / 多库隔离抽象。树操作只写 kb_nodes，
+# 零 Embedding；只有「恢复」从 content_md 重新摄入时产生一次 Embedding。
+
+_NODE_MAX_DEPTH = 5
+
+
+class _NodeCreate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    parent_id: Optional[int] = Field(default=None, alias="parentId")
+    node_type: Literal["folder", "doc"] = Field(default="folder", alias="nodeType")
+    title: str = Field(..., min_length=1, max_length=255)
+    slug: str = Field(..., min_length=1, max_length=512)
+    sort_order: int = Field(default=0, alias="sortOrder")
+    document_id: Optional[int] = Field(default=None, alias="documentId")
+    description: str = Field(default="", max_length=500)
+    faq_json: Optional[str] = Field(default=None, alias="faqJson")
+    published: int = Field(default=1, ge=0, le=1)
+
+
+class _NodeUpdate(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    slug: Optional[str] = Field(default=None, min_length=1, max_length=512)
+    description: Optional[str] = Field(default=None, max_length=500)
+    faq_json: Optional[str] = Field(default=None, alias="faqJson")
+    published: Optional[int] = Field(default=None, ge=0, le=1)
+    revision: Optional[int] = Field(default=None, ge=0)
+
+
+class _NodeMove(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    parent_id: Optional[int] = Field(default=None, alias="parentId")
+    sort_order: int = Field(default=0, alias="sortOrder")
+    revision: Optional[int] = Field(default=None, ge=0)
+
+
+class _NodeSort(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    sort_order: int = Field(default=0, alias="sortOrder")
+    revision: Optional[int] = Field(default=None, ge=0)
+
+
+class _NodePublish(BaseModel):
+    published: int = Field(..., ge=0, le=1)
+    revision: Optional[int] = Field(default=None, ge=0)
+
+
+class _NodeCopy(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    target_parent_id: Optional[int] = Field(default=None, alias="targetParentId")
+    slug: Optional[str] = Field(default=None, max_length=512)
+
+
+def _node_out(n: KBNode) -> dict:
+    return {
+        "id": n.id,
+        "parentId": n.parent_id,
+        "nodeType": n.node_type,
+        "title": n.title,
+        "slug": n.slug,
+        "sortOrder": n.sort_order,
+        "documentId": n.document_id,
+        "published": n.published,
+        "description": n.description,
+        "faqJson": n.faq_json,
+        "deletedAt": n.deleted_at,
+        "revision": n.revision,
+        "url": f"/wiki/{n.slug}/" if n.node_type == "doc" else None,
+        "createTime": n.create_time,
+        "updateTime": n.update_time,
+    }
+
+
+def _check_node_slug(raw: str) -> str:
+    slug = (raw or "").strip().strip("/")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9\-/_.]*", slug):
+        raise HTTPException(
+            status_code=400,
+            detail="slug 只能包含字母、数字、横线、下划线、点与斜杠，且以字母或数字开头",
+        )
+    if "//" in slug:
+        raise HTTPException(status_code=400, detail="slug 不能包含连续的斜杠")
+    return slug
+
+
+async def _get_node(db: AsyncSession, node_id: int) -> KBNode:
+    node = (await db.execute(select(KBNode).where(KBNode.id == node_id))).scalar_one_or_none()
+    if node is None:
+        raise HTTPException(status_code=404, detail="节点不存在")
+    return node
+
+
+async def _ensure_unique_slug(
+    db: AsyncSession, slug: str, *, exclude_id: Optional[int] = None
+) -> str:
+    base = _check_node_slug(slug)
+    candidate, suffix = base, 2
+    while True:
+        stmt = select(KBNode.id).where(KBNode.slug == candidate)
+        if exclude_id is not None:
+            stmt = stmt.where(KBNode.id != exclude_id)
+        if (await db.execute(stmt.limit(1))).first() is None:
+            return candidate
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+
+
+async def _subtree_ids(db: AsyncSession, root_id: int) -> list[int]:
+    rows = (
+        await db.execute(
+            text(
+                "WITH RECURSIVE sub(id) AS ("
+                " SELECT id FROM kb_nodes WHERE id = :root"
+                " UNION ALL"
+                " SELECT n.id FROM kb_nodes n JOIN sub s ON n.parent_id = s.id"
+                ") SELECT id FROM sub"
+            ),
+            {"root": root_id},
+        )
+    ).scalars().all()
+    return list(rows)
+
+
+async def _node_depth(db: AsyncSession, node_id: int) -> int:
+    cur = await _get_node(db, node_id)
+    depth = 0
+    while cur.parent_id is not None and depth <= _NODE_MAX_DEPTH:
+        parent = (
+            await db.execute(select(KBNode).where(KBNode.id == cur.parent_id))
+        ).scalar_one_or_none()
+        if parent is None:
+            break
+        depth += 1
+        cur = parent
+    return depth
+
+
+async def _subtree_max_depth(db: AsyncSession, root_id: int) -> int:
+    value = (
+        await db.execute(
+            text(
+                "WITH RECURSIVE sub(id, depth) AS ("
+                " SELECT id, 0 FROM kb_nodes WHERE id = :root"
+                " UNION ALL"
+                " SELECT n.id, s.depth + 1 FROM kb_nodes n JOIN sub s ON n.parent_id = s.id"
+                ") SELECT COALESCE(MAX(depth), 0) FROM sub"
+            ),
+            {"root": root_id},
+        )
+    ).scalar()
+    return int(value or 0)
+
+
+def _check_revision(req, node: KBNode) -> None:
+    """乐观锁：带 revision 且不等于库中值时拒绝（409），避免并发覆盖。"""
+    revision = getattr(req, "revision", None)
+    if revision is not None and revision != node.revision:
+        raise HTTPException(status_code=409, detail="节点已被他人修改，请刷新后重试")
+
+
+@router.get("/nav")
+async def public_kb_nav(db: AsyncSession = Depends(get_db)):
+    """公开侧边栏导航树（递归 CTE，过滤整支 deleted_at 与草稿，§5.8）。"""
+    from .kb_view import build_nav
+
+    return _envelope({"items": await build_nav(db)})
+
+
+@router.get("/search")
+async def public_kb_search(
+    q: str = Query(default="", max_length=200),
+    limit: int = Query(default=10, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+):
+    """站内搜索：kb_chunks_fts trigram，与客服同一索引；结果按节点路径回拼 URL。"""
+    match_query = kb_retrieve.build_match_query(q)
+    if not match_query or not fts_available:
+        return _envelope({"items": [], "query": q})
+    rows = (
+        await db.execute(
+            text(
+                "SELECT c.id, c.heading, c.content, d.title, n.slug "
+                "FROM kb_chunks_fts f "
+                "JOIN kb_chunks c ON c.id = f.rowid "
+                "JOIN kb_documents d ON d.id = c.document_id "
+                "LEFT JOIN kb_nodes n ON n.id = d.node_id "
+                "WHERE kb_chunks_fts MATCH :q "
+                "  AND (n.id IS NULL OR (n.published = 1 AND n.deleted_at IS NULL)) "
+                "ORDER BY rank LIMIT :k"
+            ),
+            {"q": match_query, "k": limit},
+        )
+    ).all()
+    return _envelope(
+        {
+            "items": [
+                {
+                    "id": row[0],
+                    "heading": row[1] or "",
+                    "content": row[2],
+                    "title": row[3],
+                    "url": f"/wiki/{row[4]}/" if row[4] else None,
+                }
+                for row in rows
+            ],
+            "query": q,
+        }
+    )
+
+
+@router.get("/admin/nodes/tree")
+async def admin_nodes_tree(
+    includeDeleted: bool = Query(default=False, alias="includeDeleted"),
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """整树 JSON（管理员）；includeDeleted=1 时含回收站节点。"""
+    nodes = (await db.execute(select(KBNode).order_by(KBNode.sort_order, KBNode.id))).scalars().all()
+    by_parent: dict[Optional[int], list] = defaultdict(list)
+    for node in nodes:
+        if not includeDeleted and node.deleted_at:
+            continue
+        by_parent[node.parent_id].append(_node_out(node))
+
+    def attach(parent_id: Optional[int]) -> list[dict]:
+        result = []
+        for item in by_parent.get(parent_id, []):
+            # 父节点已软删且未包含时，其后代同样不挂到根上（过滤所有祖先）
+            item["children"] = attach(item["id"])
+            result.append(item)
+        return result
+
+    return _envelope({"items": attach(None)})
+
+
+@router.post("/admin/nodes")
+async def admin_create_node(
+    req: _NodeCreate,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """新建目录 / 文档节点；文档可关联已有 kb_documents，未关联时建空文档。"""
+    parent_id = req.parent_id
+    if parent_id is not None:
+        parent = await _get_node(db, parent_id)
+        if parent.node_type != "folder":
+            raise HTTPException(status_code=400, detail="父节点必须是目录")
+        if await _node_depth(db, parent_id) + 1 > _NODE_MAX_DEPTH:
+            raise HTTPException(status_code=400, detail=f"树深不能超过 {_NODE_MAX_DEPTH} 层")
+
+    slug = await _ensure_unique_slug(db, req.slug)
+    now = _now_iso()
+    node = KBNode(
+        parent_id=parent_id,
+        node_type=req.node_type,
+        title=req.title.strip(),
+        slug=slug,
+        sort_order=req.sort_order,
+        published=req.published,
+        description=req.description,
+        faq_json=req.faq_json,
+        create_time=now,
+        update_time=now,
+    )
+    db.add(node)
+    await db.flush()
+
+    if req.node_type == "doc":
+        doc = None
+        if req.document_id is not None:
+            doc = (
+                await db.execute(select(KBDocument).where(KBDocument.id == req.document_id))
+            ).scalar_one_or_none()
+            if doc is None:
+                raise HTTPException(status_code=400, detail="关联文档不存在")
+        if doc is None:
+            doc = KBDocument(
+                title=node.title,
+                source_type="manual",
+                source_path="",
+                content_md="",
+                content_hash="",
+                create_time=now,
+                update_time=now,
+            )
+            db.add(doc)
+            await db.flush()
+        doc.node_id = node.id
+        node.document_id = doc.id
+
+    await db.commit()
+    await db.refresh(node)
+    return _envelope(_node_out(node))
+
+
+@router.get("/admin/nodes/{node_id}")
+async def admin_get_node(
+    node_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    return _envelope(_node_out(await _get_node(db, node_id)))
+
+
+@router.put("/admin/nodes/{node_id}")
+async def admin_update_node(
+    node_id: int,
+    req: _NodeUpdate,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """改标题 / slug / SEO 描述 / FAQ JSON / 发布态；revision 乐观锁。"""
+    node = await _get_node(db, node_id)
+    _check_revision(req, node)
+    fields = req.model_fields_set
+    if "title" in fields:
+        node.title = (req.title or "").strip()
+    if "slug" in fields:
+        node.slug = await _ensure_unique_slug(db, req.slug or "", exclude_id=node_id)
+    if "description" in fields:
+        node.description = req.description or ""
+    if "faqJson" in fields:
+        if req.faq_json:
+            try:
+                parsed = json.loads(req.faq_json)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="faqJson 不是合法 JSON")
+            if not isinstance(parsed, dict) or parsed.get("@type") != "FAQPage":
+                raise HTTPException(status_code=400, detail="faqJson 必须是 FAQPage JSON-LD")
+        node.faq_json = req.faq_json or None
+    if "published" in fields:
+        node.published = req.published
+    node.revision += 1
+    node.update_time = _now_iso()
+    if node.node_type == "doc" and node.document_id:
+        doc = (
+            await db.execute(select(KBDocument).where(KBDocument.id == node.document_id))
+        ).scalar_one_or_none()
+        if doc:
+            doc.title = node.title
+            doc.update_time = node.update_time
+    await db.commit()
+    await db.refresh(node)
+    return _envelope(_node_out(node))
+
+
+@router.put("/admin/nodes/{node_id}/move")
+async def admin_move_node(
+    node_id: int,
+    req: _NodeMove,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """移动节点：只改 parent_id / sort_order，URL 不变、零 Embedding。"""
+    node = await _get_node(db, node_id)
+    _check_revision(req, node)
+    target = req.parent_id
+    if target is not None:
+        if target in await _subtree_ids(db, node_id):
+            raise HTTPException(status_code=400, detail="不能移动到自己或自己的后代")
+        parent = await _get_node(db, target)
+        if parent.node_type != "folder":
+            raise HTTPException(status_code=400, detail="目标必须是目录")
+        base_depth = await _node_depth(db, target)
+    else:
+        base_depth = -1
+    if base_depth + 1 + await _subtree_max_depth(db, node_id) > _NODE_MAX_DEPTH:
+        raise HTTPException(status_code=400, detail=f"移动后树深不能超过 {_NODE_MAX_DEPTH} 层")
+    node.parent_id = target
+    node.sort_order = req.sort_order
+    node.revision += 1
+    node.update_time = _now_iso()
+    await db.commit()
+    await db.refresh(node)
+    return _envelope(_node_out(node))
+
+
+@router.put("/admin/nodes/{node_id}/sort")
+async def admin_sort_node(
+    node_id: int,
+    req: _NodeSort,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    node = await _get_node(db, node_id)
+    _check_revision(req, node)
+    node.sort_order = req.sort_order
+    node.revision += 1
+    node.update_time = _now_iso()
+    await db.commit()
+    await db.refresh(node)
+    return _envelope(_node_out(node))
+
+
+@router.put("/admin/nodes/{node_id}/publish")
+async def admin_publish_node(
+    node_id: int,
+    req: _NodePublish,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    node = await _get_node(db, node_id)
+    _check_revision(req, node)
+    node.published = req.published
+    node.revision += 1
+    node.update_time = _now_iso()
+    await db.commit()
+    await db.refresh(node)
+    return _envelope(_node_out(node))
+
+
+@router.delete("/admin/nodes/{node_id}")
+async def admin_delete_node(
+    node_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """整支软删除进回收站；同时清切片/FTS 并 bump 版本，RAG 立即不命中。"""
+    await _get_node(db, node_id)
+    ids = await _subtree_ids(db, node_id)
+    now = _now_iso()
+    await db.execute(
+        text(
+            "UPDATE kb_nodes SET deleted_at = :now, update_time = :now, "
+            "revision = revision + 1 WHERE id IN :ids"
+        ).bindparams(bindparam("ids", expanding=True)),
+        {"now": now, "ids": ids},
+    )
+    docs = (
+        await db.execute(select(KBDocument).where(KBDocument.node_id.in_(ids)))
+    ).scalars().all()
+    for doc in docs:
+        await _delete_chunks_only(db, doc)
+    await bump_index_version(db)
+    await db.commit()
+    return _envelope({"deletedNodes": len(ids), "affectedDocuments": len(docs)})
+
+
+@router.post("/admin/nodes/{node_id}/restore")
+async def admin_restore_node(
+    node_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """从回收站恢复整支：文档从 content_md 重新摄入（一次 Embedding）。"""
+    await _get_node(db, node_id)
+    ids = await _subtree_ids(db, node_id)
+    docs = (
+        await db.execute(select(KBDocument).where(KBDocument.node_id.in_(ids)))
+    ).scalars().all()
+    for doc in docs:
+        if (doc.content_md or "").strip():
+            await _ingest_document(
+                db,
+                doc=doc,
+                title=doc.title,
+                source_type="manual",
+                source_path="",
+                content=doc.content_md,
+                content_hash=doc.content_hash,
+            )
+    now = _now_iso()
+    await db.execute(
+        text(
+            "UPDATE kb_nodes SET deleted_at = NULL, update_time = :now, "
+            "revision = revision + 1 WHERE id IN :ids"
+        ).bindparams(bindparam("ids", expanding=True)),
+        {"now": now, "ids": ids},
+    )
+    await bump_index_version(db)
+    await db.commit()
+    return _envelope({"restoredNodes": len(ids), "affectedDocuments": len(docs)})
+
+
+@router.post("/admin/nodes/{node_id}/copy")
+async def admin_copy_node(
+    node_id: int,
+    req: _NodeCopy,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """复制到目标目录：整棵子树 + 切片/向量/FTS 直接复制，不调 Embedding API。"""
+    node = await _get_node(db, node_id)
+    target = req.target_parent_id
+    if target is not None:
+        if target in await _subtree_ids(db, node_id):
+            raise HTTPException(status_code=400, detail="不能复制到自己或自己的后代")
+        parent = await _get_node(db, target)
+        if parent.node_type != "folder":
+            raise HTTPException(status_code=400, detail="目标必须是目录")
+        base_depth = await _node_depth(db, target)
+    else:
+        base_depth = -1
+    if base_depth + 1 + await _subtree_max_depth(db, node_id) > _NODE_MAX_DEPTH:
+        raise HTTPException(status_code=400, detail=f"复制后树深不能超过 {_NODE_MAX_DEPTH} 层")
+
+    new_root_slug = await _ensure_unique_slug(db, req.slug or f"{node.slug}-copy")
+    suffix = (
+        new_root_slug[len(node.slug):]
+        if new_root_slug.startswith(node.slug)
+        else "-" + new_root_slug.rsplit("-", 1)[-1]
+    )
+    rows = (
+        await db.execute(
+            text(
+                "WITH RECURSIVE sub(id, parent_id, node_type, title, slug, sort_order, "
+                "document_id, published, description, faq_json, depth) AS ("
+                " SELECT id, parent_id, node_type, title, slug, sort_order, document_id, "
+                "        published, description, faq_json, 0 FROM kb_nodes WHERE id = :root"
+                " UNION ALL"
+                " SELECT n.id, n.parent_id, n.node_type, n.title, n.slug, n.sort_order, "
+                "        n.document_id, n.published, n.description, n.faq_json, s.depth + 1 "
+                " FROM kb_nodes n JOIN sub s ON n.parent_id = s.id"
+                ") SELECT * FROM sub ORDER BY depth, id"
+            ),
+            {"root": node_id},
+        )
+    ).all()
+
+    now = _now_iso()
+    id_map: dict[int, int] = {}
+    for row in rows:
+        old_id = row[0]
+        new_parent = target if old_id == node_id else id_map.get(row[1], target)
+        slug = new_root_slug if old_id == node_id else await _ensure_unique_slug(db, row[4] + suffix)
+        new_node = KBNode(
+            parent_id=new_parent,
+            node_type=row[2],
+            title=row[3],
+            slug=slug,
+            sort_order=row[5],
+            document_id=None,
+            published=row[7],
+            description=row[8],
+            faq_json=row[9],
+            create_time=now,
+            update_time=now,
+        )
+        db.add(new_node)
+        await db.flush()
+        id_map[old_id] = new_node.id
+
+        if row[2] != "doc" or not row[6]:
+            continue
+        old_doc = (
+            await db.execute(select(KBDocument).where(KBDocument.id == row[6]))
+        ).scalar_one_or_none()
+        if old_doc is None:
+            continue
+        new_doc = KBDocument(
+            title=old_doc.title,
+            source_type="manual",
+            source_path="",
+            content_hash=old_doc.content_hash,
+            content_md=old_doc.content_md or "",
+            doc_type=old_doc.doc_type,
+            original_filename=old_doc.original_filename,
+            original_path="",
+            status=old_doc.status,
+            error_message=old_doc.error_message,
+            chunk_count=old_doc.chunk_count,
+            content_length=old_doc.content_length,
+            create_time=now,
+            update_time=now,
+        )
+        db.add(new_doc)
+        await db.flush()
+        new_node.document_id = new_doc.id
+        new_doc.node_id = new_node.id
+
+        # 原件存在时一并复制（失败不阻断文档副本）
+        if old_doc.original_path:
+            try:
+                src = Path(old_doc.original_path)
+                if src.is_file():
+                    dst = src.with_name(
+                        f"{src.stem}-copy-{uuid.uuid4().hex[:8]}{src.suffix}"
+                    )
+                    shutil.copy2(src, dst)
+                    new_doc.original_path = str(dst)
+            except OSError as e:
+                logger.warning("复制节点原件失败（doc=%s）: %s", old_doc.id, e)
+
+        chunks = (
+            await db.execute(
+                select(KBChunk)
+                .where(KBChunk.document_id == old_doc.id)
+                .order_by(KBChunk.chunk_index)
+            )
+        ).scalars().all()
+        new_chunks = []
+        for chunk in chunks:
+            copied = KBChunk(
+                document_id=new_doc.id,
+                chunk_index=chunk.chunk_index,
+                heading=chunk.heading,
+                content=chunk.content,
+                embedding=chunk.embedding,
+                char_count=chunk.char_count,
+            )
+            db.add(copied)
+            new_chunks.append(copied)
+        await db.flush()
+        if fts_available and new_chunks:
+            await db.execute(
+                text("INSERT INTO kb_chunks_fts(rowid, content) VALUES(:id, :content)"),
+                [{"id": c.id, "content": c.content} for c in new_chunks],
+            )
+
+    await bump_index_version(db)
+    await db.commit()
+    return _envelope(
+        {
+            "copiedNodes": len(rows),
+            "rootId": id_map.get(node_id),
+            "url": f"/wiki/{new_root_slug}/",
+        }
+    )
 
 
 # ── 启动校验（只记日志不阻断启动，方案 §5.9） ────────────────────
