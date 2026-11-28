@@ -109,6 +109,131 @@ export const reindexKBDocument = (id: number) => {
   );
 };
 
+/** 文档详情（FLPR-75）：属性面板按 documentId 读取完整字段 */
+export const getKBDocumentDetail = (id: number) => {
+  return http.request<KBDocumentItem>("get", `/api/kb/admin/documents/${id}`);
+};
+
+// ══════════ 知识库文档树（FLPR-71 后端 / FLPR-75 后台 UI）══════════
+// 契约参照 backend/app/kb.py 的 /api/kb/admin/nodes* 接口（require_admin）。
+// 层级与正文分表：树操作只写 kb_nodes、零 Embedding；只有回收站恢复会重新摄入。
+
+export type KBNodeType = "folder" | "doc";
+
+/** 文档树节点（对应 _node_out） */
+export type KBNodeItem = {
+  id: number;
+  parentId: number | null;
+  nodeType: KBNodeType;
+  title: string;
+  /** 完整 URL 路径（含祖先段），全局唯一；移动/重命名不改 URL */
+  slug: string;
+  sortOrder: number;
+  documentId: number | null;
+  /** 0=草稿 / 1=已发布 */
+  published: number;
+  description: string;
+  faqJson: string | null;
+  deletedAt: string | null;
+  /** 乐观锁版本号 */
+  revision: number;
+  /** 文档节点为 /wiki/<slug>/，目录为 null */
+  url: string | null;
+  createTime: string;
+  updateTime: string;
+  children?: KBNodeItem[];
+};
+
+export type KBNodeCreate = {
+  parentId?: number | null;
+  nodeType: KBNodeType;
+  title: string;
+  slug: string;
+  sortOrder?: number;
+  documentId?: number | null;
+  description?: string;
+  faqJson?: string | null;
+  published?: number;
+};
+
+export type KBNodeUpdate = {
+  title?: string;
+  slug?: string;
+  description?: string;
+  faqJson?: string | null;
+  published?: number;
+  revision?: number;
+};
+
+/** 整树 JSON；includeDeleted=1 时包含回收站节点 */
+export const getKBNodeTree = (includeDeleted = false) => {
+  return http.request<{ items: KBNodeItem[] }>("get", "/api/kb/admin/nodes/tree", {
+    params: includeDeleted ? { includeDeleted: 1 } : {}
+  });
+};
+
+export const createKBNode = (data: KBNodeCreate) => {
+  return http.request<KBNodeItem>("post", "/api/kb/admin/nodes", { data });
+};
+
+export const getKBNode = (id: number) => {
+  return http.request<KBNodeItem>("get", `/api/kb/admin/nodes/${id}`);
+};
+
+export const updateKBNode = (id: number, data: KBNodeUpdate) => {
+  return http.request<KBNodeItem>("put", `/api/kb/admin/nodes/${id}`, { data });
+};
+
+/** 移动：只改 parentId + sortOrder，URL 不变、零 Embedding */
+export const moveKBNode = (
+  id: number,
+  data: { parentId: number | null; sortOrder: number; revision?: number }
+) => {
+  return http.request<KBNodeItem>("put", `/api/kb/admin/nodes/${id}/move`, { data });
+};
+
+export const sortKBNode = (
+  id: number,
+  data: { sortOrder: number; revision?: number }
+) => {
+  return http.request<KBNodeItem>("put", `/api/kb/admin/nodes/${id}/sort`, { data });
+};
+
+export const publishKBNode = (
+  id: number,
+  data: { published: number; revision?: number }
+) => {
+  return http.request<KBNodeItem>("put", `/api/kb/admin/nodes/${id}/publish`, { data });
+};
+
+/** 整支软删除进回收站，返回受影响节点/文档数 */
+export const deleteKBNode = (id: number) => {
+  return http.request<{ deletedNodes: number; affectedDocuments: number }>(
+    "delete",
+    `/api/kb/admin/nodes/${id}`
+  );
+};
+
+/** 从回收站恢复整支（从 content_md 重新摄入，一次 Embedding） */
+export const restoreKBNode = (id: number) => {
+  return http.request<{ restoredNodes: number; affectedDocuments: number }>(
+    "post",
+    `/api/kb/admin/nodes/${id}/restore`
+  );
+};
+
+/** 复制到目标目录：整棵子树 + 切片/向量/FTS 直接复制，不调 Embedding API */
+export const copyKBNode = (
+  id: number,
+  data: { targetParentId: number | null; slug?: string }
+) => {
+  return http.request<{ copiedNodes: number; rootId: number | null; url: string }>(
+    "post",
+    `/api/kb/admin/nodes/${id}/copy`,
+    { data }
+  );
+};
+
 // ══════════ 智能客服 P1：Agentic RAG + MCP 扩展 ══════════
 // 契约参照 backend/app/kb.py 的 MCP 管理接口（require_admin，{code, message, data} 包络）。
 // 安全红线：authToken / env / headers 凭据原文不下发（只有 hasToken 等布尔标记）。

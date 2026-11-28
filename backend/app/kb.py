@@ -9,6 +9,7 @@
 
 管理接口（require_admin，包络正常）：
   GET    /kb/admin/documents              分页列表（page/pageSize/sourceType）
+  GET    /kb/admin/documents/{id}         文档详情（属性面板读取完整字段，FLPR-75）
   POST   /kb/admin/documents              手动新增（同步切片 + Embedding）
   POST   /kb/admin/documents/upload       文档上传（PDF / DOCX / PPTX / MD / TXT → Markdown 入库 + 原件留存）
   GET    /kb/admin/documents/{id}/download 下载上传的原始文件（wiki 来源拒绝）
@@ -767,6 +768,21 @@ async def admin_list_documents(
             "hasPrev": page > 1,
         }
     )
+
+
+@router.get("/admin/documents/{document_id}")
+async def admin_get_document(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    _admin=Depends(require_admin),
+):
+    """文档详情（管理员）：后台文件树属性面板按 documentId 读取完整字段（FLPR-75）。"""
+    doc = (
+        await db.execute(select(KBDocument).where(KBDocument.id == document_id))
+    ).scalar_one_or_none()
+    if doc is None:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return _envelope(_doc_out(doc))
 
 
 @router.post("/admin/documents")

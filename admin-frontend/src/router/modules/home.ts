@@ -229,6 +229,17 @@ export default [
         }
       },
       {
+        path: "/kb/tree",
+        name: "KBTree",
+        component: () => import("@/views/kb/tree.vue"),
+        meta: {
+          title: "默认知识库",
+          icon: "ep/folder-opened",
+          showLink: true,
+          showParent: true
+        }
+      },
+      {
         path: "/kb/mcp",
         name: "KB MCP",
         component: () => import("@/views/kb/mcp.vue"),
