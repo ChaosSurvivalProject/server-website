@@ -120,6 +120,7 @@
 | GET | `/api/kb/info` | 客服元信息（`enabled` / `title` / `greeting` / `faq` / `model`；未配置 API Key 时 `enabled:false`，前端不渲染悬浮球） |
 | POST | `/api/kb/chat` | **SSE 流式问答**（body: `{message, history?}`；`text/event-stream`，**两个不走 `{code, message, data}` 包络的接口之一**，另一个是 `/api/messages/stream`；帧协议见下方） |
 | GET | `/api/kb/admin/documents` | 文档分页列表（**需管理员**；参数: page, pageSize, sourceType 可选；返回每条 `docType` 与 `originalFilename`） |
+| GET | `/api/kb/admin/documents/{id}` | 文档详情（**需管理员**；属性面板按 `documentId` 读取完整字段，FLPR-75） |
 | POST | `/api/kb/admin/documents` | 手动新增知识（**需管理员**；body: `{title, content}`，同步切片 + Embedding；`docType=markdown`） |
 | POST | `/api/kb/admin/documents/upload` | 上传文档（**需管理员**；`multipart/form-data`，`file` 必填 + `title` 可选；支持 PDF / DOCX / PPTX / MD / TXT，后缀+魔数校验、单文件 ≤ `KB_UPLOAD_MAX_MB`(默认 20MB)；解析成 Markdown 入 manual 库并返回文档对象） |
 | GET | `/api/kb/admin/documents/{id}/download` | 下载上传原件（**需管理员**；按 id 关联，`Content-Disposition` 带原始文件名；`wiki` 来源或未上传原件返回 400/404） |
