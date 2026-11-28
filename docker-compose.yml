@@ -41,6 +41,9 @@ services:
       # （config.py 启动期口径），可纠正本地 backend/.env 里 KB_WIKI_DIR=../wiki
       # 这种按宿主机路径写的值；生产 .env 若已写 /app/wiki，此覆盖也无害。
       - KB_WIKI_DIR=/app/wiki
+      # 知识库静态资源目录（FLPR-72）：kb_migrate.py 把 wiki/public/doc-image/*.png
+      # 搬到这里；web 容器只读挂同一目录，由 nginx /doc-image/ alias 对外服务。
+      - KB_ASSET_DIR=/app/data/kb-assets
       # 本地只跑 API / 联调时可在根 .env 设 CRON_ENABLED=0 关闭镜像内定时任务
       - CRON_ENABLED=${CRON_ENABLED:-1}
     volumes:
@@ -52,6 +55,8 @@ services:
       - ./backend/.env:/app/backend/.env:ro
       # 知识库单一数据源：仓库 wiki/ 源码（kb_sync.py 按 MD5 增量入库，只读挂载）
       - ./wiki:/app/wiki:ro
+      # 知识库静态资源卷：迁移脚本写入 /doc-image/，web nginx 只读对外服务
+      - ./backend/data/kb-assets:/app/data/kb-assets
     ports:
       # 默认只绑回环，便于宿主机直接调试接口；容器名与路径保持不变。
       # 生产若不需要宿主机端口，删掉本段即可——web 服务经 compose 内网反代，不依赖此映射。
@@ -80,6 +85,10 @@ services:
       # 供局域网访问。生产禁止直接绑 0.0.0.0（会绕过 ufw 暴露公网）。
       # 8080 已被宿主机其他服务占用，故用 8090。
       - "${WEB_BIND_IP:-127.0.0.1}:8090:80"
+    volumes:
+      # 与 backend 同一个资源目录（FLPR-72）：nginx 通过 /doc-image/ alias 直接读。
+      # 只读挂载，web 容器不写资源；backend 负责迁移写入。
+      - ./backend/data/kb-assets:/app/data/kb-assets:ro
     depends_on:
       xqly-website-backend:
         condition: service_healthy
