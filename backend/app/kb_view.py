@@ -43,6 +43,13 @@ SITE_DESCRIPTION = (
     "星穹旅驿 Wiki：我的世界 1.21 阵营服 / Java 基岩互通服务器文档，"
     "含进服指南、黎明誓约与暮夜同盟阵营玩法、1.21.11 生存服版本支持与服务器规则。"
 )
+# 迁移脚本（FLPR-72）对「无 frontmatter description」页面写入的兜底后缀，
+# 与 kb_migrate.py 的 DESCRIPTION_FALLBACK 逐字一致；SSR 需识别它并还原成
+# VitePress transformHead 实际使用的站点全局描述（见 _page_description）。
+_DESCRIPTION_FALLBACK_SUFFIX = (
+    "：星穹旅驿我的世界 1.21 阵营服文档，包含 Java / 基岩互通进服指南、"
+    "黎明誓约与暮夜同盟阵营玩法、1.21.11 生存服版本支持与服务器规则。"
+)
 OG_IMAGE = "https://xqly.xt91tv.shop/og-cover.png"
 # 主题令牌 localStorage 键（与主站 / 旧 VitePress Wiki 同款，首屏同步写入）
 THEME_STORAGE_KEY = "XQ_theme_vars_v2"
@@ -179,19 +186,29 @@ def _page_url(slug: str) -> str:
 
 def _wiki_path(slug: str) -> str:
     """站内导航链接：与 VitePress base '/wiki' 一致，跨端分享可用。"""
-    return f"/wiki/{slug.strip('/')}/"
+    clean = (slug or "").strip("/")
+    return f"/wiki/{clean}/" if clean else "/wiki/"
 
 
 def _page_description(title: str, description: str) -> str:
-    if description and description != SITE_TITLE and description != SITE_DESCRIPTION:
-        return description
-    return (
-        f"{title}：星穹旅驿我的世界 1.21 阵营服文档，包含 Java / 基岩互通进服指南、"
-        "黎明誓约与暮夜同盟阵营玩法、1.21.11 生存服版本支持与服务器规则。"
-    )
+    """与 config.mts transformHead 的 pageDescription 对齐（FLPR-74 / DEFECT-02）。
+
+    VitePress 对「页面未写 frontmatter description」取站点全局描述
+    （config.mts 的 description，即本模块 SITE_DESCRIPTION）；而 FLPR-72 迁移
+    把这类页面的兜底文案 f"{H1}{DESCRIPTION_FALLBACK}" 写进了 kb_nodes.description。
+    这里识别并还原该兜底文案，保证 SSR 与 VitePress 逐字一致；有真实
+    frontmatter description 的页面则原样透传（含热更新写入的描述）。
+    """
+    if not description or description in (SITE_TITLE, SITE_DESCRIPTION):
+        return SITE_DESCRIPTION
+    if description.endswith(_DESCRIPTION_FALLBACK_SUFFIX):
+        return SITE_DESCRIPTION
+    return description
 
 
 def _page_og_title(title: str) -> str:
+    """og:title 取页面 H1/frontmatter title（而非侧边栏展示名），与
+    config.mts transformHead 的 plainTitle 口径对齐（FLPR-74 / DEFECT-01）。"""
     plain = title
     if plain.endswith(SITE_TITLE):
         plain = plain[: -len(SITE_TITLE)].rstrip(" |")
@@ -578,9 +595,9 @@ async def wiki_page(
     nav = await build_nav(db)
     rendered = _render_page(
         title=node.title,
-        description=node.description or "",
+        description=_page_description(document.title, node.description or ""),
         canonical=_page_url(slug),
-        og_title=_page_og_title(node.title),
+        og_title=_page_og_title(document.title),
         faq_json=node.faq_json,
         body=body_html,
         nav_html=_nav_html(nav, current_id=node.id),
