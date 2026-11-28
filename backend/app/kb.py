@@ -214,6 +214,7 @@ class KBStatsOut(BaseModel):
     embed_dim: Optional[int] = Field(default=None, alias="embedDim")   # 库内记录的维度
     config_dim: int = Field(..., alias="configDim")                    # 当前配置 KB_EMBED_DIM
     embed_model: str = Field(default="", alias="embedModel")
+    actual_dims: dict[str, int] = Field(default_factory=dict, alias="actualDims")  # 全库实际切片维度分布
     total_chars: int = Field(..., alias="totalChars")
     vector_enabled: bool = Field(..., alias="vectorEnabled")
 
@@ -1238,12 +1239,46 @@ async def admin_reindex_document(
     return _envelope(_doc_out(doc))
 
 
+async def _actual_dim_report(db: AsyncSession) -> dict:
+    """全库实际切片维度体检（float32 BLOB：维度 = length(embedding) // 4）。
+
+    键为维度字符串（供 JSON），值为切片数；非 4 字节对齐的脏 BLOB 记为 -1。
+    与 kb_migrate.chunk_dim_report 同口径，是 dimConsistent 的验收依据。
+    """
+    rows = (
+        await db.execute(
+            text(
+                "SELECT length(embedding), COUNT(*) FROM kb_chunks "
+                "WHERE embedding IS NOT NULL GROUP BY length(embedding)"
+            )
+        )
+    ).fetchall()
+    dims: dict[str, int] = {}
+    for nbytes, count in rows:
+        n = int(nbytes)
+        dim = -1 if n % 4 else n // 4
+        key = str(dim)
+        dims[key] = dims.get(key, 0) + int(count)
+    null_vectors = int(
+        (
+            await db.execute(text("SELECT COUNT(*) FROM kb_chunks WHERE embedding IS NULL"))
+        ).scalar_one()
+    )
+    return {"dims": dims, "null_vectors": null_vectors}
+
+
 @router.get("/admin/stats")
 async def admin_stats(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_admin),
 ):
-    """文档数 / 切片数 / 索引版本 / 维度一致性 / 总字符数。"""
+    """文档数 / 切片数 / 索引版本 / 维度一致性 / 总字符数。
+
+    dimConsistent 以「全库实际切片维度 + 库内模型名」为准（FLPR-73）：
+    embed_model 缺失不再回落配置值，模型名/维度任一不一致即标红，作为迁移验收依据。
+    """
+    # 迁移重建写回 kb_settings 后，运行中的进程即时恢复向量检索（无需重启）
+    await kb_index.refresh_vector_available(db)
     document_count = (
         await db.execute(select(func.count()).select_from(KBDocument))
     ).scalar_one()
@@ -1255,17 +1290,27 @@ async def admin_stats(
     ).scalar_one()
     index_version = await _get_setting(db, "index_version") or "0"
     embed_dim_setting = await _get_setting(db, "embed_dim")
-    embed_model_setting = await _get_setting(db, "embed_model") or KB.embed_model
-    dim_consistent = embed_dim_setting is None or embed_dim_setting == str(KB.embed_dim)
+    embed_model_setting = await _get_setting(db, "embed_model")
+    dim_report = await _actual_dim_report(db)
+    dim_consistent = (
+        bool(embed_model_setting)
+        and embed_model_setting == KB.embed_model
+        and embed_dim_setting is not None
+        and str(embed_dim_setting).strip().lstrip("-").isdigit()
+        and int(embed_dim_setting) == KB.embed_dim
+        and dim_report["null_vectors"] == 0
+        and all(int(dim) == KB.embed_dim for dim in dim_report["dims"])
+    )
     return _envelope(
         KBStatsOut(
             document_count=document_count,
             chunk_count=chunk_count,
             index_version=index_version,
             dim_consistent=dim_consistent,
-            embed_dim=int(embed_dim_setting) if embed_dim_setting else None,
+            embed_dim=int(embed_dim_setting) if embed_dim_setting and str(embed_dim_setting).lstrip("-").isdigit() else None,
             config_dim=KB.embed_dim,
-            embed_model=embed_model_setting,
+            embed_model=embed_model_setting or "",
+            actual_dims=dim_report["dims"],
             total_chars=int(total_chars),
             vector_enabled=KB.vector_enabled and kb_index.vector_available and fts_available,
         ).model_dump(by_alias=True)
@@ -2869,20 +2914,14 @@ async def startup_check() -> None:
         return
     state.enabled = True
 
+    # 库内配置 + 全库实际切片维度一起查；缺模型名 / 脏维度一律不静默放行
     async with async_session_maker() as db:
-        dim_setting = await _get_setting(db, "embed_dim")
-        model_setting = await _get_setting(db, "embed_model")
-    problems = []
-    if dim_setting and dim_setting != str(KB.embed_dim):
-        problems.append(f"库内 embed_dim={dim_setting}，当前配置 KB_EMBED_DIM={KB.embed_dim}")
-    if model_setting and model_setting != KB.embed_model:
-        problems.append(f"库内 embed_model={model_setting}，当前配置 KB_EMBED_MODEL={KB.embed_model}")
+        problems = await kb_index.refresh_vector_available(db)
     if problems:
         # 拒绝启动向量检索，避免脏检索引擎静默返回垃圾结果：降级为仅 FTS + 引导话术
-        kb_index.vector_available = False
         logger.error(
-            "知识库向量配置与库内记录不一致，已关闭向量检索（仅全文检索 + 引导话术），"
-            "请重新全量同步或重建索引：%s",
+            "知识库向量配置/实际维度不一致，已关闭向量检索（仅全文检索 + 引导话术），"
+            "内置全量重嵌后无需重启自动恢复：%s",
             "；".join(problems),
         )
     if not fts_available:

@@ -46,6 +46,7 @@ export type KBStats = {
   embedDim: number | null;
   configDim: number;
   embedModel: string;
+  actualDims: Record<string, number>;  // 全库实际切片维度分布（FLPR-73 验收依据）
   totalChars: number;
   vectorEnabled: boolean;
 };

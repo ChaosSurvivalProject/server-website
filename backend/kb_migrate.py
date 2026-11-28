@@ -1,7 +1,9 @@
-"""一次性迁移脚本：wiki / 存量知识库 → 文档树 + 静态资源目录（FLPR-72）。
+"""一次性迁移脚本：wiki / 存量知识库 → 文档树 + 静态资源目录（FLPR-72）+ 内置全量重嵌（FLPR-73）。
 
 用法（在 backend/ 下执行）：
     python3 kb_migrate.py --check            # 只读盘点：备份提示 / Embedding 一致性 / MD5 / 图片 / 将创建清单
+    python3 kb_migrate.py --rebuild          # 全量重嵌：仅当库内 embed_model/embed_dim 与 .env 不一致（或切片维度脏）时执行
+    python3 kb_migrate.py --rebuild --yes    # 非交互环境下的二次确认（等价于交互输入 yes）
     python3 kb_migrate.py --apply            # 执行迁移：种子树 → 补正文/节点 → 搬图片 → 必要时重建切片 → bump 一次版本
     python3 kb_migrate.py --verify           # 验收：19 URL / 187 切片 / 9 图片 / FAQ / FTS / RAG 抽样 / 3 篇 manual
     python3 kb_migrate.py --rollback         # 从 .bak-YYYYMMDD 恢复 DB（资源目录保留）
@@ -16,8 +18,10 @@
 - 正文 /doc-image/xxx.png 一个字不改；index_version 只在 apply 成功末尾 bump 一次。
 
 注意：本脚本是**一次性工具**，P3 观察期后随 wiki/ 与 kb_sync.py 一起删除。
-Embedding 模型/维度不一致时的「全量重建」由 FLPR-73 在本文件内补齐；本脚本检测到
-不一致会拒绝 apply，避免在旧维度向量上做半迁移。
+Embedding 模型/维度不一致时的「全量重建」由 FLPR-73 在本文件内以 --rebuild 实现：
+仅在库内配置与 .env 不一致（或实际切片维度脏）时触发，备份 + 二次确认后单事务重嵌
+全部文档（wiki + manual），写回 kb_settings、bump index_version，服务端无需重启即恢复
+向量检索；不做交互式候选配置输入（那是 FLPR-22 后续版本的范围）。
 """
 from __future__ import annotations
 
@@ -437,6 +441,107 @@ def embed_problems(inv: Inventory) -> list[str]:
     return problems
 
 
+def chunk_dim_report(con: sqlite3.Connection) -> dict:
+    """全库实际切片体检查：按维度统计 BLOB 长度，不做任何“静默跳过”。
+
+    BLOB 是 float32 小端（见 kb_ingest.pack_vector），故 维度 = length(embedding) // 4。
+    dict 键为维度，值为切片数；非 4 字节对齐的脏 BLOB 记为 -1 维度。
+    """
+    expected_dim = int(KB.embed_dim)
+    rows = con.execute(
+        "SELECT length(embedding), COUNT(*) FROM kb_chunks "
+        "WHERE embedding IS NOT NULL GROUP BY length(embedding)"
+    ).fetchall()
+    dims: dict[int, int] = {}
+    for nbytes, count in rows:
+        nbytes = int(nbytes)
+        dim = -1 if nbytes % 4 else nbytes // 4
+        dims[dim] = dims.get(dim, 0) + int(count)
+    null_vectors = int(
+        con.execute("SELECT COUNT(*) FROM kb_chunks WHERE embedding IS NULL").fetchone()[0]
+    )
+    return {
+        "dims": dims,
+        "expected_dim": expected_dim,
+        "null_vectors": null_vectors,
+        "bad": {d: c for d, c in dims.items() if d != expected_dim},
+    }
+
+
+def rebuild_reasons(con: sqlite3.Connection) -> list[str]:
+    """--rebuild 的唯一触发条件：库内配置与 .env 不一致 / 实际切片脏。
+
+    不提供交互式候选配置输入：目标模型/维度只取 .env 加载后的 KB 配置。
+    """
+    reasons: list[str] = []
+    dim = get_setting(con, "embed_dim")
+    model = get_setting(con, "embed_model")
+    if dim and dim != str(KB.embed_dim):
+        reasons.append(f"库内 embed_dim={dim}，当前 KB_EMBED_DIM={KB.embed_dim}")
+    if model and model != KB.embed_model:
+        reasons.append(f"库内 embed_model={model}，当前 KB_EMBED_MODEL={KB.embed_model}")
+    report = chunk_dim_report(con)
+    if report["bad"]:
+        bad = "、".join(f"{d}维×{c}条" for d, c in sorted(report["bad"].items()))
+        reasons.append(f"实际切片存在旧/脏维度向量：{bad}（目标 {report['expected_dim']} 维）")
+    if report["null_vectors"]:
+        reasons.append(f"{report['null_vectors']} 条切片缺少向量")
+    return reasons
+
+
+def backup_database(db_path: Path, stamp: str) -> Path:
+    """在线一致备份（sqlite3 backup API），备份文件可直接用于 --rollback。
+
+    不用 shutil.copy2：WAL 模式下直接拷贝主库可能漏掉未 checkpoint 的写入；
+    backup API 在服务端在线读写时也能拿到一致快照，不阻塞业务写。
+    """
+    target = db_path.with_name(f"{db_path.name}.bak-{stamp}")
+    n = 2
+    while target.exists():
+        target = db_path.with_name(f"{db_path.name}.bak-{stamp}-{n}")
+        n += 1
+    src = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True, timeout=8)
+    dst = sqlite3.connect(str(target))
+    try:
+        with dst:
+            src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    return target
+
+
+def confirm_rebuild(
+    args: argparse.Namespace,
+    reasons: list[str],
+    total_docs: int,
+    total_chunks: int,
+    backup_path: Path,
+) -> bool:
+    """二次确认：把「要重嵌什么、备份在哪、如何回滚」摆在操作者面前。"""
+    print("=" * 72)
+    print("!! 全量重嵌（FLPR-73）：将忽略 MD5 判重，重新嵌入库内全部文档")
+    print(f"   文档 {total_docs} 篇（含 wiki + manual） / 切片 {total_chunks} 条（数量可能变化）")
+    print(f"   目标配置：model={KB.embed_model} dim={KB.embed_dim}（来自 .env）")
+    for reason in reasons:
+        print(f"   - 触发：{reason}")
+    print(f"   备份：{backup_path}")
+    print("   成功：写回 kb_settings.embed_model/embed_dim + bump index_version，服务端无需重启")
+    print(f"   失败：单事务整体回滚；必要时 python backend/kb_migrate.py --rollback --backup {backup_path}")
+    print("=" * 72)
+    if args.yes:
+        print("[确认] 已通过 --yes 完成二次确认。")
+        return True
+    if not sys.stdin.isatty():
+        print("!! 非交互环境必须显式传 --yes 完成二次确认，未写库。")
+        return False
+    try:
+        answer = input("输入 yes 确认执行全量重嵌（其他输入取消）：").strip().lower()
+    except EOFError:
+        answer = ""
+    return answer in ("yes", "y")
+
+
 def backup_hint(db_path: Path) -> None:
     stamps = sorted(db_path.parent.glob(f"{db_path.name}.bak-*"))
     if stamps:
@@ -468,7 +573,7 @@ def print_inventory(inv: Inventory, db_path: Path) -> None:
     problems = embed_problems(inv)
     if problems:
         print("[Embedding] !! 不一致：" + "；".join(problems))
-        print("           需先由 FLPR-73 的内置全量重建能力处理，--apply 将拒绝执行")
+        print("           请先执行 python backend/kb_migrate.py --rebuild（内置全量重嵌），--apply 将拒绝执行")
     else:
         print(
             f"[Embedding] 一致：model={inv.settings.get('embed_model') or '(空)'} "
@@ -647,7 +752,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
         problems = embed_problems(inv)
         if problems:
             print("!! Embedding 配置不一致，拒绝迁移（" + "；".join(problems) + "）")
-            print("   需先由 FLPR-73 的内置全量重建能力处理，避免旧维度向量残留。")
+            print("   请先执行 python backend/kb_migrate.py --rebuild 完成内置全量重嵌，避免旧维度向量残留。")
             return 1
         if inv.settings.get("migration_v1_done") == "1":
             print("[幂等] migration_v1_done=1，迁移已完成，--apply 不重复执行（index_version 不再 bump）。")
@@ -847,7 +952,9 @@ def cmd_apply(args: argparse.Namespace) -> int:
                         "model": inv.settings.get("embed_model", ""),
                         "dim": inv.settings.get("embed_dim", ""),
                     },
-                    "consistent": True,
+                    "consistent": not chunk_dim_report(con)["bad"]
+                    and get_setting(con, "embed_model") == KB.embed_model
+                    and get_setting(con, "embed_dim") == str(KB.embed_dim),
                 },
                 "warnings": warnings,
             }
@@ -859,6 +966,162 @@ def cmd_apply(args: argparse.Namespace) -> int:
         except Exception as e:
             print(f"!! --apply 失败，事务已整体回滚：{e}")
             return 1
+    finally:
+        con.close()
+
+
+# ── --rebuild（FLPR-73：内置 Embedding 全量重建）────────────────────
+
+
+def _all_doc_chunk_rows(con: sqlite3.Connection, doc_id: int) -> list[sqlite3.Row]:
+    return con.execute(
+        "SELECT id, chunk_index, heading, content, char_count FROM kb_chunks "
+        "WHERE document_id = ? ORDER BY id",
+        (doc_id,),
+    ).fetchall()
+
+
+def cmd_rebuild(args: argparse.Namespace) -> int:
+    """仅当库内配置与 .env 不一致（或切片维度脏）时，重嵌库内全部文档。
+
+    关键约束：
+    - 目标配置只取 .env 加载后的 KB，不做交互式候选配置输入；
+    - 覆盖 wiki + manual 全部文档，忽略 MD5 判重；manual 没有可重切片的源文本，
+      直接对现有切片正文重新 Embedding（保留 heading/chunk_index/FTS 文本）；
+    - Embedding 全部在事务外完成；单事务替换全部切片 + 写回设置 + 只 bump 一次版本；
+    - 先在线备份，二次确认后才写库；失败整体回滚并给出精确回滚命令。
+    """
+    db_path = resolve_db(args.db)
+    if not db_path.is_file():
+        print(f"!! 数据库不存在：{db_path}")
+        return 1
+
+    con = connect_db(db_path)
+    try:
+        ensure_schema(con)  # 旧库可能还没有 content_md 列
+        reasons = rebuild_reasons(con)
+        if not reasons:
+            report = chunk_dim_report(con)
+            total = sum(report["dims"].values()) + report["null_vectors"]
+            print(
+                "[幂等] 无需全量重建：库内 embed_model/embed_dim 与 .env 一致，"
+                f"{total} 条切片实际维度均为 {report['expected_dim']} 维（未 bump index_version）。"
+            )
+            return 0
+
+        docs = con.execute(
+            "SELECT id, title, source_type, content_md, content_hash, chunk_count "
+            "FROM kb_documents ORDER BY id"
+        ).fetchall()
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_path = db_path.with_name(f"{db_path.name}.bak-{stamp}-pre-reembed")
+        total_chunks = int(
+            con.execute("SELECT COUNT(*) FROM kb_chunks").fetchone()[0]
+        )
+        if not confirm_rebuild(args, reasons, len(docs), total_chunks, backup_path):
+            return 1
+
+        # 记录旧配置用于清单（务必在写库前取）
+        config_before = {
+            "model": get_setting(con, "embed_model"),
+            "dim": get_setting(con, "embed_dim"),
+        }
+        backup = backup_database(db_path, f"{stamp}-pre-reembed")
+        print(f"[备份] 已生成在线一致备份：{backup}")
+
+        # 预嵌入（网络调用在写事务之外，缩短持锁时间）
+        from app import kb_ingest  # 延迟导入：--check/--verify 不需要网络依赖
+
+        plans: list[tuple[int, RebuildPlan]] = []
+        skipped = 0
+        for row in docs:
+            doc_id = int(row["id"])
+            chunk_rows = _all_doc_chunk_rows(con, doc_id)
+            if not chunk_rows:
+                # 文档树「空壳」节点 / 摄入失败文档：没有向量，不构成脏维度缺口
+                skipped += 1
+                continue
+            pieces: list = [
+                kb_ingest.Chunk(heading=str(r["heading"] or ""), content=str(r["content"] or ""))
+                for r in chunk_rows
+            ]
+            blobs = kb_ingest.embed_documents([p.content for p in pieces])
+            # content_hash 保持原值：重嵌只换向量，不改写 wiki 的 MD5 判重依据
+            plan = RebuildPlan(
+                md5=str(row["content_hash"] or ""),
+                content_md=str(row["content_md"] or ""),
+                title=str(row["title"] or ""),
+                description="",
+                chunk_count=len(pieces),
+                content_length=sum(len(p.content) for p in pieces),
+                pieces=pieces,
+                blobs=blobs,
+            )
+            plans.append((doc_id, plan))
+            print(f"[预嵌] 文档 #{doc_id} {row['title']}（{row['source_type']}）→ {len(pieces)} 切片")
+        print(f"[跳过] {skipped} 篇无切片文档（无向量可重建，不产生新切片）")
+        if not plans:
+            print("[提示] 库内没有可重建的切片；仅写回 kb_settings 并 bump 版本以恢复配置一致性。")
+
+        # 单事务：替换全部切片 + 写回配置 + bump 一次版本
+        index_before = int(get_setting(con, "index_version") or 0)
+        try:
+            with con:
+                for doc_id, plan in plans:
+                    write_chunks(con, doc_id, plan)
+                    con.execute(
+                        "UPDATE kb_documents SET chunk_count=?, status='ready', error_message='', update_time=? "
+                        "WHERE id=?",
+                        (plan.chunk_count, now_iso(), doc_id),
+                    )
+                set_setting(con, "embed_model", KB.embed_model)
+                set_setting(con, "embed_dim", KB.embed_dim)
+                index_after = bump_index_version(con)
+        except Exception as e:
+            print(f"!! --rebuild 失败，事务已整体回滚：{e}")
+            print(f"   可用 python backend/kb_migrate.py --rollback --backup {backup} 恢复到重建前状态。")
+            return 1
+
+        # 提交后体检：不允许静默留下旧维度 / 缺向量切片造成检索缺口
+        report = chunk_dim_report(con)
+        if report["bad"] or report["null_vectors"]:
+            print("!! 重建后仍存在异常切片：" + json.dumps(report, ensure_ascii=False))
+            print(f"   请立即 python backend/kb_migrate.py --rollback --backup {backup}")
+            return 1
+        total_after = sum(report["dims"].values())
+        if total_after >= KB.max_chunks:
+            print(f"[警告] 切片数 {total_after} 已达 KB_MAX_CHUNKS={KB.max_chunks}，向量索引只加载最新部分。")
+
+        rebuild_manifest = {
+            "generated_at": datetime.now().isoformat(timespec="seconds"),
+            "stage": "reembed",
+            "db": str(db_path),
+            "backup": str(backup),
+            "reason": reasons,
+            "documents": [
+                {"id": doc_id, "chunks": plan.chunk_count} for doc_id, plan in plans
+            ],
+            "skipped_no_chunks": skipped,
+            "chunks_before": total_chunks,
+            "chunks_after": total_after,
+            "embed_config": {
+                "before": config_before,
+                "after": {"model": KB.embed_model, "dim": KB.embed_dim},
+            },
+            "index_version": {"before": index_before, "after": index_after},
+            "actual_dims": report["dims"],
+        }
+        base_manifest = Path(args.manifest) if args.manifest else MANIFEST_PATH
+        manifest_path = base_manifest.with_name(f"{base_manifest.stem}-reembed-{stamp}.json")
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(
+            json.dumps(rebuild_manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        print(f"[完成] {len(plans)} 篇文档重嵌，{total_after} 条切片均为 {KB.embed_dim} 维。")
+        print(f"[版本] index_version {index_before} → {index_after}（只 bump 一次，服务端无需重启）")
+        print(f"[清单] {manifest_path}")
+        print("[提示] 运行中的后端会在下一次检索 / 统计请求时自动恢复向量检索（见 app/kb_index.py）。")
+        return 0
     finally:
         con.close()
 
@@ -1021,6 +1284,22 @@ def cmd_verify(args: argparse.Namespace) -> int:
             failures.append(f"{vec_missing} 条切片缺少向量")
         print(f"[切片] {actual_chunks}/{expected_chunks} 条，缺向量 {vec_missing}")
 
+        # 3b) 全库实际切片维度 + 模型名（与 stats.dimConsistent 同口径）
+        dim_report = chunk_dim_report(con)
+        model_setting = get_setting(con, "embed_model")
+        dim_setting = get_setting(con, "embed_dim")
+        if dim_report["bad"]:
+            failures.append(f"实际切片维度不一致：{dim_report['bad']}（目标 {KB.embed_dim} 维）")
+        if model_setting != KB.embed_model:
+            failures.append(f"库内 embed_model={model_setting or '(空)'} != {KB.embed_model}")
+        if dim_setting != str(KB.embed_dim):
+            failures.append(f"库内 embed_dim={dim_setting or '(空)'} != {KB.embed_dim}")
+        print(
+            f"[Embedding] 实际维度={dim_report['dims'] or '(无向量)'} / 目标={KB.embed_dim}；"
+            f"模型={model_setting or '(空)'} / {KB.embed_model}："
+            f"{'通过' if not dim_report['bad'] and model_setting == KB.embed_model and dim_setting == str(KB.embed_dim) else '失败'}"
+        )
+
         # 4) 9 个资源 md5 + 正文引用未改
         assets = manifest.get("assets", [])
         target_dir = asset_dir / ASSET_SUBDIR
@@ -1130,9 +1409,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="wiki → 知识库 一次性迁移（FLPR-72）")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true", help="只读盘点，不写库")
+    mode.add_argument("--rebuild", action="store_true", help="内置全量重嵌：库内配置与 .env 不一致时重嵌 wiki + manual 全部文档（备份 + 二次确认）")
     mode.add_argument("--apply", action="store_true", help="执行迁移（单事务，失败整体回滚）")
     mode.add_argument("--verify", action="store_true", help="验收 19 URL / 187 切片 / 9 资源 / FAQ / RAG / manual")
     mode.add_argument("--rollback", action="store_true", help="从 .bak-YYYYMMDD 恢复 DB")
+    parser.add_argument("--yes", action="store_true", help="--rebuild 的非交互二次确认（等价于交互输入 yes）")
     parser.add_argument("--db", default=None, help="覆盖数据库路径（默认 ANNOUNCEMENT_DB / backend/data/announcements.db）")
     parser.add_argument("--wiki-dir", default=None, help="覆盖 wiki 目录（默认 KB_WIKI_DIR）")
     parser.add_argument("--asset-dir", default=None, help="覆盖 KB_ASSET_DIR")
@@ -1154,6 +1435,8 @@ def main() -> int:
             return print_inventory(collect_inventory(con, wiki_dir), db_path)
         finally:
             con.close()
+    if args.rebuild:
+        return cmd_rebuild(args)
     if args.apply:
         return cmd_apply(args)
     if args.verify:

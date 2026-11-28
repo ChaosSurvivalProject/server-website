@@ -103,10 +103,13 @@ async def retrieve(
     score 为余弦相似度（仅向量路命中时非 None）；整体为空列表表示两路均未命中。
     """
     # ── 向量路（LangChain VectorStore，stdlib 余弦） ──────────
+    # 迁移脚本是独立进程：它写回 kb_settings 后，本进程在下一次检索时自愈恢复向量检索
+    if not kb_index.vector_available:
+        await kb_index.refresh_vector_available(db)
     vec_ranked: list[tuple[int, float]] = []  # [(chunk_id, cosine)]
     if KB.vector_enabled and allow_vector and kb_index.vector_available:
         loaded = await kb_index.index.ensure_loaded(db)
-        if loaded:
+        if loaded and kb_index.vector_available:
             try:
                 qv = await asyncio.to_thread(kb_ingest.embed_query, question)
                 vec_ranked = kb_index.index.top_k(qv, _PER_PATH_K)
