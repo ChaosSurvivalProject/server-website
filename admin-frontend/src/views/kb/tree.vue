@@ -776,12 +776,18 @@ const submitEditor = async () => {
 };
 
 /** Office/MD/TXT 上传解析成 Markdown 后走同一入口；publish 可设仅入库不公开 */
-const onEditorUpload = async (uploadFile: { file: File }) => {
+const onEditorUpload = async (uploadFile: { raw?: File }) => {
   const node = editorNode.value;
   if (!node) return;
+  // el-upload 的 on-change 首参是 UploadFile（原生 File 在 .raw），不是 input event，也没有 .file
+  const raw = uploadFile?.raw;
+  if (!raw) {
+    ElMessage.warning("未读取到文件，请重新选择");
+    return;
+  }
   editorUploading.value = true;
   try {
-    const doc = await uploadKBDocument(uploadFile.file, {
+    const doc = await uploadKBDocument(raw, {
       nodeId: node.id,
       title: editorForm.title.trim() || undefined,
       slug: editorForm.slug.trim() || undefined,
