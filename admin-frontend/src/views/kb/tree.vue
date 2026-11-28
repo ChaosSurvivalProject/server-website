@@ -1949,15 +1949,17 @@ onUnmounted(() => {
     min-height: 380px;
   }
 }
-/* ≤480px 操作按钮底部固定区域铺满，label 置顶由 el-form label-position 控制 */
+/* ≤480px 操作按钮底部固定区域铺满，label 置顶由 el-form label-position 控制
+   el-drawer 经 Teleport 挂到 body，根节点只有 class 没有 data-v 作用域属性，
+   因此这里必须用 :global() 输出全局选择器；:deep() 编译后带 [data-v-*] 不会命中。 */
 @media (max-width: 480px) {
-  .kb-editor-drawer :deep(.el-drawer__footer) {
+  :global(.kb-editor-drawer .el-drawer__footer) {
     display: flex;
     position: sticky;
     bottom: 0;
     background: var(--el-bg-color);
   }
-  .kb-editor-drawer :deep(.el-drawer__footer) .el-button {
+  :global(.kb-editor-drawer .el-drawer__footer .el-button) {
     flex: 1;
     margin-left: 0;
   }
