@@ -156,6 +156,24 @@ _THEME_SCRIPT = (
     "r.style.setProperty(k,s[k]);}}catch(e){}})();</script>"
 )
 
+# 三态主题（system / light / dark）：键与主站 theme.js 的 MODE_KEY 保持一致，
+# SSR 与主站共享同一份模式选择；旧 wiki-theme 仅作迁移兜底读取。模式解析到
+# <html class="dark">，CSS 变量即时切换，切主题无需刷新、也不影响 canonical/OG。
+THEME_MODE_KEY = "XQ_theme_mode"
+_LEGACY_THEME_MODE_KEY = "wiki-theme"
+
+# 首屏同步应用，避免深色用户刷新闪白；colorScheme 让原生控件一起跟随。
+_THEME_MODE_SCRIPT = (
+    "<script>(function(){try{var r=document.documentElement,"
+    "m=localStorage.getItem('" + THEME_MODE_KEY + "')||localStorage.getItem('"
+    + _LEGACY_THEME_MODE_KEY + "');"
+    "m=(m==='light'||m==='dark'||m==='system')?m:'system';"
+    "var d=(m==='dark')||(m==='system'&&window.matchMedia&&"
+    "window.matchMedia('(prefers-color-scheme: dark)').matches);"
+    "r.classList.toggle('dark',d);r.style.colorScheme=d?'dark':'light';"
+    "}catch(e){}})();</script>"
+)
+
 _WEBSITE_JSON_LD = json.dumps(
     {
         "@context": "https://schema.org",
@@ -252,28 +270,33 @@ PAGE_TEMPLATE = """<!DOCTYPE html>
 <meta name="twitter:image" content="{{ ogImage }}">
 <script type="application/ld+json">{{ websiteLd }}</script>
 {% if faqLd %}<script type="application/ld+json">{{ faqLd }}</script>
-{% endif %}{{ themeScript }}
+{% endif %}{{ themeScript }}{{ themeModeScript }}
 <style>
 :root{--vp-c-brand-1:var(--brand-lt,#4caf50);--vp-c-brand-2:var(--brand-lt-hover,#43a047);--vp-c-brand-3:var(--brand-lt-active,#388e3c);--vp-c-brand-soft:var(--brand-lt-tint,#e8f5e9)}
 html.dark{--vp-c-brand-1:var(--brand-dk,#66bb6a);--vp-c-brand-2:var(--brand-dk-hover,#7bc87f);--vp-c-brand-3:var(--brand-dk-active,#55a55a);--vp-c-brand-soft:var(--brand-dk-tint,rgba(102,187,106,.16))}
-:root{--vp-c-bg:#fff;--vp-c-bg-alt:#f6f6f6;--vp-c-text-1:#213547;--vp-c-text-2:#476582;--vp-c-divider:#e2e2e2;--vp-c-border:#d0d7de}
-html.dark{--vp-c-bg:#1b1b1f;--vp-c-bg-alt:#252529;--vp-c-text-1:#e6e6e6;--vp-c-text-2:#b0b0b0;--vp-c-divider:#3a3a3f;--vp-c-border:#3a3a3f}
+:root{--vp-c-bg:#fff;--vp-c-bg-alt:#f6f6f6;--vp-c-text-1:#213547;--vp-c-text-2:#476582;--vp-c-divider:#e2e2e2;--vp-c-border:#d0d7de;--vp-c-warning:#a86b00;--vp-c-warning-soft:rgba(230,167,0,.12);--vp-c-danger:#cf222e;--vp-c-danger-soft:rgba(230,70,70,.12)}
+html.dark{--vp-c-bg:#1b1b1f;--vp-c-bg-alt:#252529;--vp-c-text-1:#e6e6e6;--vp-c-text-2:#b0b0b0;--vp-c-divider:#3a3a3f;--vp-c-border:#3a3a3f;--vp-c-warning:#f0b429;--vp-c-warning-soft:rgba(240,180,41,.18);--vp-c-danger:#f87171;--vp-c-danger-soft:rgba(248,113,113,.16)}
 *{box-sizing:border-box}
 body{margin:0;background:var(--vp-c-bg);color:var(--vp-c-text-1);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Microsoft YaHei",sans-serif;line-height:1.6}
 a{color:var(--vp-c-brand-1);text-decoration:none}
 a:hover{text-decoration:underline}
 .topbar{display:flex;align-items:center;gap:16px;padding:10px 20px;border-bottom:1px solid var(--vp-c-divider);background:var(--vp-c-bg-alt);position:sticky;top:0;z-index:20}
 .topbar .brand{font-weight:700;color:var(--vp-c-text-1);white-space:nowrap}
-.topnav{display:flex;gap:16px;align-items:center;margin-left:auto;flex-wrap:wrap}
-.topnav .more{display:none}
-.theme-btn,.menu-btn{border:1px solid var(--vp-c-border);background:transparent;color:var(--vp-c-text-1);border-radius:6px;min-width:36px;min-height:36px;cursor:pointer}
+.topnav{display:flex;gap:16px;align-items:center;margin-left:auto;flex-wrap:wrap;position:relative}
+.topnav .more-menu{display:none}
+.topnav .more-menu>summary{list-style:none;cursor:pointer;display:flex;align-items:center;min-height:36px;padding:0 4px;color:var(--vp-c-text-2)}
+.topnav .more-menu>summary::-webkit-details-marker{display:none}
+.topnav .more-list{position:absolute;right:0;top:100%;z-index:30;display:flex;flex-direction:column;min-width:180px;padding:6px;background:var(--vp-c-bg);border:1px solid var(--vp-c-divider);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.12)}
+.topnav .more-list a{padding:8px 10px;border-radius:6px;color:var(--vp-c-text-2);white-space:nowrap}
+.topnav .more-list a:hover{background:var(--vp-c-bg-alt);text-decoration:none}
+.theme-btn,.menu-btn{border:1px solid var(--vp-c-border);background:transparent;color:var(--vp-c-text-1);border-radius:6px;min-width:40px;min-height:40px;cursor:pointer}
 .layout{display:grid;grid-template-columns:260px minmax(0,1fr) 220px;gap:24px;max-width:1280px;margin:0 auto;padding:24px}
 .sidebar{border-right:1px solid var(--vp-c-divider);padding-right:12px}
 .nav-list{list-style:none;margin:0;padding-left:14px}
 .sidebar>.nav-list{padding-left:0}
 .nav-list summary{cursor:pointer;font-weight:600;padding:4px 0;color:var(--vp-c-text-1)}
 .nav-list li{margin:4px 0}
-.nav-list a{display:block;padding:4px 6px;border-radius:6px;color:var(--vp-c-text-2)}
+.nav-list a{display:block;padding:4px 6px;border-radius:6px;color:var(--vp-c-text-2);overflow-wrap:anywhere}
 .nav-list a.active{background:var(--vp-c-brand-soft);color:var(--vp-c-brand-1)}
 .main{min-width:0}
 .content{overflow-wrap:anywhere}
@@ -283,8 +306,8 @@ a:hover{text-decoration:underline}
 .content th,.content td{border:1px solid var(--vp-c-border);padding:6px 10px}
 .content .header-anchor{opacity:.45;margin-left:.3em}
 .custom-block{border-left:4px solid var(--vp-c-brand-1);background:var(--vp-c-brand-soft);padding:8px 14px;border-radius:6px;margin:12px 0}
-.custom-block.warning{border-color:#e6a700;background:rgba(230,167,0,.12)}
-.custom-block.danger{border-color:#e64646;background:rgba(230,70,70,.12)}
+.custom-block.warning{border-color:var(--vp-c-warning);background:var(--vp-c-warning-soft)}
+.custom-block.danger{border-color:var(--vp-c-danger);background:var(--vp-c-danger-soft)}
 .custom-block-title{font-weight:700;margin:0 0 4px}
 .toc{font-size:14px;border-left:1px solid var(--vp-c-divider);padding-left:12px;align-self:start;position:sticky;top:80px}
 .toc-title{font-weight:700;margin-bottom:6px}
@@ -302,11 +325,22 @@ footer{border-top:1px solid var(--vp-c-divider);padding:16px 20px;text-align:cen
   .menu-btn{display:block}
   .toc{display:none}
   .toc-mobile{display:block;margin-bottom:16px;border:1px solid var(--vp-c-divider);border-radius:6px;padding:8px 12px}
+  .nav-list a,.nav-list summary{display:flex;align-items:center;min-height:40px}
   .topnav .nav-item{display:none}
-  .topnav .more{display:inline-block}
+  .topnav .more-menu{display:block}
 }
 @media (min-width:769px){.menu-btn{display:none}}
-@media (max-width:480px){.topbar{padding:8px 12px;gap:8px}.layout{padding:12px}}
+@media (max-width:480px){
+  .topbar{padding:8px 12px;gap:8px}
+  .layout{padding:12px}
+  .menu-btn,.theme-btn{min-width:44px;min-height:44px}
+  .topnav .more-menu>summary{min-height:44px;padding:0 10px}
+  .topnav .more-list{right:-8px;min-width:200px}
+  .topnav .more-list a{display:flex;align-items:center;min-height:44px;padding:0 12px}
+  .sidebar{padding-top:64px}
+  .nav-list a,.nav-list summary{min-height:44px}
+  .toc-mobile summary{min-height:44px;display:flex;align-items:center}
+}
 </style>
 </head>
 <body>
@@ -318,7 +352,12 @@ footer{border-top:1px solid var(--vp-c-divider);padding:16px 20px;text-align:cen
 <a class="nav-item" href="https://www.ilanzou.com/s/f6FnIguj" target="_blank" rel="noopener">资源下载（网盘）</a>
 <a class="nav-item" href="https://simpfun.cn/auth?type=register&code=303249736" target="_blank" rel="noopener">简幻欢</a>
 <a class="nav-item" href="https://minekuai.com/index/register?inviteCode=lwpnw2K" target="_blank" rel="noopener">麦块联机</a>
-<a class="more" href="/wiki/">更多</a>
+<details class="more-menu"><summary>更多</summary><div class="more-list">
+<a href="/wiki/">主页</a>
+<a href="https://www.ilanzou.com/s/f6FnIguj" target="_blank" rel="noopener">资源下载（网盘）</a>
+<a href="https://simpfun.cn/auth?type=register&code=303249736" target="_blank" rel="noopener">简幻欢</a>
+<a href="https://minekuai.com/index/register?inviteCode=lwpnw2K" target="_blank" rel="noopener">麦块联机</a>
+</div></details>
 </nav>
 <button class="theme-btn" type="button" aria-label="切换主题" onclick="cycleTheme()">◐</button>
 </header>
@@ -333,10 +372,17 @@ footer{border-top:1px solid var(--vp-c-divider);padding:16px 20px;text-align:cen
 </div>
 <footer>联系邮箱: <a href="mailto:3896301937@qq.com">3896301937@qq.com</a><br>© 2025-2026 星穹旅驿 Minecraft 服务器 | 本服务器与Mojang及Microsoft无关</footer>
 <script>
-function toggleDrawer(){var s=document.getElementById('sidebar'),m=document.getElementById('drawerMask');s.classList.toggle('open');m.classList.toggle('open');}
-function cycleTheme(){var r=document.documentElement,d=r.classList.contains('dark');if(d){r.classList.remove('dark');localStorage.setItem('wiki-theme','light');}else{r.classList.add('dark');localStorage.setItem('wiki-theme','dark');}}
-(function(){try{var t=localStorage.getItem('wiki-theme');if(t==='dark')document.documentElement.classList.add('dark');}catch(e){}})();
-document.querySelectorAll('.sidebar a').forEach(function(a){a.addEventListener('click',function(){var s=document.getElementById('sidebar'),m=document.getElementById('drawerMask');s.classList.remove('open');m.classList.remove('open');a.classList.add('active');});});
+var THEME_MODE_KEY='{{ themeModeKey }}';
+var THEME_LABEL={system:'跟随系统',light:'浅色',dark:'深色'};
+var THEME_ICON={system:'◐',light:'☀',dark:'☾'};
+function getThemeMode(){try{var m=localStorage.getItem(THEME_MODE_KEY)||localStorage.getItem('wiki-theme');return (m==='light'||m==='dark'||m==='system')?m:'system';}catch(e){return 'system';}}
+function applyTheme(){var m=getThemeMode();var d=(m==='dark')||(m==='system'&&window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);var r=document.documentElement;r.classList.toggle('dark',d);r.style.colorScheme=d?'dark':'light';var b=document.querySelector('.theme-btn');if(b){b.title='主题：'+THEME_LABEL[m]+'（点击切换）';b.setAttribute('aria-label',b.title);b.textContent=THEME_ICON[m];}}
+function cycleTheme(){var order=['system','light','dark'];var next=order[(order.indexOf(getThemeMode())+1)%3];try{localStorage.setItem(THEME_MODE_KEY,next);}catch(e){}applyTheme();}
+function closeDrawer(){document.getElementById('sidebar').classList.remove('open');document.getElementById('drawerMask').classList.remove('open');}
+function toggleDrawer(){var s=document.getElementById('sidebar');if(s.classList.contains('open')){closeDrawer();}else{s.classList.add('open');document.getElementById('drawerMask').classList.add('open');}}
+(function(){applyTheme();try{var mq=window.matchMedia('(prefers-color-scheme: dark)');if(mq.addEventListener)mq.addEventListener('change',function(){if(getThemeMode()==='system')applyTheme();});else if(mq.addListener)mq.addListener(function(){if(getThemeMode()==='system')applyTheme();});}catch(e){}})();
+document.querySelectorAll('.sidebar a').forEach(function(a){a.addEventListener('click',function(){closeDrawer();document.querySelectorAll('.sidebar a').forEach(function(x){x.classList.remove('active');});a.classList.add('active');});});
+(function(){var s=document.getElementById('sidebar'),x=0,y=0,tracking=false;s.addEventListener('touchstart',function(e){var t=e.touches[0];if(!t)return;x=t.clientX;y=t.clientY;tracking=true;},{passive:true});s.addEventListener('touchend',function(e){if(!tracking)return;tracking=false;var t=e.changedTouches[0];if(!t)return;var dx=t.clientX-x,dy=t.clientY-y;if(dx<-60&&Math.abs(dx)>Math.abs(dy))closeDrawer();},{passive:true});})();
 </script>
 </body>
 </html>
@@ -366,6 +412,8 @@ def _render_page(
         faqLd=Markup(_faq_json_ld(faq_json)),
         websiteLd=Markup(_WEBSITE_JSON_LD),
         themeScript=Markup(_THEME_SCRIPT),
+        themeModeScript=Markup(_THEME_MODE_SCRIPT),
+        themeModeKey=THEME_MODE_KEY,
         ogImage=OG_IMAGE,
         body=Markup(body),
         navHtml=Markup(nav_html),
