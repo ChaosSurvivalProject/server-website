@@ -208,7 +208,7 @@ export default [
   {
     path: "/kb",
     name: "KBGroup",
-    redirect: "/kb/list",
+    redirect: "/kb/tree",
     meta: {
       title: "智能客服",
       icon: "ep/service",
@@ -216,24 +216,18 @@ export default [
       showLink: true
     },
     children: [
+      // 旧列表页已下线；保留重定向避免历史书签 / 已打开的页签落到空白页（不出现在菜单里）
       {
         path: "/kb/list",
-        name: "KBList",
-        component: () => import("@/views/kb/list.vue"),
-        meta: {
-          title: "知识库",
-          icon: "ep/collection",
-          showLink: true,
-          // 模块下只有这一个页面，不写 showParent 会被拍平成单个菜单项（模块名丢失）
-          showParent: true
-        }
+        redirect: "/kb/tree",
+        meta: { showLink: false }
       },
       {
         path: "/kb/tree",
         name: "KBTree",
         component: () => import("@/views/kb/tree.vue"),
         meta: {
-          title: "默认知识库",
+          title: "知识库",
           icon: "ep/folder-opened",
           showLink: true,
           showParent: true

@@ -54,7 +54,7 @@ const choose = (id: number | null) => emit("update:modelValue", id);
         @click="choose(null)"
       >
         <span class="kb-picker-radio" :class="{ on: modelValue === null }" />
-        <span>默认知识库（根目录）</span>
+        <span>知识库（根目录）</span>
       </div>
       <div
         v-for="row in rows"
