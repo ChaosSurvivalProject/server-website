@@ -74,6 +74,74 @@ const onNarrow = (e: MediaQueryListEvent | MediaQueryList) => (isNarrow.value = 
 const onPhone = (e: MediaQueryListEvent | MediaQueryList) => (isPhone.value = e.matches);
 const treeDrawerVisible = ref(false);
 
+// ── FLPR-77 §5.11.1：深层级压缩 / 长值点击查看 / 编辑器工具栏精简 ──
+const INDENT_CAP = 4;
+const rowIndent = (depth: number) => `${Math.min(depth, INDENT_CAP) * 16 + 8}px`;
+const isDeepRow = (depth: number) => depth > INDENT_CAP;
+const escapeHtml = (value: string) =>
+  String(value ?? "").replace(
+    /[&<>"']/g,
+    ch =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" } as Record<string, string>)[
+        ch
+      ]
+  );
+/** 窄屏长文件名 / URL / slug：ellipsis + 点击查看全值，信息不被挤压截断 */
+const showFullValue = (label: string, value: string) => {
+  ElMessageBox.alert(
+    `<div style="white-space:pre-wrap;word-break:break-all;max-height:50vh;overflow:auto;line-height:1.6">${escapeHtml(
+      value || "—"
+    )}</div>`,
+    label,
+    { dangerouslyUseHTMLString: true, confirmButtonText: "关闭" }
+  );
+};
+/** ≤480px 正文编辑器只留高频工具，避免小屏工具栏横向溢出；桌面沿用全量默认项 */
+const FULL_EDITOR_TOOLBAR = [
+  "bold",
+  "underline",
+  "italic",
+  "strikeThrough",
+  "-",
+  "title",
+  "sub",
+  "sup",
+  "quote",
+  "unorderedList",
+  "orderedList",
+  "task",
+  "-",
+  "codeRow",
+  "code",
+  "link",
+  "image",
+  "table",
+  "-",
+  "revoke",
+  "next",
+  "=",
+  "preview",
+  "catalog"
+];
+const PHONE_EDITOR_TOOLBAR = [
+  "bold",
+  "underline",
+  "italic",
+  "-",
+  "quote",
+  "unorderedList",
+  "orderedList",
+  "-",
+  "link",
+  "image",
+  "-",
+  "revoke",
+  "next"
+];
+const editorToolbar = computed(() =>
+  isPhone.value ? PHONE_EDITOR_TOOLBAR : FULL_EDITOR_TOOLBAR
+);
+
 // ── 数据加载 ────────────────────────────────────────────────────────
 const loadTree = async () => {
   loading.value = true;
@@ -887,7 +955,7 @@ onUnmounted(() => {
               active: selectedId === row.node.id,
               'drag-over': dragOverId === row.node.id
             }"
-            :style="{ paddingLeft: row.depth * 16 + 8 + 'px' }"
+            :style="{ paddingLeft: rowIndent(row.depth) }"
             draggable="true"
             :title="row.node.title"
             @click="selectNode(row.node)"
@@ -916,6 +984,9 @@ onUnmounted(() => {
               <Folder v-if="row.node.nodeType === 'folder'" />
               <Document v-else />
             </el-icon>
+            <span v-if="isDeepRow(row.depth)" class="kb-node-deep" title="层级过深，缩进已压缩">
+              …
+            </span>
             <span class="kb-node-title">{{ row.node.title }}</span>
             <el-tag
               v-if="row.node.published === 0"
@@ -1004,7 +1075,11 @@ onUnmounted(() => {
                   </div>
                   <div class="kb-kv-row">
                     <dt>标题</dt>
-                    <dd class="kb-ellipsis" :title="docDetail.title">{{ docDetail.title }}</dd>
+                    <dd
+                      class="kb-ellipsis kb-clickable"
+                      :title="docDetail.title"
+                      @click="showFullValue('文档标题', docDetail.title)"
+                    >{{ docDetail.title }}</dd>
                   </div>
                   <div class="kb-kv-row">
                     <dt>类型</dt>
@@ -1040,14 +1115,22 @@ onUnmounted(() => {
                   <div class="kb-kv-row">
                     <dt>原件</dt>
                     <dd>
-                      <span class="kb-ellipsis" :title="docDetail.originalFilename || '无'">
+                      <span
+                        class="kb-ellipsis kb-clickable"
+                        :title="docDetail.originalFilename || '无'"
+                        @click="showFullValue('原件名', docDetail.originalFilename || '无')"
+                      >
                         {{ docDetail.originalFilename || "无" }}
                       </span>
                     </dd>
                   </div>
                   <div class="kb-kv-row">
                     <dt>内容哈希</dt>
-                    <dd class="kb-kv-hash" :title="docDetail.contentHash">
+                    <dd
+                      class="kb-kv-hash kb-clickable"
+                      :title="docDetail.contentHash"
+                      @click="showFullValue('内容哈希', docDetail.contentHash || '—')"
+                    >
                       {{ docDetail.contentHash || "—" }}
                     </dd>
                   </div>
@@ -1071,7 +1154,11 @@ onUnmounted(() => {
                   <div class="kb-kv-row">
                     <dt>完整路径</dt>
                     <dd class="kb-kv-url">
-                      <span class="kb-ellipsis" :title="selectedNode.slug">
+                      <span
+                        class="kb-ellipsis kb-clickable"
+                        :title="selectedNode.slug"
+                        @click="showFullValue('完整路径', selectedNode.slug)"
+                      >
                         {{ selectedNode.slug }}
                       </span>
                       <el-button size="small" link @click="copyText(selectedNode.slug)">
@@ -1138,7 +1225,7 @@ onUnmounted(() => {
                 <dl class="kb-kv">
                   <div class="kb-kv-row"><dt>节点 ID</dt><dd>{{ selectedNode.id }}</dd></div>
                   <div class="kb-kv-row"><dt>所在目录</dt><dd>{{ parentTitle(selectedNode) }}</dd></div>
-                  <div class="kb-kv-row"><dt>完整路径</dt><dd class="kb-ellipsis" :title="selectedNode.slug">{{ selectedNode.slug }}</dd></div>
+                  <div class="kb-kv-row"><dt>完整路径</dt><dd class="kb-ellipsis kb-clickable" :title="selectedNode.slug" @click="showFullValue('完整路径', selectedNode.slug)">{{ selectedNode.slug }}</dd></div>
                   <div class="kb-kv-row"><dt>导航排序</dt><dd>{{ selectedNode.sortOrder }}</dd></div>
                   <div class="kb-kv-row"><dt>直接子节点</dt><dd>{{ (selectedNode.children || []).length }}</dd></div>
                   <div class="kb-kv-row">
@@ -1164,7 +1251,16 @@ onUnmounted(() => {
       :style="menuStyle"
       @click.stop
     >
-      <div class="kb-ctx-title" :title="menuNode.title">{{ menuNode.title }}</div>
+      <div
+        class="kb-ctx-title"
+        :title="menuNode.title"
+        @click="showFullValue('节点标题', menuNode.title)"
+      >
+        {{ menuNode.title }}
+      </div>
+      <button class="kb-ctx-item" @click="showFullValue('节点标题', menuNode.title)">
+        <el-icon><View /></el-icon> 查看全名
+      </button>
       <button class="kb-ctx-item" @click="actionRename(menuNode)">
         <el-icon><Edit /></el-icon> 重命名
       </button>
@@ -1329,7 +1425,11 @@ onUnmounted(() => {
       class="kb-editor-drawer"
     >
       <div v-if="editorNode" class="kb-editor">
-        <el-form label-width="82px" class="kb-editor-form">
+        <el-form
+          :label-width="isNarrow ? undefined : '82px'"
+          :label-position="isNarrow ? 'top' : 'right'"
+          class="kb-editor-form"
+        >
           <el-form-item label="标题">
             <el-input v-model="editorForm.title" maxlength="255" placeholder="显示名称" />
           </el-form-item>
@@ -1372,6 +1472,7 @@ onUnmounted(() => {
             :id="editorId"
             v-model="editorForm.content"
             :theme="editorTheme"
+            :toolbars="editorToolbar"
             language="zh-CN"
             preview-theme="github"
             code-theme="github"
@@ -1519,6 +1620,11 @@ onUnmounted(() => {
   background: var(--el-fill-color);
   color: var(--el-color-primary);
 }
+/* 深层级压缩提示：层级超过 INDENT_CAP 后缩进不再增长，用 … 标示 */
+.kb-node-deep {
+  flex: 0 0 auto;
+  color: var(--el-text-color-placeholder);
+}
 .kb-tree-empty {
   padding: 28px 12px;
   text-align: center;
@@ -1623,6 +1729,12 @@ onUnmounted(() => {
   white-space: nowrap;
   vertical-align: bottom;
 }
+.kb-clickable {
+  cursor: pointer;
+}
+.kb-clickable:hover {
+  color: var(--el-color-primary);
+}
 .kb-kv-hash {
   font-family: monospace;
   font-size: 12px;
@@ -1665,6 +1777,10 @@ onUnmounted(() => {
   white-space: nowrap;
   border-bottom: 1px solid var(--el-border-color-lighter);
   margin-bottom: 4px;
+  cursor: pointer;
+}
+.kb-ctx-title:hover {
+  color: var(--el-color-primary);
 }
 .kb-ctx-item {
   display: flex;
@@ -1831,6 +1947,23 @@ onUnmounted(() => {
 @media (max-width: 768px) {
   .kb-editor-md :deep(.md-editor) {
     min-height: 380px;
+  }
+}
+/* ≤480px 操作按钮底部固定区域铺满，label 置顶由 el-form label-position 控制 */
+@media (max-width: 480px) {
+  .kb-editor-drawer :deep(.el-drawer__footer) {
+    display: flex;
+    position: sticky;
+    bottom: 0;
+    background: var(--el-bg-color);
+  }
+  .kb-editor-drawer :deep(.el-drawer__footer) .el-button {
+    flex: 1;
+    margin-left: 0;
+  }
+  .kb-node-more {
+    width: 32px;
+    height: 32px;
   }
 }
 </style>
