@@ -12,8 +12,8 @@
   GET    /kb/admin/documents/{id}         文档详情（属性面板读取完整字段，FLPR-75）
   POST   /kb/admin/documents              手动新增（同步切片 + Embedding）
   POST   /kb/admin/documents/upload       文档上传（PDF / DOCX / PPTX / MD / TXT → Markdown 入库 + 原件留存）
-  GET    /kb/admin/documents/{id}/download 下载上传的原始文件（wiki 来源拒绝）
-  DELETE /kb/admin/documents/{id}         删除（wiki 来源拒绝，走同步脚本）
+  GET    /kb/admin/documents/{id}/download 下载上传的原始文件（无原件时 404）
+  DELETE /kb/admin/documents/{id}         删除独立文档（归属文档树的文档请删节点）
   GET    /kb/admin/documents/{id}/chunks  切片预览
   POST   /kb/admin/documents/{id}/reindex 重建（幂等：先删后建）
   GET    /kb/admin/stats                  统计（文档/切片/索引版本/维度一致性）
@@ -170,10 +170,21 @@ class ChatRequest(BaseModel):
 
 
 class KBDocumentCreate(BaseModel):
+    """FLPR-76：正文写入请求。nodeId 指向文档树中的文档节点；不传则新建根节点文档。
+
+    publish 语义与 kb_nodes.published 一致：true=已发布（上传即上线可视化页面），
+    false=仅入库不公开（草稿），对应方案 §5.5 的可选发布开关。
+    """
+
     model_config = ConfigDict(populate_by_name=True)
 
+    node_id: Optional[int] = Field(default=None, alias="nodeId")
     title: str = Field(..., min_length=1, max_length=255)
     content: str = Field(..., min_length=1)
+    slug: Optional[str] = Field(default=None, max_length=512)
+    description: str = Field(default="", max_length=500)
+    publish: bool = Field(default=True)
+    revision: Optional[int] = Field(default=None, ge=0)
 
 
 class KBDocumentOut(BaseModel):
@@ -181,10 +192,13 @@ class KBDocumentOut(BaseModel):
 
     id: int
     title: str
+    node_id: Optional[int] = Field(default=None, alias="nodeId")
     source_type: str = Field(..., alias="sourceType")
     source_path: str = Field(default="", alias="sourcePath")
     content_hash: str = Field(default="", alias="contentHash")
-    # FLPR-67：文档类型（默认 markdown）与上传原件文件名（wiki / 手动粘贴为空）
+    # FLPR-76：SSR 用的原始 Markdown，供后台编辑器回显（仅管理接口，包络正常）
+    content_md: str = Field(default="", alias="contentMd")
+    # FLPR-67：文档类型（默认 markdown）与上传原件文件名（手动粘贴为空）
     doc_type: str = Field(default="markdown", alias="docType")
     original_filename: str = Field(default="", alias="originalFilename")
     status: str = Field(default="ready")
@@ -283,7 +297,7 @@ async def bump_index_version(db: AsyncSession) -> None:
     )
 
 
-# ── 摄入 / 删除（管理接口与 wiki 文档重建共用） ──────────────────
+# ── 摄入 / 删除（管理接口与文档树重建共用） ──────────────────────
 
 
 async def _delete_chunks_only(db: AsyncSession, doc: KBDocument) -> None:
@@ -311,12 +325,18 @@ async def _ingest_document(
     content: str,
     content_hash: str = "",
     doc_type: str = "markdown",
+    content_md: Optional[str] = None,
+    node_id: Optional[int] = None,
 ) -> KBDocument:
     """清洗 → 切片 → Embedding → 落库（kb_documents / kb_chunks / kb_chunks_fts）。
 
     doc=None 时新建文档行，否则在原文档行上重建（幂等：先删后建）；
     doc_type 仅新建时写入（重建沿用原值，避免误清上传文档的类型）。
     Embedding 失败：文档行 status='failed' + error_message 落库，不写切片。
+
+    FLPR-76：content_md（SSR 用的原始 Markdown）与 node_id（文档树归属）在本函数
+    的同一次事务内写入，避免「正文入库存了、节点关联却分两次提交」。不传则保持原值，
+    兼容旧调用方（reindex / 回收站恢复）。Embedding 管线本身一行未改。
     """
     cleaned = kb_ingest.clean_markdown(content)
     pieces = kb_ingest.chunk_markdown(cleaned) if cleaned else []
@@ -337,6 +357,8 @@ async def _ingest_document(
                 source_type=source_type,
                 source_path=source_path,
                 content_hash=content_hash,
+                content_md=content_md or "",
+                node_id=node_id,
                 doc_type=doc_type,
                 status="failed",
                 error_message=str(e)[:2000],
@@ -348,6 +370,10 @@ async def _ingest_document(
             db.add(doc)
         else:
             await _delete_chunks_only(db, doc)
+            if content_md is not None:
+                doc.content_md = content_md
+            if node_id is not None:
+                doc.node_id = node_id
             doc.status = "failed"
             doc.error_message = str(e)[:2000]
             doc.chunk_count = 0
@@ -362,6 +388,8 @@ async def _ingest_document(
             title=title[:255],
             source_type=source_type,
             source_path=source_path,
+            content_md=content_md or "",
+            node_id=node_id,
             doc_type=doc_type,
             create_time=now,
             update_time=now,
@@ -370,6 +398,10 @@ async def _ingest_document(
         await db.flush()
     else:
         await _delete_chunks_only(db, doc)
+        if content_md is not None:
+            doc.content_md = content_md
+        if node_id is not None:
+            doc.node_id = node_id
         doc.update_time = now
     doc.title = title[:255]
     doc.source_type = source_type
@@ -405,6 +437,129 @@ async def _ingest_document(
     await bump_index_version(db)
     await db.commit()
     await db.refresh(doc)
+    return doc
+
+
+# ── FLPR-76：正文写入统一入口（挂节点 + content_hash 判重跳过 Embedding）──
+# 层级与正文分表：这里只负责「正文」这一半；新建目录 / 重命名 / 拖拽 / 发布切换
+# 仍走 /admin/nodes*（只写 kb_nodes、零 Embedding）。本入口供「新增 / 编辑正文」与
+# 「上传 Office 解析后入库」共用，保证可视化页面与 RAG 读的是同一份正文与切片。
+
+
+async def _resolve_write_node(
+    db: AsyncSession,
+    *,
+    node_id: Optional[int],
+    title: str,
+    slug: Optional[str],
+    published: int,
+) -> tuple[KBNode, bool]:
+    """定位正文要挂到的文档节点；node_id 为空时在根下新建文档节点。
+
+    返回 (node, created)。后台编辑流程先由文档树 API 建好节点，再带 nodeId 写正文；
+    新建分支只用于「无 nodeId 直接调用本 API」的兼容场景（旧调用方 / 通用上传入口）。
+    """
+    if node_id is not None:
+        node = await _get_node(db, node_id)
+        if node.node_type != "doc":
+            raise HTTPException(status_code=400, detail="正文只能写入文档节点")
+        if node.deleted_at:
+            raise HTTPException(status_code=400, detail="回收站中的节点不能编辑正文")
+        return node, False
+
+    now = _now_iso()
+    raw_slug = (slug or "").strip() or f"manual/doc-{uuid.uuid4().hex[:12]}"
+    node = KBNode(
+        parent_id=None,
+        node_type="doc",
+        title=title[:255],
+        slug=await _ensure_unique_slug(db, raw_slug),
+        sort_order=0,
+        published=published,
+        description="",
+        create_time=now,
+        update_time=now,
+    )
+    db.add(node)
+    await db.flush()
+    return node, True
+
+
+async def _write_document_to_node(
+    db: AsyncSession,
+    *,
+    node: KBNode,
+    title: str,
+    content: str,
+    slug: str,
+    description: str,
+    published: int,
+    revision: Optional[int],
+    doc_type: str = "markdown",
+) -> KBDocument:
+    """正文写入单一入口：hash 判重 → 复用 _ingest_document → 同事务更新 kb_nodes。
+
+    - 正文未变（hash 一致且上次入库成功）：零 Embedding 调用、不 bump index_version；
+      只提交 kb_nodes 元数据与 content_md 补齐（如迁移前遗留的空正文）。
+    - 正文变化：调用 _ingest_document 完成 clean → chunk → embed → 落库（含
+      index_version 自增），节点元数据在调用前写入，由其事务一次提交完成。
+    """
+    if revision is not None and revision != node.revision:
+        raise HTTPException(status_code=409, detail="节点已被他人修改，请刷新后重试")
+
+    content_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
+    doc = None
+    if node.document_id:
+        doc = (
+            await db.execute(select(KBDocument).where(KBDocument.id == node.document_id))
+        ).scalar_one_or_none()
+    if doc is None:
+        doc = (
+            await db.execute(select(KBDocument).where(KBDocument.node_id == node.id))
+        ).scalar_one_or_none()
+
+    now = _now_iso()
+    node.title = title[:255]
+    node.slug = await _ensure_unique_slug(db, slug, exclude_id=node.id)
+    node.description = description[:500]
+    node.published = published
+    node.revision += 1
+    node.update_time = now
+
+    unchanged = (
+        doc is not None
+        and doc.status == "ready"
+        and doc.chunk_count > 0
+        and doc.content_hash == content_hash
+    )
+    if unchanged:
+        # 判重命中：沿用 kb_sync.py 思路，正文没变就一次 Embedding 都不调
+        if not doc.content_md:
+            doc.content_md = content
+        doc.title = node.title
+        doc.update_time = now
+        await db.commit()
+        await db.refresh(node)
+        await db.refresh(doc)
+        return doc
+
+    doc = await _ingest_document(
+        db,
+        doc=doc,
+        title=title,
+        source_type="manual",
+        source_path="",
+        content=content,
+        content_hash=content_hash,
+        doc_type=doc_type,
+        content_md=content,
+        node_id=node.id,
+    )
+    # _ingest_document 已在同一事务提交正文 / 切片 / 节点元数据；这里只回填 document_id
+    if node.document_id != doc.id:
+        node.document_id = doc.id
+        await db.commit()
+    await db.refresh(node)
     return doc
 
 
@@ -791,14 +946,24 @@ async def admin_create_document(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_admin),
 ):
-    """手动新增知识（同步切片 + Embedding，1-3s；admin 前端同步等待）。"""
-    doc = await _ingest_document(
+    """在文档树节点上新增 / 更新正文（切片 + Embedding，1-3s；admin 同步等待）。
+
+    FLPR-76：接收 {nodeId, title, content, slug, description, publish}，走统一写入
+    入口挂节点；正文 hash 未变时零 Embedding，页面即时可访问、服务端无需重启。
+    """
+    published = 1 if req.publish else 0
+    node, _created = await _resolve_write_node(
+        db, node_id=req.node_id, title=req.title.strip(), slug=req.slug, published=published
+    )
+    doc = await _write_document_to_node(
         db,
-        doc=None,
+        node=node,
         title=req.title.strip(),
-        source_type="manual",
         content=req.content,
-        content_hash=hashlib.md5(req.content.encode("utf-8")).hexdigest(),
+        slug=(req.slug or node.slug).strip(),
+        description=req.description,
+        published=published,
+        revision=req.revision,
     )
     return _envelope(_doc_out(doc))
 
@@ -1035,13 +1200,19 @@ def _delete_original_file(doc: KBDocument) -> None:
 async def admin_upload_document(
     file: UploadFile = File(...),
     title: str = Form(default=""),
+    nodeId: Optional[int] = Form(default=None),
+    slug: Optional[str] = Form(default=None),
+    description: str = Form(default=""),
+    publish: bool = Form(default=True),
+    revision: Optional[int] = Form(default=None),
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_admin),
 ):
-    """上传文档（登录管理员）：解析为 Markdown 后复用摄入管线入 manual 库。
+    """上传文档并挂到节点：PDF / DOCX / PPTX / MD / TXT 解析为 Markdown 后走写入入口。
 
-    FormData 必须显式 Content-Type: multipart/form-data；doc_type 由后缀推导，
-    原始文件落 KB.upload_dir/kb/YYYYMM/ 并记录相对路径与原始文件名。
+    FLPR-76：解析结果与手动粘贴共用 _write_document_to_node —— 上传即上线可视化页面
+    （publish=false 仅入库不公开）。doc_type 由后缀推导，原始文件单独落盘并保留下载。
+    FormData 必须显式 Content-Type: multipart/form-data。
     """
     max_bytes = max(1, KB.upload_max_mb) * 1024 * 1024
     data, filename, ext, text = await _read_upload_file(file, max_bytes)
@@ -1055,17 +1226,24 @@ async def admin_upload_document(
     else:
         markdown = text
 
-    doc = await _ingest_document(
+    doc_title = (title.strip() or Path(filename).stem)[:255]
+    published = 1 if publish else 0
+    node, created = await _resolve_write_node(
+        db, node_id=nodeId, title=doc_title, slug=slug, published=published
+    )
+    doc = await _write_document_to_node(
         db,
-        doc=None,
-        title=(title.strip() or Path(filename).stem)[:255],
-        source_type="manual",
+        node=node,
+        title=doc_title,
         content=markdown,
-        content_hash=hashlib.md5(markdown.encode("utf-8")).hexdigest(),
+        slug=(slug or node.slug).strip(),
+        description=description,
+        published=published,
+        revision=revision,
         doc_type=doc_type,
     )
 
-    # 原始文件与入库 Markdown 分开存放；落盘失败则回滚刚建的文档行，避免半状态
+    # 原始文件与入库 Markdown 分开存放；落盘失败则回滚文档行，避免半状态
     sub_dir = datetime.now(BEIJING_TZ).strftime("%Y%m")
     target_dir = KB.upload_dir / "kb" / sub_dir
     rel_path = f"kb/{sub_dir}/{doc.id}_{uuid.uuid4().hex}{ext}"
@@ -1076,6 +1254,12 @@ async def admin_upload_document(
         logger.error("知识库文档「%s」原始文件落盘失败：%s", doc.title, e)
         await _delete_chunks_only(db, doc)
         await db.delete(doc)
+        if created:
+            await db.delete(node)
+        else:
+            node.document_id = None
+            node.revision += 1
+            node.update_time = _now_iso()
         await bump_index_version(db)
         await db.commit()
         raise HTTPException(status_code=500, detail="原始文件存储失败，请稍后重试") from e
@@ -1095,15 +1279,13 @@ async def admin_download_document(
 ):
     """下载上传的原始文件（登录管理员）：按文档 id 关联，带原始文件名。
 
-    wiki 来源没有原始文件，直接 400；路径基于 KB.upload_dir 解析并校验无穿越。
+    没有原件的文档直接 404；路径基于 KB.upload_dir 解析并校验无穿越。
     """
     doc = (
         await db.execute(select(KBDocument).where(KBDocument.id == document_id))
     ).scalar_one_or_none()
     if doc is None:
         raise HTTPException(status_code=404, detail="文档不存在")
-    if doc.source_type == "wiki":
-        raise HTTPException(status_code=400, detail="wiki 来源文档不提供原始文件下载")
     if not doc.original_path:
         raise HTTPException(status_code=404, detail="该文档没有上传的原始文件")
 
@@ -1130,15 +1312,15 @@ async def admin_delete_document(
     db: AsyncSession = Depends(get_db),
     _admin=Depends(require_admin),
 ):
-    """删除文档；wiki 来源拒绝（保持 wiki 为单一数据源，否则下次同步又被建回来）。"""
+    """删除独立文档；归属文档树的文档请走节点删除（整支软删除进回收站）。"""
     doc = (
         await db.execute(select(KBDocument).where(KBDocument.id == document_id))
     ).scalar_one_or_none()
     if doc is None:
         raise HTTPException(status_code=404, detail="文档不存在")
-    if doc.source_type == "wiki":
+    if doc.node_id is not None:
         raise HTTPException(
-            status_code=400, detail="wiki 来源文档由同步脚本维护，请在服务器上执行 kb_sync.py 增删"
+            status_code=400, detail="该文档归属知识库文档树，请在文档树中删除对应节点"
         )
     await _delete_chunks_only(db, doc)
     _delete_original_file(doc)
@@ -1183,10 +1365,9 @@ async def admin_reindex_document(
 ):
     """重建（幂等：先删后建）。
 
-    - wiki 来源：从 wiki 源文件整篇重建（重新切片 + 重新 Embedding）；
-      源文件缺失时 400，提示走 kb_sync.py。
-    - manual 来源：原文未存储，无法重新切片 → 只重建向量（按现有切片重新 Embedding），
-      切片数不变。
+    - 有原始正文（content_md）：从正文整篇重建（重新切片 + Embedding）；正文是唯一
+      真相源，迁移后的存量文档同样适用。
+    - 无正文：只重建向量（按现有切片重新 Embedding），切片数不变。
     """
     doc = (
         await db.execute(select(KBDocument).where(KBDocument.id == document_id))
@@ -1194,28 +1375,16 @@ async def admin_reindex_document(
     if doc is None:
         raise HTTPException(status_code=404, detail="文档不存在")
 
-    if doc.source_type == "wiki":
-        base_dir = KB.wiki_dir.resolve()
-        file_path = (base_dir / doc.source_path).resolve()
-        try:
-            file_path.relative_to(base_dir)  # 防路径穿越
-        except ValueError:
-            raise HTTPException(status_code=400, detail="wiki 源路径非法")
-        if not file_path.is_file():
-            raise HTTPException(
-                status_code=400,
-                detail=f"wiki 源文件不存在（{doc.source_path}），无法重建，请使用 kb_sync.py",
-            )
-        raw = file_path.read_text(encoding="utf-8", errors="replace")
-        content_hash = hashlib.md5(file_path.read_bytes()).hexdigest()
+    if (doc.content_md or "").strip():
+        raw = doc.content_md
         doc = await _ingest_document(
             db,
             doc=doc,
             title=doc.title,
-            source_type="wiki",
+            source_type=doc.source_type,
             source_path=doc.source_path,
             content=raw,
-            content_hash=content_hash,
+            content_hash=hashlib.md5(raw.encode("utf-8")).hexdigest(),
             doc_type=doc.doc_type,
         )
         return _envelope(_doc_out(doc))
