@@ -8,7 +8,8 @@ Endpoints:
   /api/email/*                       邮箱验证码发送（注册 / 验证码登录）
   /api/admin/mail/*                  官方邮箱推送（管理员：群发/单发 + 记录 + 收件人）
   /api/faction-beta/*                阵营对战玩法内测资格申请
-  /api/kb/*                          智能客服（/api/kb/chat SSE 包络例外之一）
+  /api/kb/*                          智能客服 / 知识库树（/api/kb/chat SSE 包络例外之一）
+  /wiki/*                            知识库 SSR 展示（完整 HTML，非 SPA）
   /api/staff/*                       工作人员名片（公开 + 管理员）
   /api/forum/*                       社区论坛（公开 + 登录用户 + 管理员）
   /api/resources/*                   资源中心（公开只读 + 管理员 CRUD/统计）
@@ -27,6 +28,7 @@ from fastapi.staticfiles import StaticFiles
 from .database import BASE_DIR, init_db, get_db
 from .monitor import router as monitor_router, load_servers
 from . import kb as kb_module
+from . import kb_view as kb_view_module
 from . import staff as staff_module
 from . import forum as forum_module
 from . import messages as messages_module
@@ -85,6 +87,9 @@ app.include_router(faction_beta_router, prefix="/api")
 
 # 知识库 / 智能客服（/api/kb/info、/api/kb/chat SSE、/api/kb/admin/*）
 app.include_router(kb_module.router, prefix="/api")
+
+# 知识库 SSR 展示（/wiki/*、/wiki/sitemap.xml；非 /api 前缀，完整 HTML 非 SPA）
+app.include_router(kb_view_module.router)
 
 # 员工名片（/api/staff/public/*、/api/staff/admin/*）
 app.include_router(staff_module.router, prefix="/api")
