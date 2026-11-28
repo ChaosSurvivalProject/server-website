@@ -234,8 +234,12 @@ class KBStatsOut(BaseModel):
     vector_enabled: bool = Field(..., alias="vectorEnabled")
 
 
-def _doc_out(doc: KBDocument) -> dict:
-    return KBDocumentOut.model_validate(doc).model_dump(by_alias=True)
+def _doc_out(doc: KBDocument, *, include_content: bool = True) -> dict:
+    data = KBDocumentOut.model_validate(doc).model_dump(by_alias=True)
+    if not include_content:
+        # 分页列表不回传整篇正文，避免 N 篇 Markdown 撑大响应；详情 / 编辑需要时再取
+        data["contentMd"] = ""
+    return data
 
 
 def _envelope(data) -> dict:
@@ -914,7 +918,7 @@ async def admin_list_documents(
     total_pages = (total + pageSize - 1) // pageSize if pageSize else 0
     return _envelope(
         {
-            "items": [_doc_out(doc) for doc in items],
+            "items": [_doc_out(doc, include_content=False) for doc in items],
             "page": page,
             "pageSize": pageSize,
             "total": total,
